@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
-from datetime import timedelta
+from datetime import timedelta, timezone as datetime_timezone
 
 from django.conf import settings
 from django.db import transaction
+from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 
 from apps.dashboard.services import generate_default_dashboard
@@ -44,6 +45,21 @@ SENSITIVE_EVIDENCE_KEYS = {
     "secret",
     "token",
 }
+DISCOVERY_REPORT_STALE_AFTER = timedelta(minutes=3)
+
+
+def _report_received_at(report: dict):
+    for key in ("received_at", "last_discovered_at"):
+        raw = report.get(key)
+        if not raw:
+            continue
+        parsed = parse_datetime(str(raw))
+        if parsed is None:
+            continue
+        if timezone.is_naive(parsed):
+            parsed = timezone.make_aware(parsed, datetime_timezone.utc)
+        return parsed
+    return None
 
 
 def redact_support_evidence(value):
@@ -342,6 +358,18 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             "title": "Scan failed",
             "message": customer_safe_error((matching_report.get("errors") or [{}])[0].get("error", "")),
         }
+    if status == "running":
+        received_at = _report_received_at(matching_report)
+        if received_at and timezone.now() - received_at > DISCOVERY_REPORT_STALE_AFTER:
+            return {
+                **base,
+                "key": "error",
+                "title": "Scan timed out",
+                "message": (
+                    "The Gateway stopped reporting scan progress. You can retry the scan, "
+                    "or check the Gateway logs if this keeps happening."
+                ),
+            }
 
     command_id = discovery_meta.get("command_id")
     if command_id:
@@ -354,6 +382,13 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             RemoteCommand.Status.TIMED_OUT,
             RemoteCommand.Status.OUTCOME_UNKNOWN,
         }:
+            if "already running" in (command.error_message or "").lower():
+                return {
+                    **base,
+                    "key": "scanning",
+                    "title": "Gateway is already scanning",
+                    "message": "The Gateway is still checking connected equipment. Results will appear here automatically.",
+                }
             return {
                 **base,
                 "key": "error",
@@ -362,6 +397,13 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             }
         rpc = RpcCommand.objects.filter(remote_command_id=command_id).order_by("-sent_at").first()
         if rpc and rpc.status in {"error", "timeout"}:
+            if "already running" in (rpc.error_message or "").lower():
+                return {
+                    **base,
+                    "key": "scanning",
+                    "title": "Gateway is already scanning",
+                    "message": "The Gateway is still checking connected equipment. Results will appear here automatically.",
+                }
             return {
                 **base,
                 "key": "error",

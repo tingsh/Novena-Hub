@@ -404,6 +404,15 @@ class GuidedSetupViewTest(TestCase):
             (
                 {
                     "scan_id": "scan-current",
+                    "status": "running",
+                    "progress": {"completed": 94, "total": 508},
+                    "received_at": (timezone.now() - timedelta(minutes=4)).isoformat(),
+                },
+                "Scan timed out",
+            ),
+            (
+                {
+                    "scan_id": "scan-current",
                     "status": "complete",
                     "devices": [{"interface": "10.0.0.20:502"}],
                 },
@@ -420,6 +429,17 @@ class GuidedSetupViewTest(TestCase):
                 self.assertEqual(discovery_scan_state(run)["title"], expected)
                 response = self.client.get(self.url)
                 self.assertContains(response, expected)
+
+        self.gateway.discovery_data = {
+            "scan_id": "scan-current",
+            "status": "running",
+            "progress": {"completed": 122, "total": 508},
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        response = self.client.get(self.url)
+        self.assertContains(response, 'id="scan-state-panel"')
+        self.assertContains(response, 'hx-select="#scan-state-panel"')
+        self.assertContains(response, 'hx-trigger="every 2s"')
 
     def test_stale_terminal_report_cannot_complete_retry(self):
         run = self._scan_run(scan_id="scan-retry")
@@ -451,6 +471,44 @@ class GuidedSetupViewTest(TestCase):
         self.assertNotEqual(run.summary["discovery"]["active_scan_id"], first_scan_id)
         self.assertEqual(RemoteCommand.objects.filter(gateway=self.gateway, operation="deployment_discover").count(), 2)
 
+    @patch("apps.devices.remote_control._schedule_outbox_dispatch")
+    def test_retry_during_running_scan_does_not_start_duplicate_command(self, _schedule):
+        self._enable_guided_setup()
+        run = self._scan_run(scan_id="scan-running")
+        self.gateway.discovery_data = {
+            "scan_id": "scan-running",
+            "status": "running",
+            "progress": {"completed": 123, "total": 508},
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+
+        response = self.client.post(self.url, {"action": "start_discovery"})
+
+        self.assertEqual(response.status_code, 302)
+        run.refresh_from_db()
+        self.assertEqual(run.summary["discovery"]["active_scan_id"], "scan-running")
+        self.assertEqual(RemoteCommand.objects.filter(gateway=self.gateway, operation="deployment_discover").count(), 0)
+
+    @patch("apps.devices.remote_control._schedule_outbox_dispatch")
+    def test_retry_reattaches_to_gateway_running_scan_instead_of_duplicate_command(self, _schedule):
+        self._enable_guided_setup()
+        run = self._scan_run(scan_id="failed-duplicate")
+        self.gateway.discovery_data = {
+            "scan_id": "gateway-running",
+            "status": "running",
+            "progress": {"completed": 87, "total": 508},
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+
+        response = self.client.post(self.url, {"action": "start_discovery"})
+
+        self.assertEqual(response.status_code, 302)
+        run.refresh_from_db()
+        self.assertEqual(run.summary["discovery"]["active_scan_id"], "gateway-running")
+        self.assertIn("reattached_at", run.summary["discovery"])
+        self.assertNotIn("command_id", run.summary["discovery"])
+        self.assertEqual(RemoteCommand.objects.filter(gateway=self.gateway, operation="deployment_discover").count(), 0)
+
     def test_matching_rpc_failure_becomes_scan_failed(self):
         run = self._scan_run()
         command = RemoteCommand.objects.create(
@@ -480,6 +538,29 @@ class GuidedSetupViewTest(TestCase):
         state = discovery_scan_state(run)
 
         self.assertEqual(state["title"], "Scan failed")
+
+    def test_gateway_already_running_response_stays_customer_visible_scanning(self):
+        run = self._scan_run()
+        command = RemoteCommand.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            requested_by=self.user,
+            operation="deployment_discover",
+            risk="diagnostic",
+            request_payload={"method": "deployment_discover", "params": {"scan_id": "scan-current"}},
+            status=RemoteCommand.Status.FAILED,
+            error_message="A discovery scan is already running",
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        summary = dict(run.summary)
+        summary["discovery"]["command_id"] = str(command.pk)
+        run.summary = summary
+        run.save(update_fields=["summary", "updated_at"])
+
+        state = discovery_scan_state(run)
+
+        self.assertEqual(state["key"], "scanning")
+        self.assertEqual(state["title"], "Gateway is already scanning")
 
     def test_mqtt_progress_is_cached_and_older_reports_are_ignored(self):
         from apps.telemetry.management.commands.mqtt_consumer import Command
@@ -535,6 +616,38 @@ class GuidedSetupViewTest(TestCase):
         )
         self.gateway.refresh_from_db()
         self.assertEqual(self.gateway.discovery_data["status"], "complete")
+
+    def test_active_guided_scan_report_can_replace_future_cached_report(self):
+        from apps.telemetry.management.commands.mqtt_consumer import Command
+
+        run = self._scan_run(scan_id="scan-current")
+        self.gateway.discovery_data = {
+            "scan_id": "scan-old",
+            "scan_ts": 999_999,
+            "status": "complete",
+            "devices": [{"interface": "10.0.0.99:502"}],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+
+        Command()._process_discovery_report(
+            self.gateway,
+            {
+                "schema_version": 1,
+                "scan_id": "scan-current",
+                "scan_ts": 100,
+                "scan_type": "guided",
+                "status": "complete",
+                "phase": "complete",
+                "progress": {"completed": 508, "total": 508},
+                "discovered_devices": [],
+            },
+        )
+
+        self.gateway.refresh_from_db()
+        self.assertEqual(self.gateway.discovery_data["scan_id"], "scan-current")
+        self.assertEqual(discovery_scan_state(run)["title"], "No devices found")
+        synced = sync_setup_run(run)
+        self.assertEqual(synced.state, synced.State.CONFIGURING)
 
     def test_legacy_guided_discovery_report_without_scan_id_completes_active_scan(self):
         from apps.telemetry.management.commands.mqtt_consumer import Command

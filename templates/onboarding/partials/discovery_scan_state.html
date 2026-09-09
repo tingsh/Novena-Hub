@@ -21,7 +21,10 @@
         {% else %}
         <form method="post">
             {% csrf_token %}<input type="hidden" name="action" value="start_discovery">
-            <button type="submit" class="btn btn-primary rounded-lg" {% if not guided_setup_available %}disabled{% endif %}>
+            <button type="submit"
+                    class="btn btn-primary rounded-lg"
+                    onclick="if (this.dataset.submitted) return false; this.dataset.submitted = '1'; this.classList.add('loading');"
+                    {% if not guided_setup_available %}disabled{% endif %}>
                 <i class="fa fa-search mr-2"></i>{% if scan_state.key == "idle" %}Scan for devices{% else %}Retry scan{% endif %}
             </button>
         </form>

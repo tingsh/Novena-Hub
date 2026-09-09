@@ -604,16 +604,9 @@ class Command(BaseCommand):
         except (TypeError, ValueError):
             logger.warning("Rejected discovery report with invalid timestamp for %s", gateway.serial_number)
             return
-        if current_ts and incoming_ts and incoming_ts < current_ts:
-            logger.info(
-                "Ignored stale discovery report for %s (scan_ts=%s, current=%s)",
-                gateway.serial_number,
-                incoming_ts,
-                current_ts,
-            )
-            return
         incoming_scan_id = str(report.get("scan_id") or "")
         current_scan_id = str(current.get("scan_id") or "")
+        active_scan_id = ""
         if not incoming_scan_id and report.get("scan_type") == "guided":
             active_scan_id = self._active_guided_setup_scan_id(gateway)
             if active_scan_id:
@@ -624,6 +617,17 @@ class Command(BaseCommand):
                     gateway.serial_number,
                     active_scan_id,
                 )
+        if not active_scan_id:
+            active_scan_id = self._active_guided_setup_scan_id(gateway)
+        belongs_to_active_scan = bool(active_scan_id and incoming_scan_id == active_scan_id)
+        if current_ts and incoming_ts and incoming_ts < current_ts and not belongs_to_active_scan:
+            logger.info(
+                "Ignored stale discovery report for %s (scan_ts=%s, current=%s)",
+                gateway.serial_number,
+                incoming_ts,
+                current_ts,
+            )
+            return
         if current_ts and not incoming_ts:
             logger.info("Ignored unversioned discovery report for %s", gateway.serial_number)
             return
@@ -658,6 +662,7 @@ class Command(BaseCommand):
             "scan_ts": report.get("scan_ts"),
             "started_at": report.get("started_at"),
             "updated_at": report.get("updated_at"),
+            "received_at": timezone.now().isoformat(),
             "completed_at": report.get("completed_at"),
             "scan_type": report.get("scan_type", "unknown"),
             "status": report.get("status", "complete"),

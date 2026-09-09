@@ -76,6 +76,31 @@ def _bounded_float(value, default, minimum, maximum):
     return min(maximum, max(minimum, parsed))
 
 
+def _reattach_running_discovery(run):
+    """Keep Guided Setup aligned with a Gateway scan that is already running."""
+    discovery = run.gateway.discovery_data or {}
+    scan_id = str(discovery.get("scan_id") or "")
+    if discovery.get("status") != "running" or not scan_id:
+        return run
+    summary = dict(run.summary or {})
+    discovery_meta = dict(summary.get("discovery") or {})
+    if discovery_meta.get("active_scan_id") == scan_id:
+        return run
+    discovery_meta.update(
+        {
+            "active_scan_id": scan_id,
+            "reattached_at": timezone.now().isoformat(),
+        }
+    )
+    discovery_meta.pop("command_id", None)
+    summary["discovery"] = discovery_meta
+    run.summary = summary
+    run.state = DeploymentSetupRun.State.DISCOVERING
+    run.current_step = "equipment"
+    run.save(update_fields=["summary", "state", "current_step", "updated_at"])
+    return run
+
+
 def _is_valid_timezone_name(value):
     if not value:
         return False
@@ -491,6 +516,7 @@ def step_3_discover(request, team_slug):
         return redirect("web_team:onboarding:step_2_gateway", team_slug=team_slug)
     gateway = get_object_or_404(Gateway, id=gateway_id, team=request.team)
     run = get_or_create_setup_run(team=request.team, gateway=gateway, initiated_by=request.user)
+    run = _reattach_running_discovery(run)
     run = sync_setup_run(run)
     guided_capable = gateway_supports_guided_setup(gateway)
 
@@ -509,6 +535,11 @@ def step_3_discover(request, team_slug):
                     "Update its software or use the manual option.",
                 )
             else:
+                run = _reattach_running_discovery(run)
+                scan_state = discovery_scan_state(run)
+                if scan_state["key"] == "scanning":
+                    messages.info(request, "A device scan is already running. We’ll keep checking for results.")
+                    return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
                 scan_id = str(uuid.uuid4())
                 try:
                     from apps.devices.remote_control import request_remote_command
@@ -541,7 +572,14 @@ def step_3_discover(request, team_slug):
                     gateway.lifecycle_status = "commissioning"
                     gateway.save(update_fields=["lifecycle_status"])
                 except Exception as exc:
-                    messages.error(request, f"Equipment discovery could not start: {exc}")
+                    if "already running" in str(exc).lower():
+                        _reattach_running_discovery(run)
+                        messages.info(
+                            request,
+                            "The Gateway is already scanning. We’ll keep checking for results automatically.",
+                        )
+                    else:
+                        messages.error(request, f"Equipment discovery could not start: {exc}")
             return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
         if action == "cancel_discovery":
@@ -954,6 +992,7 @@ def discovery_poll(request, team_slug):
     if setup_run:
         from apps.devices.deployment_setup import discovery_scan_state, sync_setup_run
 
+        setup_run = _reattach_running_discovery(setup_run)
         setup_run = sync_setup_run(setup_run)
         scan_state = discovery_scan_state(setup_run)
     else:
