@@ -516,6 +516,24 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(RemoteCommand.objects.filter(gateway=self.gateway, operation="deployment_discover").count(), 2)
 
     @patch("apps.devices.remote_control._schedule_outbox_dispatch")
+    def test_retry_after_rejected_scan_creates_fresh_command(self, _schedule):
+        self._enable_guided_setup()
+        self.client.post(self.url, {"action": "start_discovery"})
+        run = self.gateway.deployment_setup_runs.get()
+        first_scan_id = run.summary["discovery"]["active_scan_id"]
+        command = RemoteCommand.objects.get(gateway=self.gateway, operation="deployment_discover")
+        command.status = RemoteCommand.Status.REJECTED
+        command.error_message = "Diagnostic command timestamp is outside its trusted window"
+        command.save(update_fields=["status", "error_message", "updated_at"])
+
+        response = self.client.post(self.url, {"action": "start_discovery"})
+
+        self.assertEqual(response.status_code, 302)
+        run.refresh_from_db()
+        self.assertNotEqual(run.summary["discovery"]["active_scan_id"], first_scan_id)
+        self.assertEqual(RemoteCommand.objects.filter(gateway=self.gateway, operation="deployment_discover").count(), 2)
+
+    @patch("apps.devices.remote_control._schedule_outbox_dispatch")
     def test_retry_during_running_scan_does_not_start_duplicate_command(self, _schedule):
         self._enable_guided_setup()
         run = self._scan_run(scan_id="scan-running")

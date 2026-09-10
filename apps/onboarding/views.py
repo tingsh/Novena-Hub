@@ -2,7 +2,7 @@ import ipaddress
 import json
 import re
 import uuid
-from datetime import timedelta
+from datetime import timedelta, timezone as dt_timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
@@ -22,6 +22,7 @@ from apps.devices.models import (
     DeviceTemplate,
     EquipmentTemplateRequest,
     Gateway,
+    RemoteCommand,
     Site,
 )
 from apps.devices.services import build_commissioning_context, visible_templates_for_team
@@ -113,7 +114,32 @@ def _has_active_discovery_scan(run):
     if str(discovery.get("scan_id") or "") == scan_id:
         return discovery.get("status") == "running"
 
-    return run.state == DeploymentSetupRun.State.DISCOVERING
+    command_id = discovery_meta.get("command_id")
+    if command_id:
+        command = RemoteCommand.objects.filter(pk=command_id, gateway=run.gateway).first()
+        if command and command.status in {
+            RemoteCommand.Status.POLICY_DENIED,
+            RemoteCommand.Status.REJECTED,
+            RemoteCommand.Status.FAILED,
+            RemoteCommand.Status.EXPIRED,
+            RemoteCommand.Status.TIMED_OUT,
+            RemoteCommand.Status.OUTCOME_UNKNOWN,
+        }:
+            return False
+        return bool(command)
+
+    started_at_raw = discovery_meta.get("started_at")
+    if started_at_raw:
+        try:
+            started_at = timezone.datetime.fromisoformat(str(started_at_raw).replace("Z", "+00:00"))
+            if timezone.is_naive(started_at):
+                started_at = timezone.make_aware(started_at, dt_timezone.utc)
+            started_at = started_at.astimezone(dt_timezone.utc)
+        except (TypeError, ValueError):
+            return False
+        return timezone.now() - started_at < timedelta(seconds=30)
+
+    return False
 
 
 def _is_valid_timezone_name(value):
