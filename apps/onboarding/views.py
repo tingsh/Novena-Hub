@@ -101,6 +101,20 @@ def _reattach_running_discovery(run):
     return run
 
 
+def _has_active_discovery_scan(run):
+    """Return true only when the Gateway scan is actually active, not merely held in a UX state."""
+    discovery_meta = (run.summary or {}).get("discovery") or {}
+    scan_id = str(discovery_meta.get("active_scan_id") or "")
+    if not scan_id:
+        return False
+
+    discovery = run.gateway.discovery_data or {}
+    if str(discovery.get("scan_id") or "") == scan_id:
+        return discovery.get("status") == "running"
+
+    return run.state == DeploymentSetupRun.State.DISCOVERING
+
+
 def _is_valid_timezone_name(value):
     if not value:
         return False
@@ -536,8 +550,7 @@ def step_3_discover(request, team_slug):
                 )
             else:
                 run = _reattach_running_discovery(run)
-                scan_state = discovery_scan_state(run)
-                if scan_state["key"] == "scanning":
+                if _has_active_discovery_scan(run):
                     messages.info(request, "An equipment scan is already running. We’ll keep checking for results.")
                     return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
                 scan_id = str(uuid.uuid4())

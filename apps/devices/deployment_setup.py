@@ -46,6 +46,7 @@ SENSITIVE_EVIDENCE_KEYS = {
     "token",
 }
 DISCOVERY_REPORT_STALE_AFTER = timedelta(minutes=3)
+DISCOVERY_MIN_VISIBLE_DURATION = timedelta(seconds=5)
 
 
 def _report_received_at(report: dict):
@@ -60,6 +61,17 @@ def _report_received_at(report: dict):
             parsed = timezone.make_aware(parsed, datetime_timezone.utc)
         return parsed
     return None
+
+
+def _parse_discovery_timestamp(value):
+    if not value:
+        return None
+    parsed = parse_datetime(str(value))
+    if parsed is None:
+        return None
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, datetime_timezone.utc)
+    return parsed
 
 
 def _discovery_phase_label(report: dict) -> str:
@@ -346,6 +358,14 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
         "scope_label": "Scanning wired Ethernet and Modbus RTU only",
         "phase_label": _discovery_phase_label(matching_report),
     }
+    started_at = _parse_discovery_timestamp(discovery_meta.get("started_at"))
+    if started_at and timezone.now() - started_at < DISCOVERY_MIN_VISIBLE_DURATION:
+        return {
+            **base,
+            "key": "scanning",
+            "title": "Scanning connected equipment",
+            "message": "The Gateway is starting a field-side Ethernet and Modbus RTU scan.",
+        }
     if status == "complete":
         if devices:
             return {

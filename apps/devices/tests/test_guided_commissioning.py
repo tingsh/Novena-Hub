@@ -443,6 +443,34 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, 'hx-select="#scan-state-panel"')
         self.assertContains(response, 'hx-trigger="every 2s"')
 
+    def test_recent_scan_start_keeps_customer_visible_scanning_state(self):
+        self._enable_guided_setup()
+        run = self._scan_run()
+        run.summary = {
+            **(run.summary or {}),
+            "discovery": {
+                **((run.summary or {}).get("discovery") or {}),
+                "started_at": timezone.now().isoformat(),
+            },
+        }
+        run.save(update_fields=["summary", "updated_at"])
+
+        for report in [
+            {"scan_id": "scan-current", "status": "complete", "devices": []},
+            {"scan_id": "scan-current", "status": "error", "errors": [{"error": "probe failed"}]},
+        ]:
+            with self.subTest(status=report["status"]):
+                self.gateway.discovery_data = report
+                self.gateway.save(update_fields=["discovery_data"])
+                run.refresh_from_db()
+
+                state = discovery_scan_state(run)
+                response = self.client.get(self.url)
+
+                self.assertEqual(state["key"], "scanning")
+                self.assertEqual(state["title"], "Scanning connected equipment")
+                self.assertContains(response, "Scanning connected equipment")
+
     def test_stale_terminal_report_cannot_complete_retry(self):
         run = self._scan_run(scan_id="scan-retry")
         self.gateway.discovery_data = {
