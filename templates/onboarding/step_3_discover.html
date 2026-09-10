@@ -25,7 +25,7 @@
              hx-select="#scan-state-panel"
              hx-target="this"
              hx-swap="outerHTML"
-             {% if scan_state.key == "scanning" %}hx-trigger="every 2s"{% endif %}>
+             hx-trigger="{% if scan_state.key == 'scanning' %}every 2s{% else %}none{% endif %}">
             {% include "onboarding/partials/discovery_scan_state.html" %}
         </div>
 

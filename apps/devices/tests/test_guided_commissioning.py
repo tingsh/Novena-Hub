@@ -513,6 +513,16 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, 'hx-select="#scan-state-panel"')
         self.assertContains(response, 'hx-trigger="every 2s"')
 
+        self.gateway.discovery_data = {
+            "scan_id": "scan-current",
+            "status": "complete",
+            "devices": [{"interface": "10.0.0.20:502", "connection": "modbus_tcp"}],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        response = self.client.get(self.url)
+        self.assertContains(response, 'hx-trigger="none"')
+        self.assertContains(response, 'id="specific-endpoint-scan" hx-preserve')
+
     def test_recent_scan_start_keeps_customer_visible_scanning_state(self):
         self._enable_guided_setup()
         run = self._scan_run()

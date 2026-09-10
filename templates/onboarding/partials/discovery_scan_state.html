@@ -60,7 +60,7 @@
     </div>
 </div>
 {% if scan_state.key != "scanning" and guided_setup_available %}
-<details class="mt-4 rounded-xl border border-base-content/10 bg-base-100/70">
+<details id="specific-endpoint-scan" hx-preserve class="mt-4 rounded-xl border border-base-content/10 bg-base-100/70">
     <summary class="cursor-pointer px-4 py-3 text-sm font-bold text-base-content/70">
         Check a specific Modbus TCP address or simulator port
     </summary>

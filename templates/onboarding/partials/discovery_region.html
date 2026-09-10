@@ -6,7 +6,7 @@
      hx-select="#scan-state-panel"
      hx-target="this"
      hx-swap="outerHTML"
-     {% if scan_state.key == "scanning" %}hx-trigger="every 2s"{% endif %}>
+     hx-trigger="{% if scan_state.key == 'scanning' %}every 2s{% else %}none{% endif %}">
     {% include "onboarding/partials/discovery_scan_state.html" %}
 </div>
 {% endif %}
@@ -14,7 +14,7 @@
      hx-get="{% url 'web_team:onboarding:discovery_poll' request.team.slug %}"
      hx-disinherit="hx-target hx-select"
      hx-target="this"
-     {% if scan_state.key == "scanning" %}hx-trigger="every 2s"{% endif %}
+     hx-trigger="{% if scan_state.key == 'scanning' %}every 2s{% else %}none{% endif %}"
      hx-swap="outerHTML"
      x-data="{ selectedCount: {{ commissioning.ready_candidates|length }} }"
      @change="if ($event.target.name === 'device_index') selectedCount = $root.querySelectorAll('input[name=device_index]:checked').length">
