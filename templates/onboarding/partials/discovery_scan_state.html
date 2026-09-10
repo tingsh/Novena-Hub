@@ -30,12 +30,22 @@
     </div>
     <div class="flex flex-wrap gap-2">
         {% if scan_state.key == "scanning" %}
-        <form method="post">
+        <form method="post"
+              hx-post="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}"
+              hx-target="#scan-state-panel"
+              hx-select="#scan-state-panel"
+              hx-swap="outerHTML"
+              hx-sync="#scan-state-panel:replace">
             {% csrf_token %}<input type="hidden" name="action" value="cancel_discovery">
             <button type="submit" class="btn btn-ghost btn-sm text-error"><i class="fa fa-stop mr-2"></i>Cancel scan</button>
         </form>
         {% else %}
-        <form method="post">
+        <form method="post"
+              hx-post="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}"
+              hx-target="#scan-state-panel"
+              hx-select="#scan-state-panel"
+              hx-swap="outerHTML"
+              hx-sync="#scan-state-panel:replace">
             {% csrf_token %}<input type="hidden" name="action" value="start_discovery">
             <button type="submit"
                     class="btn btn-primary rounded-lg"

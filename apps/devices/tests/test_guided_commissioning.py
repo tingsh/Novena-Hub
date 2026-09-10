@@ -410,6 +410,8 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(idle, "Modbus RTU")
         self.assertContains(idle, 'hx-disinherit="hx-target hx-select"')
         self.assertContains(idle, 'hx-target="this"')
+        self.assertContains(idle, 'hx-target="#scan-state-panel"')
+        self.assertContains(idle, 'hx-sync="#scan-state-panel:replace"')
 
         run = self._scan_run()
         cases = [
