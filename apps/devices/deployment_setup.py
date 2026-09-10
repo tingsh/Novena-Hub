@@ -358,8 +358,17 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
         "scope_label": "Scanning wired Ethernet and Modbus RTU only",
         "phase_label": _discovery_phase_label(matching_report),
     }
+    visible_until = _parse_discovery_timestamp(discovery_meta.get("visible_until"))
+    now = timezone.now()
+    if visible_until and now < visible_until:
+        return {
+            **base,
+            "key": "scanning",
+            "title": "Scanning connected equipment",
+            "message": "The Gateway is starting a field-side Ethernet and Modbus RTU scan.",
+        }
     started_at = _parse_discovery_timestamp(discovery_meta.get("started_at"))
-    if started_at and timezone.now() - started_at < DISCOVERY_MIN_VISIBLE_DURATION:
+    if started_at and now - started_at < DISCOVERY_MIN_VISIBLE_DURATION:
         return {
             **base,
             "key": "scanning",

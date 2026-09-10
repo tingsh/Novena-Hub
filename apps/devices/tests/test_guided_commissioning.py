@@ -384,6 +384,7 @@ class GuidedSetupViewTest(TestCase):
         run = self.gateway.deployment_setup_runs.get()
         self.assertEqual(run.summary["discovery"]["active_scan_id"], scan_id)
         self.assertEqual(run.summary["discovery"]["command_id"], str(command.pk))
+        self.assertIn("visible_until", run.summary["discovery"])
         self.assertEqual(run.state, run.State.DISCOVERING)
         schedule.assert_not_called()
 
@@ -450,7 +451,7 @@ class GuidedSetupViewTest(TestCase):
             **(run.summary or {}),
             "discovery": {
                 **((run.summary or {}).get("discovery") or {}),
-                "started_at": timezone.now().isoformat(),
+                "visible_until": (timezone.now() + timedelta(seconds=5)).isoformat(),
             },
         }
         run.save(update_fields=["summary", "updated_at"])

@@ -2,6 +2,7 @@ import ipaddress
 import json
 import re
 import uuid
+from datetime import timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
@@ -566,10 +567,12 @@ def step_3_discover(request, team_slug):
                         ttl_seconds=300,
                     )
                     summary = dict(run.summary or {})
+                    started_at = timezone.now()
                     summary["discovery"] = {
                         "active_scan_id": scan_id,
                         "command_id": str(command.pk),
-                        "started_at": timezone.now().isoformat(),
+                        "started_at": started_at.isoformat(),
+                        "visible_until": (started_at + timedelta(seconds=5)).isoformat(),
                     }
                     run.summary = summary
                     run.state = DeploymentSetupRun.State.DISCOVERING
