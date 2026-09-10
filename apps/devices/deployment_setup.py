@@ -177,11 +177,19 @@ def connection_from_candidate(candidate: dict) -> dict:
         "timeout": 3,
     }
     if protocol == "modbus_tcp":
+        explicit_host = str(candidate.get("host") or "").strip()
+        explicit_port = candidate.get("port")
         host, separator, raw_port = interface.rpartition(":")
         connection.update(
             {
-                "host": host if separator else interface,
-                "port": int(raw_port) if separator and raw_port.isdigit() else 502,
+                "host": explicit_host or (host if separator else interface),
+                "port": (
+                    int(explicit_port)
+                    if str(explicit_port or "").isdigit()
+                    else int(raw_port)
+                    if separator and raw_port.isdigit()
+                    else 502
+                ),
             }
         )
     elif protocol == "modbus_rtu":
@@ -358,22 +366,29 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
     status = matching_report.get("status")
     devices = matching_report.get("devices") or []
     progress = matching_report.get("progress") or {"completed": 0, "total": 0}
+    scope_label = discovery_meta.get("scope_label") or "Scanning wired Ethernet and Modbus RTU only"
+    targeted = discovery_meta.get("mode") == "approved_target"
     base = {
         "scan_id": scan_id,
         "progress": progress,
         "interfaces": matching_report.get("interfaces") or [],
         "device_count": len(devices),
-        "scope_label": "Scanning wired Ethernet and Modbus RTU only",
+        "scope_label": scope_label,
         "phase_label": _discovery_phase_label(matching_report),
     }
     visible_until = _parse_discovery_timestamp(discovery_meta.get("visible_until"))
     now = timezone.now()
+    starting_message = (
+        "The Gateway is checking only the approved IP address and TCP port."
+        if targeted
+        else "The Gateway is starting a field-side Ethernet and Modbus RTU scan."
+    )
     if visible_until and now < visible_until:
         return {
             **base,
             "key": "scanning",
             "title": "Scanning connected equipment",
-            "message": "The Gateway is starting a field-side Ethernet and Modbus RTU scan.",
+            "message": starting_message,
         }
     started_at = _parse_discovery_timestamp(discovery_meta.get("started_at"))
     if started_at and now - started_at < DISCOVERY_MIN_VISIBLE_DURATION:
@@ -381,7 +396,7 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             **base,
             "key": "scanning",
             "title": "Scanning connected equipment",
-            "message": "The Gateway is starting a field-side Ethernet and Modbus RTU scan.",
+            "message": starting_message,
         }
     if status == "complete":
         if devices:
@@ -389,13 +404,21 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
                 **base,
                 "key": "found",
                 "title": f"Found {len(devices)} device{'s' if len(devices) != 1 else ''}",
-                "message": "Select the equipment you want to configure.",
+                "message": (
+                    "The endpoint is reachable. Select a template and confirm its unit ID before validation."
+                    if targeted
+                    else "Select the equipment you want to configure."
+                ),
             }
         return {
             **base,
             "key": "empty",
             "title": "No devices found",
-            "message": "Check power and cabling, retry the scan, or add the device manually.",
+            "message": (
+                "The Gateway could not reach that IP and port. Check the address, route, and simulator port."
+                if targeted
+                else "Check power and cabling, retry the scan, or add the device manually."
+            ),
         }
     if status == "cancelled":
         return {
@@ -468,7 +491,11 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             **base,
             "key": "scanning",
             "title": "Scanning connected equipment",
-            "message": "The Gateway is checking field-side Ethernet and Modbus RTU serial ports.",
+            "message": (
+                "The Gateway is checking only the approved IP address and TCP port."
+                if targeted
+                else "The Gateway is checking field-side Ethernet and Modbus RTU serial ports."
+            ),
         }
     return {
         **base,

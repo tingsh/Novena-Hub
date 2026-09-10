@@ -390,6 +390,60 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(run.state, run.State.DISCOVERING)
         schedule.assert_not_called()
 
+    @override_settings(
+        REMOTE_CONTROL_ACTIVE_SIGNING_KEY_ID="setup-test",
+        REMOTE_CONTROL_SIGNING_KEYS={"setup-test": SIGNING_SEED},
+        REMOTE_CONTROL_SIGNING_PRIVATE_KEY=SIGNING_SEED,
+    )
+    @patch("apps.devices.remote_control._schedule_outbox_dispatch")
+    def test_specific_endpoint_scan_is_exact_bounded_and_supports_custom_port(self, schedule):
+        self._enable_guided_setup()
+
+        page = self.client.get(self.url)
+        self.assertContains(page, "Check a specific Modbus TCP address or simulator port")
+        self.assertContains(page, 'name="target_port"')
+
+        response = self.client.post(
+            self.url,
+            {
+                "action": "start_target_discovery",
+                "target_host": "10.0.0.20",
+                "target_port": "1502",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        command = RemoteCommand.objects.get(gateway=self.gateway, operation="deployment_discover")
+        self.assertEqual(
+            command.request_payload["params"],
+            {
+                "scan_id": command.request_payload["params"]["scan_id"],
+                "scope": "approved_targets",
+                "tcp_hosts": [{"host": "10.0.0.20", "port": 1502}],
+                "serial_ports": [],
+            },
+        )
+        run = self.gateway.deployment_setup_runs.get()
+        self.assertEqual(run.summary["discovery"]["mode"], "approved_target")
+        self.assertIn("10.0.0.20:1502", run.summary["discovery"]["scope_label"])
+        schedule.assert_not_called()
+
+    @patch("apps.devices.remote_control._schedule_outbox_dispatch")
+    def test_specific_endpoint_scan_rejects_loopback(self, _schedule):
+        self._enable_guided_setup()
+
+        response = self.client.post(
+            self.url,
+            {
+                "action": "start_target_discovery",
+                "target_host": "127.0.0.1",
+                "target_port": "502",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(RemoteCommand.objects.filter(gateway=self.gateway).exists())
+
     @patch("apps.devices.remote_control.request_remote_command", side_effect=RuntimeError("broker down"))
     def test_scan_button_keeps_visible_state_when_command_dispatch_fails(self, _request_command):
         self._enable_guided_setup()
@@ -748,6 +802,63 @@ class GuidedSetupViewTest(TestCase):
         self.assertNotContains(response, "raw connector JSON")
 
     @patch("apps.devices.deployment_setup.start_validation")
+    def test_reachable_endpoint_can_override_port_and_unit_before_template_validation(self, validation):
+        self._enable_guided_setup()
+        template = DeviceTemplate.objects.create(
+            name="Simulator template",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            register_map={
+                "voltage": {
+                    "address": 42,
+                    "functionCode": 4,
+                    "type": "uint16",
+                }
+            },
+            is_verified=True,
+        )
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:1502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 1502,
+                    "signature": "Reachable TCP endpoint",
+                    "protocol_verified": False,
+                }
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+
+        page = self.client.get(self.url)
+        self.assertContains(page, "TCP endpoint reachable; Modbus unit and register map are not yet verified.")
+        self.assertContains(page, 'name="port_0" value="1502"')
+        self.assertContains(page, 'name="slave_id_0" value="1"')
+
+        response = self.client.post(
+            self.url,
+            {
+                "action": "validate_selected",
+                "device_index": ["0"],
+                "name_0": "Laptop 2 simulator",
+                "template_0": str(template.pk),
+                "host_0": "10.0.0.20",
+                "port_0": "5020",
+                "slave_id_0": "7",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        item = DeploymentSetupItem.objects.get(run__gateway=self.gateway)
+        self.assertEqual(item.connection["host"], "10.0.0.20")
+        self.assertEqual(item.connection["port"], 5020)
+        self.assertEqual(item.connection["slave_id"], 7)
+        self.assertEqual(item.device.connection_config, item.connection)
+        validation.assert_called_once()
+
+    @patch("apps.devices.deployment_setup.start_validation")
     def test_manual_setup_creates_private_unverified_template(self, _validation):
         self.gateway.gateway_capabilities = ["guided_setup_v1"]
         self.gateway.save(update_fields=["gateway_capabilities"])
@@ -818,6 +929,27 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, "Your current plan supports up to 3 equipment items")
         self.assertFalse(Device.objects.filter(team=self.team, name="Over Limit Meter").exists())
         self.assertFalse(DeviceTemplate.objects.filter(created_by_team=self.team, model_number="LIMIT").exists())
+        validation.assert_not_called()
+
+    @patch("apps.devices.deployment_setup.start_validation")
+    def test_manual_setup_rejects_gateway_loopback_target(self, validation):
+        self._enable_guided_setup()
+
+        response = self.client.post(
+            self.url,
+            {
+                "action": "manual",
+                "manual_name": "Unsafe local target",
+                "manual_protocol": "modbus_tcp",
+                "manual_host": "127.0.0.1",
+                "manual_port": "502",
+                "point_key_1": "voltage",
+                "point_address_1": "1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Device.objects.filter(team=self.team, name="Unsafe local target").exists())
         validation.assert_not_called()
 
     def test_gateway_status_poll_uses_heartbeat_freshness(self):

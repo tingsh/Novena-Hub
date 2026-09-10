@@ -568,7 +568,7 @@ def step_3_discover(request, team_slug):
 
     if request.method == "POST":
         action = request.POST.get("action", "validate_selected")
-        if action == "start_discovery":
+        if action in {"start_discovery", "start_target_discovery"}:
             if not gateway_supports_guided_setup(gateway):
                 messages.warning(
                     request,
@@ -580,6 +580,31 @@ def step_3_discover(request, team_slug):
                 if _has_active_discovery_scan(run):
                     messages.info(request, "An equipment scan is already running. We’ll keep checking for results.")
                     return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+                targeted = action == "start_target_discovery"
+                if targeted:
+                    target_host = request.POST.get("target_host", "").strip()
+                    try:
+                        parsed_host = ipaddress.ip_address(target_host)
+                    except ValueError:
+                        messages.error(request, "Enter a valid equipment IPv4 address.")
+                        return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+                    if (
+                        parsed_host.version != 4
+                        or parsed_host.is_unspecified
+                        or parsed_host.is_loopback
+                        or parsed_host.is_multicast
+                        or parsed_host.is_reserved
+                    ):
+                        messages.error(request, "Enter a safe, reachable equipment IPv4 address.")
+                        return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+                    try:
+                        target_port = int(request.POST.get("target_port", "502"))
+                    except (TypeError, ValueError):
+                        target_port = 0
+                    if not 1 <= target_port <= 65535:
+                        messages.error(request, "Enter a Modbus TCP port between 1 and 65535.")
+                        return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+                    target_host = str(parsed_host)
                 scan_id = str(uuid.uuid4())
                 started_at = timezone.now()
                 summary = dict(run.summary or {})
@@ -587,6 +612,12 @@ def step_3_discover(request, team_slug):
                     "active_scan_id": scan_id,
                     "started_at": started_at.isoformat(),
                     "visible_until": (started_at + timedelta(seconds=5)).isoformat(),
+                    "mode": "approved_target" if targeted else "attached_interfaces",
+                    "scope_label": (
+                        f"Checking approved endpoint {target_host}:{target_port}"
+                        if targeted
+                        else "Scanning wired Ethernet and Modbus RTU only"
+                    ),
                 }
                 run.summary = summary
                 run.state = DeploymentSetupRun.State.DISCOVERING
@@ -595,12 +626,26 @@ def step_3_discover(request, team_slug):
                 try:
                     from apps.devices.remote_control import request_remote_command
 
+                    command_params = (
+                        {
+                            "scan_id": scan_id,
+                            "scope": "approved_targets",
+                            "tcp_hosts": [{"host": target_host, "port": target_port}],
+                            "serial_ports": [],
+                        }
+                        if targeted
+                        else {"scan_id": scan_id, "scope": "attached_interfaces"}
+                    )
                     command = request_remote_command(
                         gateway=gateway,
                         operation="deployment_discover",
                         requested_by=request.user,
-                        params={"scan_id": scan_id, "scope": "attached_interfaces"},
-                        reason="Customer-approved equipment discovery",
+                        params=command_params,
+                        reason=(
+                            "Customer-approved specific equipment endpoint discovery"
+                            if targeted
+                            else "Customer-approved equipment discovery"
+                        ),
                         ttl_seconds=300,
                     )
                     summary = dict(run.summary or {})
@@ -617,9 +662,18 @@ def step_3_discover(request, team_slug):
                     append_setup_event(
                         run,
                         "discovery_started",
-                        "Equipment discovery started.",
+                        (
+                            f"Approved endpoint discovery started for {target_host}:{target_port}."
+                            if targeted
+                            else "Equipment discovery started."
+                        ),
                         actor=request.user,
-                        evidence={"command_id": str(command.pk), "scan_id": scan_id, "scope": "attached_interfaces"},
+                        evidence={
+                            "command_id": str(command.pk),
+                            "scan_id": scan_id,
+                            "scope": command_params["scope"],
+                            **({"target": f"{target_host}:{target_port}"} if targeted else {}),
+                        },
                     )
                     gateway.lifecycle_status = "commissioning"
                     gateway.save(update_fields=["lifecycle_status"])
@@ -669,7 +723,7 @@ def step_3_discover(request, team_slug):
             for raw_index in selected:
                 try:
                     index = int(raw_index)
-                    candidate = discovered_devices[index]
+                    candidate = dict(discovered_devices[index])
                     template = get_object_or_404(
                         visible_templates_for_team(request.team),
                         pk=request.POST.get(f"template_{index}"),
@@ -681,8 +735,35 @@ def step_3_discover(request, team_slug):
                             "Update the Gateway to validate private or AI draft templates.",
                         )
                         continue
-                    item = create_or_update_candidate_item(run=run, index=index, candidate=candidate)
                     connection = connection_from_candidate(candidate)
+                    slave_id = int(request.POST.get(f"slave_id_{index}", connection.get("slave_id", 1)))
+                    if not 1 <= slave_id <= 247:
+                        raise ValueError("Slave ID must be between 1 and 247")
+                    connection["slave_id"] = slave_id
+                    protocol = candidate.get("connection") or candidate.get("protocol")
+                    if protocol == "modbus_tcp":
+                        host = request.POST.get(f"host_{index}", connection.get("host", "")).strip()
+                        try:
+                            parsed_host = ipaddress.ip_address(host)
+                        except ValueError as exc:
+                            raise ValueError("Enter a valid equipment IP address") from exc
+                        if parsed_host.is_unspecified or parsed_host.is_loopback or parsed_host.is_multicast:
+                            raise ValueError("Enter a safe, reachable equipment IP address")
+                        port = int(request.POST.get(f"port_{index}", connection.get("port", 502)))
+                        if not 1 <= port <= 65535:
+                            raise ValueError("Modbus TCP port must be between 1 and 65535")
+                        connection.update({"host": str(parsed_host), "port": port})
+                        candidate.update(
+                            {
+                                "host": str(parsed_host),
+                                "port": port,
+                                "slave_id": slave_id,
+                                "interface": f"{parsed_host}:{port}",
+                            }
+                        )
+                    else:
+                        candidate["slave_id"] = slave_id
+                    item = create_or_update_candidate_item(run=run, index=index, candidate=candidate)
                     if not item.device:
                         from apps.subscriptions.enforcement import can_add_device, get_device_limit_for_team
 
@@ -694,21 +775,39 @@ def step_3_discover(request, team_slug):
                                 f"item{'s' if limit != 1 else ''}. Upgrade your plan or remove unused equipment first.",
                             )
                             break
-                    device = item.device or Device.objects.create(
-                        team=request.team,
-                        gateway=gateway,
-                        site=gateway.site,
-                        port=str(candidate.get("interface") or candidate.get("port") or ""),
-                        name=request.POST.get(f"name_{index}", "").strip()
+                    device_name = (
+                        request.POST.get(f"name_{index}", "").strip()
                         or candidate.get("signature")
-                        or template.name,
-                        template=template,
-                        device_type=template.device_type,
-                        protocol=template.protocol,
-                        connection_config=connection,
-                        discovery_meta=candidate,
-                        metadata={"guided_setup_validation": "pending"},
+                        or template.name
                     )
+                    device_port = str(candidate.get("interface") or candidate.get("port") or "")
+                    if item.device:
+                        device = item.device
+                        device.port = device_port
+                        device.name = device_name
+                        device.template = template
+                        device.device_type = template.device_type
+                        device.protocol = template.protocol
+                        device.connection_config = connection
+                        device.discovery_meta = candidate
+                        metadata = dict(device.metadata or {})
+                        metadata["guided_setup_validation"] = "pending"
+                        device.metadata = metadata
+                        device.save()
+                    else:
+                        device = Device.objects.create(
+                            team=request.team,
+                            gateway=gateway,
+                            site=gateway.site,
+                            port=device_port,
+                            name=device_name,
+                            template=template,
+                            device_type=template.device_type,
+                            protocol=template.protocol,
+                            connection_config=connection,
+                            discovery_meta=candidate,
+                            metadata={"guided_setup_validation": "pending"},
+                        )
                     item.device = device
                     item.connection = connection
                     item.save(update_fields=["device", "connection", "updated_at"])
@@ -813,10 +912,19 @@ def step_3_discover(request, team_slug):
             if protocol == "modbus_tcp":
                 host = request.POST.get("manual_host", "").strip()
                 try:
-                    ipaddress.ip_address(host)
+                    parsed_host = ipaddress.ip_address(host)
                 except ValueError:
                     messages.error(request, "Enter a valid equipment IP address.")
                     return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+                if (
+                    parsed_host.is_unspecified
+                    or parsed_host.is_loopback
+                    or parsed_host.is_multicast
+                    or parsed_host.is_reserved
+                ):
+                    messages.error(request, "Enter a safe, reachable equipment IP address.")
+                    return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+                host = str(parsed_host)
                 connection.update(
                     {
                         "host": host,

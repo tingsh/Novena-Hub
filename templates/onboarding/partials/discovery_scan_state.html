@@ -59,6 +59,27 @@
         {% endif %}
     </div>
 </div>
+{% if scan_state.key != "scanning" and guided_setup_available %}
+<details class="mt-4 rounded-xl border border-base-content/10 bg-base-100/70">
+    <summary class="cursor-pointer px-4 py-3 text-sm font-bold text-base-content/70">
+        Check a specific Modbus TCP address or simulator port
+    </summary>
+    <form method="post" class="grid grid-cols-1 gap-3 border-t border-base-content/10 p-4 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="start_target_discovery">
+        <label class="form-control">
+            <span class="label-text mb-1 text-xs font-bold">Equipment IPv4 address</span>
+            <input class="input input-bordered input-sm rounded-lg" name="target_host" required placeholder="10.0.0.20">
+        </label>
+        <label class="form-control">
+            <span class="label-text mb-1 text-xs font-bold">TCP port</span>
+            <input class="input input-bordered input-sm rounded-lg" type="number" name="target_port" min="1" max="65535" value="502" required>
+        </label>
+        <button class="btn btn-outline btn-sm rounded-lg" type="submit">Check endpoint</button>
+    </form>
+    <p class="px-4 pb-4 text-xs text-base-content/50">Only this approved IP and port will be checked. Common simulator ports include 1502 and 5020.</p>
+</details>
+{% endif %}
 {% if not guided_setup_available %}
 <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
     <i class="fa fa-circle-info mr-2"></i>This Gateway is in compatibility mode. You can use saved discovery results with a Novena-verified template. Secure scanning, private templates, and guided manual validation require a Gateway software/key update.

@@ -537,6 +537,12 @@ def _commissioning_candidates(gateway):
     candidates = []
     for index, discovery in enumerate((gateway.discovery_data or {}).get("devices", [])):
         interface = str(discovery.get("interface") or discovery.get("port") or "")
+        host = str(discovery.get("host") or "")
+        port = discovery.get("port")
+        if not host and (discovery.get("connection") or discovery.get("protocol")) == "modbus_tcp":
+            parsed_host, separator, raw_port = interface.rpartition(":")
+            host = parsed_host if separator else interface
+            port = int(raw_port) if separator and raw_port.isdigit() else 502
         matched_template = None
         matched_template_id = discovery.get("matched_template_id")
         if matched_template_id:
@@ -551,7 +557,10 @@ def _commissioning_candidates(gateway):
                 "interface": interface,
                 "signature": discovery.get("signature") or "Unknown device",
                 "connection": discovery.get("connection") or "unknown",
+                "host": host,
+                "port": port,
                 "slave_id": discovery.get("slave_id"),
+                "protocol_verified": bool(discovery.get("protocol_verified")),
                 "baud_rate": discovery.get("baud_rate"),
                 "matched_template": matched_template,
                 "matched_template_name": discovery.get("matched_template_name")
