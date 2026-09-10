@@ -62,6 +62,18 @@ def _report_received_at(report: dict):
     return None
 
 
+def _discovery_phase_label(report: dict) -> str:
+    phase = str(report.get("phase") or "")
+    return {
+        "enumerating_interfaces": "Finding field-side Ethernet and Modbus RTU ports",
+        "scanning_serial": "Checking Modbus RTU serial ports",
+        "scanning_ethernet": "Checking wired Ethernet for Modbus TCP equipment",
+        "timed_out": "Scan timed out before all field ports responded",
+        "complete": "Field-port scan complete",
+        "cancelled": "Scan cancelled",
+    }.get(phase, "Preparing the field-port scan")
+
+
 def redact_support_evidence(value):
     """Remove credentials while retaining diagnostic structure."""
     if isinstance(value, dict):
@@ -317,6 +329,8 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             "message": "Connect your equipment to the Gateway, then start a scan.",
             "scan_id": "",
             "progress": {"completed": 0, "total": 0},
+            "scope_label": "Scanning wired Ethernet and Modbus RTU only",
+            "phase_label": "Ready to check field-side ports",
         }
 
     report = run.gateway.discovery_data or {}
@@ -329,6 +343,8 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
         "progress": progress,
         "interfaces": matching_report.get("interfaces") or [],
         "device_count": len(devices),
+        "scope_label": "Scanning wired Ethernet and Modbus RTU only",
+        "phase_label": _discovery_phase_label(matching_report),
     }
     if status == "complete":
         if devices:
@@ -414,13 +430,13 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
         return {
             **base,
             "key": "scanning",
-            "title": "Scanning connected devices",
-            "message": "The Gateway is checking its Ethernet, RS485, and USB serial interfaces.",
+            "title": "Scanning connected equipment",
+            "message": "The Gateway is checking field-side Ethernet and Modbus RTU serial ports.",
         }
     return {
         **base,
         "key": "scanning",
-        "title": "Scanning connected devices",
+        "title": "Starting equipment scan",
         "message": "The scan request is on its way to the Gateway.",
     }
 

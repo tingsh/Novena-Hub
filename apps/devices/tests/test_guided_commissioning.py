@@ -391,7 +391,9 @@ class GuidedSetupViewTest(TestCase):
         self._enable_guided_setup()
         idle = self.client.get(self.url)
         self.assertContains(idle, "Ready to scan")
-        self.assertContains(idle, "Scan for devices")
+        self.assertContains(idle, "Scan for equipment")
+        self.assertContains(idle, "field-side wired Ethernet")
+        self.assertContains(idle, "Modbus RTU")
         self.assertContains(idle, 'hx-disinherit="hx-target hx-select"')
         self.assertContains(idle, 'hx-target="this"')
 
@@ -399,7 +401,7 @@ class GuidedSetupViewTest(TestCase):
         cases = [
             (
                 {"scan_id": "scan-current", "status": "running", "progress": {"completed": 7, "total": 253}},
-                "Scanning connected devices",
+                "Scanning connected equipment",
             ),
             (
                 {
@@ -453,7 +455,7 @@ class GuidedSetupViewTest(TestCase):
         synced = sync_setup_run(run)
 
         self.assertEqual(synced.state, synced.State.DISCOVERING)
-        self.assertEqual(discovery_scan_state(synced)["title"], "Scanning connected devices")
+        self.assertEqual(discovery_scan_state(synced)["title"], "Scanning connected equipment")
 
     @patch("apps.devices.remote_control._schedule_outbox_dispatch")
     def test_retry_uses_a_new_scan_id(self, _schedule):

@@ -538,7 +538,7 @@ def step_3_discover(request, team_slug):
                 run = _reattach_running_discovery(run)
                 scan_state = discovery_scan_state(run)
                 if scan_state["key"] == "scanning":
-                    messages.info(request, "A device scan is already running. We’ll keep checking for results.")
+                    messages.info(request, "An equipment scan is already running. We’ll keep checking for results.")
                     return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
                 scan_id = str(uuid.uuid4())
                 try:
