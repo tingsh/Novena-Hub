@@ -20,9 +20,12 @@ class GatewayClaimWorkflowTest(TestCase):
         self.claim_code = compute_claim_code(self.serial)
         self.inventory = GatewayInventory.objects.create(serial_number=self.serial)
 
+    @override_settings(MQTT_PROVISIONING_REQUIRED=True)
     @patch("apps.telemetry.mqtt_publisher.publish_gateway_activation")
     @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
-    def test_valid_inventory_claim_creates_gateway_and_marks_inventory_claimed(self, mock_provision, mock_publish):
+    def test_valid_inventory_claim_creates_gateway_and_marks_inventory_claimed_when_provisioning_required(
+        self, mock_provision, mock_publish
+    ):
         from apps.devices.activation import provision_gateway_activation
 
         gateway = claim_gateway_for_team(self.team, self.site, "Main Gateway", self.serial, self.claim_code)
@@ -48,6 +51,28 @@ class GatewayClaimWorkflowTest(TestCase):
         self.assertEqual(self.inventory.gateway, gateway)
         self.assertIsNotNone(self.inventory.claimed_at)
         mock_provision.assert_called_once()
+
+    @override_settings(MQTT_PROVISIONING_REQUIRED=False)
+    @patch("apps.telemetry.mqtt_publisher.publish_gateway_activation")
+    @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
+    def test_local_replay_claim_skips_dynsec_provisioning(self, mock_provision, mock_publish):
+        from apps.devices.activation import decrypt_activation_secret, provision_gateway_activation
+
+        gateway = claim_gateway_for_team(self.team, self.site, "Main Gateway", self.serial, self.claim_code)
+        activation = gateway.activations.get()
+        operational_password = decrypt_activation_secret(activation.encrypted_mqtt_password)
+
+        provision_gateway_activation(activation.pk)
+        gateway.refresh_from_db()
+        activation.refresh_from_db()
+
+        self.assertEqual(gateway.mqtt_username, self.serial)
+        self.assertTrue(check_password(operational_password, gateway.mqtt_password))
+        self.assertEqual(gateway.mqtt_provisioning_status, "success")
+        self.assertEqual(gateway.mqtt_provisioning_error, "")
+        self.assertEqual(activation.status, "pending")
+        mock_provision.assert_not_called()
+        mock_publish.assert_not_called()
 
     @override_settings(MQTT_PROVISIONING_REQUIRED=True)
     @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt", side_effect=RuntimeError("broker down"))
@@ -84,6 +109,7 @@ class GatewayClaimWorkflowTest(TestCase):
         gateway.refresh_from_db()
         self.assertEqual(gateway.team, self.team)
 
+    @override_settings(MQTT_PROVISIONING_REQUIRED=True)
     @patch("apps.telemetry.mqtt_publisher.publish_gateway_activation")
     @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
     def test_bootstrap_hello_retries_pending_activation(self, mock_provision, mock_publish):
@@ -464,6 +490,7 @@ class GatewayDeleteReleaseViewTest(TestCase):
         self.gateway.refresh_from_db()
         self.assertEqual(self.gateway.lifecycle_status, "released")
 
+    @override_settings(MQTT_PROVISIONING_REQUIRED=True)
     @patch("apps.telemetry.mqtt_publisher.publish_gateway_activation")
     @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
     @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt")

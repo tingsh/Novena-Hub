@@ -174,6 +174,7 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
 
 @override_settings(GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
 class GatewayActivationRecoveryTest(ManagedGatewayFixture):
+    @override_settings(MQTT_PROVISIONING_REQUIRED=True)
     @patch("apps.telemetry.mqtt_publisher.publish_gateway_activation")
     @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
     def test_expired_activation_is_reissued_once_on_bootstrap_hello(self, provision, publish):

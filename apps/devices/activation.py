@@ -88,12 +88,19 @@ def provision_gateway_activation(activation_id) -> bool:
         expire_gateway_activation(activation)
         return False
     password = decrypt_activation_secret(activation.encrypted_mqtt_password)
+    provisioning_required = getattr(settings, "MQTT_PROVISIONING_REQUIRED", False)
     try:
         from django.contrib.auth.hashers import make_password
 
-        from .mqtt_provisioning import provision_gateway_mqtt
+        if provisioning_required:
+            from .mqtt_provisioning import provision_gateway_mqtt
 
-        provision_gateway_mqtt(activation.gateway, password)
+            provision_gateway_mqtt(activation.gateway, password)
+        else:
+            logger.info(
+                "Skipped MQTT dynamic-security provisioning for %s because MQTT_PROVISIONING_REQUIRED is false.",
+                activation.gateway.serial_number,
+            )
     except Exception as exc:
         activation.status = "retry"
         activation.attempt_count += 1
