@@ -555,6 +555,17 @@ def step_3_discover(request, team_slug):
                     messages.info(request, "An equipment scan is already running. We’ll keep checking for results.")
                     return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
                 scan_id = str(uuid.uuid4())
+                started_at = timezone.now()
+                summary = dict(run.summary or {})
+                summary["discovery"] = {
+                    "active_scan_id": scan_id,
+                    "started_at": started_at.isoformat(),
+                    "visible_until": (started_at + timedelta(seconds=5)).isoformat(),
+                }
+                run.summary = summary
+                run.state = DeploymentSetupRun.State.DISCOVERING
+                run.current_step = "equipment"
+                run.save(update_fields=["summary", "state", "current_step", "updated_at"])
                 try:
                     from apps.devices.remote_control import request_remote_command
 
@@ -567,17 +578,16 @@ def step_3_discover(request, team_slug):
                         ttl_seconds=300,
                     )
                     summary = dict(run.summary or {})
-                    started_at = timezone.now()
+                    discovery_meta = dict(summary.get("discovery") or {})
+                    discovery_meta["command_id"] = str(command.pk)
+                    discovery_meta.setdefault("active_scan_id", scan_id)
+                    discovery_meta.setdefault("started_at", started_at.isoformat())
+                    discovery_meta.setdefault("visible_until", (started_at + timedelta(seconds=5)).isoformat())
                     summary["discovery"] = {
-                        "active_scan_id": scan_id,
-                        "command_id": str(command.pk),
-                        "started_at": started_at.isoformat(),
-                        "visible_until": (started_at + timedelta(seconds=5)).isoformat(),
+                        **discovery_meta,
                     }
                     run.summary = summary
-                    run.state = DeploymentSetupRun.State.DISCOVERING
-                    run.current_step = "equipment"
-                    run.save(update_fields=["summary", "state", "current_step", "updated_at"])
+                    run.save(update_fields=["summary", "updated_at"])
                     append_setup_event(
                         run,
                         "discovery_started",

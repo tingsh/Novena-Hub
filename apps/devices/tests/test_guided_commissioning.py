@@ -147,6 +147,8 @@ class DeploymentSetupWorkflowTest(TestCase):
         self.assertIn("site internet connection", cloud_check["action"])
         self.assertNotIn("broker", cloud_check["action"].lower())
         self.assertNotIn("Modbus", customer_safe_error("connection refused"))
+        self.assertIn("clock is out of sync", customer_safe_error("Diagnostic command was issued in the future"))
+        self.assertIn("clock is out of sync", customer_safe_error("Diagnostic command timestamp is outside its trusted window"))
 
     def test_successful_validation_then_telemetry_completes_run_and_dashboard(self):
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
@@ -387,6 +389,17 @@ class GuidedSetupViewTest(TestCase):
         self.assertIn("visible_until", run.summary["discovery"])
         self.assertEqual(run.state, run.State.DISCOVERING)
         schedule.assert_not_called()
+
+    @patch("apps.devices.remote_control.request_remote_command", side_effect=RuntimeError("broker down"))
+    def test_scan_button_keeps_visible_state_when_command_dispatch_fails(self, _request_command):
+        self._enable_guided_setup()
+
+        response = self.client.post(self.url, {"action": "start_discovery"})
+
+        self.assertEqual(response.status_code, 302)
+        run = self.gateway.deployment_setup_runs.get()
+        self.assertIn("visible_until", run.summary["discovery"])
+        self.assertEqual(discovery_scan_state(run)["title"], "Scanning connected equipment")
 
     def test_scan_states_render_idle_running_found_empty_and_error(self):
         self._enable_guided_setup()

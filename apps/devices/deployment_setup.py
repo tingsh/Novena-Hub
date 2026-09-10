@@ -121,6 +121,14 @@ def customer_safe_error(error: str, *, target: str = "") -> str:
         return "The selected RS485 interface is not available. Check the adapter and wiring, then retry."
     if "permission" in normalized:
         return "The Gateway cannot access the selected equipment interface. Check its installation permissions."
+    if (
+        "issued in the future" in normalized
+        or "trusted clock" in normalized
+        or "trusted window" in normalized
+        or "timestamp" in normalized
+        or "clock" in normalized
+    ):
+        return "The Gateway clock is out of sync with Novena Hub. Synchronize the Gateway clock, then retry the scan."
     if "stale" in normalized or "expired" in normalized:
         return "This setup request is no longer current. Retry to create a fresh request."
     return "Novena could not complete this setup step. Review the connection details and retry."
