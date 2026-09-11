@@ -551,6 +551,196 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, "Review this equipment before validation", count=5)
         self.assertNotContains(response, "High-confidence matches")
 
+    def test_discovered_equipment_name_can_be_saved_without_a_template(self):
+        self._enable_guided_setup()
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Unknown device",
+                }
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+
+        response = self.client.post(
+            self.url,
+            {
+                "action": "save_candidate_draft:0",
+                "name_0": "Main incomer meter",
+                "template_0": "",
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "7",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        item = DeploymentSetupItem.objects.get(run__gateway=self.gateway, discovery_index=0)
+        self.assertIsNone(item.device)
+        self.assertIsNone(item.selected_template)
+        self.assertEqual(item.state, DeploymentSetupItem.State.DISCOVERED)
+        self.assertEqual(item.candidate_data["customer_name"], "Main incomer meter")
+        self.assertEqual(item.connection["slave_id"], 7)
+        self.assertFalse(Device.objects.filter(gateway=self.gateway).exists())
+
+        page = self.client.get(self.url)
+        self.assertContains(page, "Draft saved · Needs template")
+        self.assertContains(page, 'name="name_0" value="Main incomer meter"')
+        self.assertContains(page, "Save draft")
+
+    def test_candidate_template_search_is_actionable_and_draft_can_open_custom_builder(self):
+        self._enable_guided_setup()
+        template = DeviceTemplate.objects.create(
+            name="Schneider PM5560",
+            manufacturer="Schneider Electric",
+            model_number="PM5560",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
+            is_verified=True,
+        )
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Unknown device",
+                }
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        search_url = reverse("web_team:devices:template_library_search", args=[self.team.slug])
+
+        search = self.client.get(
+            search_url,
+            {"context": "guided_setup", "candidate_index": "0", "q": "Schneider PM"},
+        )
+
+        self.assertContains(search, template.name)
+        self.assertContains(search, "template-picked")
+        self.assertContains(search, "Novena verified")
+
+        redirect_to_builder = self.client.post(
+            self.url,
+            {
+                "action": "start_custom_template:0",
+                "name_0": "Main incomer meter",
+                "template_0": "",
+                "host_0": "10.0.0.20",
+                "port_0": "1502",
+                "slave_id_0": "7",
+            },
+        )
+
+        self.assertEqual(redirect_to_builder.status_code, 302)
+        self.assertIn("workflow=custom", redirect_to_builder.url)
+        builder = self.client.get(redirect_to_builder.url)
+        self.assertContains(builder, 'id="manual-device" open')
+        self.assertContains(builder, 'id="custom-template"')
+        self.assertContains(builder, 'name="manual_name" value="Main incomer meter"')
+        self.assertContains(builder, 'name="manual_host" value="10.0.0.20"')
+        self.assertContains(builder, 'name="manual_port" value="1502"')
+        self.assertContains(builder, 'name="manual_slave_id" value="7"')
+        self.assertContains(builder, "Create private template and review signals")
+
+        created = self.client.post(
+            self.url,
+            {
+                "action": "manual",
+                "draft_index": "0",
+                "manual_name": "Main incomer meter",
+                "manual_protocol": "modbus_tcp",
+                "manual_manufacturer": "Omron",
+                "manual_model": "KM-N2-FLK",
+                "manual_device_type": "power_meter",
+                "manual_host": "10.0.0.20",
+                "manual_port": "1502",
+                "manual_slave_id": "7",
+                "manual_timeout": "3",
+                "point_key_1": "voltage",
+                "point_label_1": "Line voltage",
+                "point_address_1": "0",
+                "point_function_1": "3",
+                "point_type_1": "uint16",
+                "point_scale_1": "1",
+                "point_unit_1": "V",
+            },
+        )
+
+        self.assertEqual(created.status_code, 302)
+        private_template = DeviceTemplate.objects.get(
+            created_by_team=self.team,
+            manufacturer="Omron",
+            model_number="KM-N2-FLK",
+        )
+        self.assertFalse(private_template.is_verified)
+        self.assertEqual(private_template.source, "user_created")
+        item = DeploymentSetupItem.objects.get(run__gateway=self.gateway, discovery_index=0)
+        self.assertEqual(item.selected_template, private_template)
+        self.assertIsNotNone(item.device)
+        self.assertEqual(item.device.connection_config["port"], 1502)
+        self.assertEqual(
+            DeploymentSetupItem.objects.filter(run__gateway=self.gateway, discovery_index=0).count(),
+            1,
+        )
+
+    def test_template_request_is_linked_back_to_saved_candidate(self):
+        self._enable_guided_setup()
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Unknown device",
+                }
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        self.client.post(
+            self.url,
+            {
+                "action": "request_candidate_template:0",
+                "name_0": "Packaging meter",
+                "template_0": "",
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "1",
+            },
+        )
+
+        response = self.client.post(
+            self.url,
+            {
+                "action": "request_template",
+                "draft_index": "0",
+                "request_manufacturer": "Eaton",
+                "request_model": "Power Xpert 2000",
+                "request_protocol": "modbus_tcp",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        request_row = EquipmentTemplateRequest.objects.get(team=self.team, model_number="Power Xpert 2000")
+        item = DeploymentSetupItem.objects.get(run__gateway=self.gateway, discovery_index=0)
+        self.assertEqual(
+            item.candidate_data["template_request_reference"],
+            str(request_row.support_reference),
+        )
+        page = self.client.get(self.url)
+        self.assertContains(page, "Template requested")
+        self.assertContains(page, str(request_row.support_reference))
+
     def test_validation_poll_updates_row_completion_and_next_step(self):
         self._enable_guided_setup()
         template = DeviceTemplate.objects.create(

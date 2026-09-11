@@ -2,7 +2,8 @@ import ipaddress
 import json
 import re
 import uuid
-from datetime import timedelta, timezone as dt_timezone
+from datetime import timedelta
+from datetime import timezone as dt_timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
@@ -11,6 +12,7 @@ from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from waffle import flag_is_active
 
@@ -76,6 +78,42 @@ def _bounded_float(value, default, minimum, maximum):
     except (TypeError, ValueError):
         return default
     return min(maximum, max(minimum, parsed))
+
+
+def _candidate_connection_from_post(post, candidate, index):
+    """Apply customer-edited connection values to one discovered candidate."""
+    from apps.devices.deployment_setup import connection_from_candidate
+
+    candidate = dict(candidate)
+    connection = connection_from_candidate(candidate)
+    slave_id = int(post.get(f"slave_id_{index}", connection.get("slave_id") or 1))
+    if not 1 <= slave_id <= 247:
+        raise ValueError("Equipment unit ID must be between 1 and 247")
+    connection["slave_id"] = slave_id
+    protocol = candidate.get("connection") or candidate.get("protocol")
+    if protocol == "modbus_tcp":
+        host = post.get(f"host_{index}", connection.get("host", "")).strip()
+        try:
+            parsed_host = ipaddress.ip_address(host)
+        except ValueError as exc:
+            raise ValueError("Enter a valid equipment IP address") from exc
+        if parsed_host.is_unspecified or parsed_host.is_loopback or parsed_host.is_multicast:
+            raise ValueError("Enter a safe, reachable equipment IP address")
+        port = int(post.get(f"port_{index}", connection.get("port", 502)))
+        if not 1 <= port <= 65535:
+            raise ValueError("Modbus TCP port must be between 1 and 65535")
+        connection.update({"host": str(parsed_host), "port": port})
+        candidate.update(
+            {
+                "host": str(parsed_host),
+                "port": port,
+                "slave_id": slave_id,
+                "interface": f"{parsed_host}:{port}",
+            }
+        )
+    else:
+        candidate["slave_id"] = slave_id
+    return connection, candidate
 
 
 def _reattach_running_discovery(run):
@@ -543,7 +581,6 @@ def step_3_discover(request, team_slug):
     )
     from apps.devices.deployment_setup import (
         append_setup_event,
-        connection_from_candidate,
         create_or_update_candidate_item,
         discovery_scan_state,
         get_or_create_setup_run,
@@ -688,6 +725,74 @@ def step_3_discover(request, team_slug):
                         messages.error(request, f"Equipment discovery could not start: {exc}")
             return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
+        draft_action, separator, raw_draft_index = action.partition(":")
+        if separator and draft_action in {
+            "save_candidate_draft",
+            "start_custom_template",
+            "request_candidate_template",
+        }:
+            try:
+                index = int(raw_draft_index)
+                candidate = dict(discovered_devices[index])
+                connection, candidate = _candidate_connection_from_post(request.POST, candidate, index)
+            except (IndexError, TypeError, ValueError) as exc:
+                messages.error(request, f"This equipment draft could not be saved: {exc}")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+
+            template = None
+            template_id = request.POST.get(f"template_{index}", "").strip()
+            if template_id:
+                template = visible_templates_for_team(request.team).filter(pk=template_id).first()
+                if not template:
+                    messages.error(request, "Choose a template available to your organisation.")
+                    return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+
+            candidate["customer_name"] = (
+                request.POST.get(f"name_{index}", "").strip()
+                or candidate.get("customer_name")
+                or candidate.get("signature")
+                or "Equipment"
+            )
+            item = create_or_update_candidate_item(run=run, index=index, candidate=candidate)
+            item.candidate_data = candidate
+            item.connection = connection
+            item.selected_template = template
+            item.state = (
+                DeploymentSetupItem.State.TEMPLATE_SELECTED
+                if template
+                else DeploymentSetupItem.State.DISCOVERED
+            )
+            item.save(
+                update_fields=[
+                    "candidate_data",
+                    "connection",
+                    "selected_template",
+                    "state",
+                    "updated_at",
+                ]
+            )
+            append_setup_event(
+                run,
+                "candidate_draft_saved",
+                "Equipment review saved as a draft.",
+                item=item,
+                actor=request.user,
+                evidence={"discovery_index": index, "template_id": template.pk if template else None},
+            )
+
+            if draft_action == "start_custom_template":
+                return redirect(
+                    f"{reverse('web_team:onboarding:step_3_discover', args=[team_slug])}"
+                    f"?candidate={index}&workflow=custom#custom-template"
+                )
+            if draft_action == "request_candidate_template":
+                return redirect(
+                    f"{reverse('web_team:onboarding:step_3_discover', args=[team_slug])}"
+                    f"?candidate={index}&workflow=request#template-request"
+                )
+            messages.success(request, "Draft saved. You can return and choose a template later.")
+            return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+
         if action == "cancel_discovery":
             try:
                 from apps.devices.remote_control import request_remote_command
@@ -735,34 +840,7 @@ def step_3_discover(request, team_slug):
                             "Update the Gateway to validate private or AI draft templates.",
                         )
                         continue
-                    connection = connection_from_candidate(candidate)
-                    slave_id = int(request.POST.get(f"slave_id_{index}", connection.get("slave_id", 1)))
-                    if not 1 <= slave_id <= 247:
-                        raise ValueError("Slave ID must be between 1 and 247")
-                    connection["slave_id"] = slave_id
-                    protocol = candidate.get("connection") or candidate.get("protocol")
-                    if protocol == "modbus_tcp":
-                        host = request.POST.get(f"host_{index}", connection.get("host", "")).strip()
-                        try:
-                            parsed_host = ipaddress.ip_address(host)
-                        except ValueError as exc:
-                            raise ValueError("Enter a valid equipment IP address") from exc
-                        if parsed_host.is_unspecified or parsed_host.is_loopback or parsed_host.is_multicast:
-                            raise ValueError("Enter a safe, reachable equipment IP address")
-                        port = int(request.POST.get(f"port_{index}", connection.get("port", 502)))
-                        if not 1 <= port <= 65535:
-                            raise ValueError("Modbus TCP port must be between 1 and 65535")
-                        connection.update({"host": str(parsed_host), "port": port})
-                        candidate.update(
-                            {
-                                "host": str(parsed_host),
-                                "port": port,
-                                "slave_id": slave_id,
-                                "interface": f"{parsed_host}:{port}",
-                            }
-                        )
-                    else:
-                        candidate["slave_id"] = slave_id
+                    connection, candidate = _candidate_connection_from_post(request.POST, candidate, index)
                     item = create_or_update_candidate_item(run=run, index=index, candidate=candidate)
                     if not item.device:
                         from apps.subscriptions.enforcement import can_add_device, get_device_limit_for_team
@@ -991,16 +1069,44 @@ def step_3_discover(request, team_slug):
                 discovery_meta={"connection": protocol, "interface": port_key},
                 metadata={"guided_setup_validation": "pending"},
             )
-            item = DeploymentSetupItem.objects.create(
-                team=request.team,
-                run=run,
-                device=device,
-                candidate_data={"signature": name, "connection": protocol, "interface": port_key},
-                selected_template=template,
-                connection=connection,
-                confidence_score=0,
-                confidence_explanation="Configured manually by the customer.",
-            )
+            raw_draft_index = request.POST.get("draft_index", "").strip()
+            try:
+                draft_index = int(raw_draft_index) if raw_draft_index else None
+                discovered_candidate = (
+                    dict(discovered_devices[draft_index]) if draft_index is not None else {}
+                )
+            except (IndexError, TypeError, ValueError):
+                draft_index = None
+                discovered_candidate = {}
+            candidate_data = {
+                **discovered_candidate,
+                "signature": discovered_candidate.get("signature") or name,
+                "customer_name": name,
+                "connection": protocol,
+                "interface": port_key,
+            }
+            if draft_index is not None:
+                item = create_or_update_candidate_item(
+                    run=run,
+                    index=draft_index,
+                    candidate=candidate_data,
+                )
+                item.device = device
+                item.candidate_data = candidate_data
+                item.selected_template = template
+                item.connection = connection
+                item.confidence_explanation = "Configured manually by the customer."
+            else:
+                item = DeploymentSetupItem(
+                    team=request.team,
+                    run=run,
+                    device=device,
+                    candidate_data=candidate_data,
+                    selected_template=template,
+                    connection=connection,
+                    confidence_score=0,
+                    confidence_explanation="Configured manually by the customer.",
+                )
             from apps.devices.datapoint_maps import register_map_to_datapoints, save_device_datapoint_map
 
             mapping = save_device_datapoint_map(
@@ -1010,7 +1116,7 @@ def step_3_discover(request, team_slug):
             )
             item.datapoints = mapping.datapoints
             item.state = DeploymentSetupItem.State.TEMPLATE_SELECTED
-            item.save(update_fields=["datapoints", "state", "updated_at"])
+            item.save()
             request.session["onboarding_device_id"] = device.pk
             messages.info(request, "Manual setup saved as a private draft. Validate the live readings next.")
             return redirect(
@@ -1053,6 +1159,27 @@ def step_3_discover(request, team_slug):
                 documentation_file=documentation_file,
                 discovery_evidence=gateway.discovery_data,
             )
+            raw_draft_index = request.POST.get("draft_index", "").strip()
+            try:
+                draft_index = int(raw_draft_index) if raw_draft_index else None
+            except ValueError:
+                draft_index = None
+            draft_item = (
+                run.items.filter(discovery_index=draft_index, device__isnull=True).first()
+                if draft_index is not None
+                else None
+            )
+            if draft_item:
+                candidate_data = dict(draft_item.candidate_data or {})
+                candidate_data.update(
+                    {
+                        "template_request_reference": str(equipment_request.support_reference),
+                        "template_request_manufacturer": request_manufacturer,
+                        "template_request_model": request_model,
+                    }
+                )
+                draft_item.candidate_data = candidate_data
+                draft_item.save(update_fields=["candidate_data", "updated_at"])
             append_setup_event(
                 run,
                 "template_requested",
@@ -1116,6 +1243,22 @@ def step_3_discover(request, team_slug):
         state__in=[DeploymentSetupItem.State.VALIDATED, DeploymentSetupItem.State.TELEMETRY_CONFIRMED],
         device__isnull=False,
     ).exists()
+    commissioning = build_commissioning_context(request.team, gateway=gateway, session=request.session)
+    template_workflow = request.GET.get("workflow", "")
+    if template_workflow not in {"custom", "request"}:
+        template_workflow = ""
+    try:
+        active_candidate_index = int(request.GET.get("candidate", ""))
+    except (TypeError, ValueError):
+        active_candidate_index = None
+    active_candidate = next(
+        (
+            candidate
+            for candidate in commissioning["device_candidates"]
+            if candidate["index"] == active_candidate_index
+        ),
+        None,
+    )
     context = {
         "steps": ONBOARDING_STEPS,
         "current_step": 3,
@@ -1129,7 +1272,9 @@ def step_3_discover(request, team_slug):
         "guided_setup_available": guided_capable,
         "scan_state": scan_state,
         "can_deploy": can_deploy,
-        "commissioning": build_commissioning_context(request.team, gateway=gateway, session=request.session),
+        "commissioning": commissioning,
+        "template_workflow": template_workflow if active_candidate else "",
+        "active_candidate": active_candidate,
     }
     return render(request, "onboarding/step_3_discover.html", context)
 

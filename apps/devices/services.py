@@ -534,32 +534,52 @@ def _commissioning_candidates(gateway):
     registered_ports = {
         str(device.port): device.name for device in gateway.devices.exclude(port__isnull=True).exclude(port="")
     }
+    latest_run = gateway.deployment_setup_runs.order_by("-created_at").first()
+    draft_items = {
+        item.discovery_index: item
+        for item in (
+            latest_run.items.filter(device__isnull=True, discovery_index__isnull=False).select_related(
+                "selected_template"
+            )
+            if latest_run
+            else []
+        )
+    }
     candidates = []
     for index, discovery in enumerate((gateway.discovery_data or {}).get("devices", [])):
+        draft_item = draft_items.get(index)
+        draft_data = dict(draft_item.candidate_data or {}) if draft_item else {}
+        draft_connection = dict(draft_item.connection or {}) if draft_item else {}
         interface = str(discovery.get("interface") or discovery.get("port") or "")
-        host = str(discovery.get("host") or "")
-        port = discovery.get("port")
+        host = str(draft_connection.get("host") or discovery.get("host") or "")
+        port = draft_connection.get("port") or discovery.get("port")
         if not host and (discovery.get("connection") or discovery.get("protocol")) == "modbus_tcp":
             parsed_host, separator, raw_port = interface.rpartition(":")
             host = parsed_host if separator else interface
             port = int(raw_port) if separator and raw_port.isdigit() else 502
-        matched_template = None
+        matched_template = draft_item.selected_template if draft_item else None
         matched_template_id = discovery.get("matched_template_id")
-        if matched_template_id:
+        if not matched_template and matched_template_id:
             matched_template = visible_templates_for_team(gateway.team).filter(id=matched_template_id).first()
         score = min(100, max(0, int(discovery.get("matched_template_score") or 0)))
         if interface and interface in registered_ports:
             continue
-        status = "ready" if matched_template and matched_template.is_verified and score >= 80 else "needs_template"
+        status = (
+            "ready"
+            if matched_template and (draft_item or (matched_template.is_verified and score >= 80))
+            else "needs_template"
+        )
+        draft_saved = bool(draft_item)
+        template_requested = bool(draft_data.get("template_request_reference"))
         candidates.append(
             {
                 "index": index,
                 "interface": interface,
-                "signature": discovery.get("signature") or "Unknown device",
+                "signature": draft_data.get("customer_name") or discovery.get("signature") or "Unknown device",
                 "connection": discovery.get("connection") or "unknown",
                 "host": host,
                 "port": port,
-                "slave_id": discovery.get("slave_id"),
+                "slave_id": draft_connection.get("slave_id") or discovery.get("slave_id"),
                 "protocol_verified": bool(discovery.get("protocol_verified")),
                 "baud_rate": discovery.get("baud_rate"),
                 "matched_template": matched_template,
@@ -577,6 +597,12 @@ def _commissioning_candidates(gateway):
                 ),
                 "status": status,
                 "recommended": status == "ready",
+                "selected": bool(matched_template and status == "ready"),
+                "draft_saved": draft_saved,
+                "template_requested": template_requested,
+                "template_request_reference": draft_data.get("template_request_reference", ""),
+                "template_request_manufacturer": draft_data.get("template_request_manufacturer", ""),
+                "template_request_model": draft_data.get("template_request_model", ""),
                 "raw": discovery,
             }
         )
@@ -688,6 +714,7 @@ def build_commissioning_context(team, gateway=None, session=None):
         "completed_equipment_count": completed_equipment_count,
         "review_equipment_count": len(candidates) + review_item_count,
         "validation_equipment_count": sum(item.state == "validating" for item in equipment_setup_items),
+        "selected_candidate_count": sum(candidate["selected"] for candidate in candidates),
         "equipment_setup_items": equipment_setup_items,
         "provisioned_devices": devices,
         "latest_config_status": latest_config.status if latest_config else None,

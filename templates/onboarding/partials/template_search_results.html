@@ -1,20 +1,43 @@
-{% for template in templates %}
-<div class="rounded-lg border border-base-content/10 bg-base-200/30 p-3">
-    <div class="flex items-start justify-between gap-3">
-        <div>
-            <p class="text-sm font-bold">{{ template.name }}</p>
-            <p class="mt-1 text-xs text-base-content/50">
-                {{ template.manufacturer|default:"Manufacturer not listed" }}
-                {% if template.model_number %} · {{ template.model_number }}{% endif %}
-                · {{ template.get_protocol_display }}
-            </p>
-        </div>
-        <span class="badge badge-sm {% if template.is_verified %}badge-success{% elif template.source == 'ai_generated' %}badge-warning{% else %}badge-outline{% endif %}">
-            {% if template.mapping_strategy == "site_defined" %}Starter · map signals{% elif template.is_verified %}Novena verified{% elif template.source == "ai_generated" %}AI draft{% else %}Unvalidated{% endif %}
+{% if candidate_index %}
+    {% for template in templates %}
+    <button type="button"
+            class="flex w-full items-start justify-between gap-3 border-b border-base-content/10 p-3 text-left last:border-b-0 hover:bg-base-200/60"
+            @click="$dispatch('template-picked', { id: '{{ template.id }}', name: '{{ template.name|escapejs }}', trust: '{% if template.mapping_strategy == "site_defined" %}Customisable starter{% elif template.is_verified %}Novena verified{% elif template.source == "ai_generated" %}AI draft{% else %}Customer template{% endif %}' })">
+        <span class="min-w-0">
+            <span class="block truncate text-sm font-bold text-base-content">{{ template.name }}</span>
+            <span class="mt-1 block text-xs text-base-content/50">
+                {{ template.manufacturer|default:"Manufacturer not listed" }}{% if template.model_number %} · {{ template.model_number }}{% endif %} · {{ template.get_protocol_display }}
+            </span>
         </span>
+        <span class="badge badge-sm shrink-0 {% if template.is_verified %}badge-success{% elif template.source == 'ai_generated' %}badge-warning{% else %}badge-outline{% endif %}">
+            {% if template.mapping_strategy == "site_defined" %}Starter{% elif template.is_verified %}Verified{% elif template.source == "ai_generated" %}AI draft{% else %}Private{% endif %}
+        </span>
+    </button>
+    {% empty %}
+    <div class="p-4 text-center">
+        <p class="text-sm font-semibold text-base-content/65">No matching template found</p>
+        <p class="mt-1 text-xs text-base-content/45">Save this equipment as a draft, then request a Novena template or create a private custom template below.</p>
     </div>
-    <p class="mt-2 text-xs text-base-content/45">Choose this name in the Equipment template selector for the discovered item above, then run live validation.</p>
-</div>
-{% empty %}
-<p class="rounded-lg bg-base-200/40 p-3 text-xs text-base-content/50">No matching templates. Create one from documentation, configure manually, or request a Novena template.</p>
-{% endfor %}
+    {% endfor %}
+{% else %}
+    {% for template in templates %}
+    <div class="rounded-lg border border-base-content/10 bg-base-200/30 p-3">
+        <div class="flex items-start justify-between gap-3">
+            <div>
+                <p class="text-sm font-bold">{{ template.name }}</p>
+                <p class="mt-1 text-xs text-base-content/50">
+                    {{ template.manufacturer|default:"Manufacturer not listed" }}
+                    {% if template.model_number %} · {{ template.model_number }}{% endif %}
+                    · {{ template.get_protocol_display }}
+                </p>
+            </div>
+            <span class="badge badge-sm {% if template.is_verified %}badge-success{% elif template.source == 'ai_generated' %}badge-warning{% else %}badge-outline{% endif %}">
+                {% if template.mapping_strategy == "site_defined" %}Starter · map signals{% elif template.is_verified %}Novena verified{% elif template.source == "ai_generated" %}AI draft{% else %}Unvalidated{% endif %}
+            </span>
+        </div>
+        <p class="mt-2 text-xs text-base-content/45">Choose this name in the Equipment template selector for the discovered item above, then run live validation.</p>
+    </div>
+    {% empty %}
+    <p class="rounded-lg bg-base-200/40 p-3 text-xs text-base-content/50">No matching templates. Create one from documentation, configure manually, or request a Novena template.</p>
+    {% endfor %}
+{% endif %}

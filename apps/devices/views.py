@@ -1462,7 +1462,10 @@ def htmx_device_create(request, team_slug):
 
 @require_permission("view_devices")
 def template_library_search(request, team_slug):
-    query = request.GET.get("q", "")
+    query = request.GET.get("q", "").strip()[:100]
+    candidate_index = request.GET.get("candidate_index", "")
+    if not candidate_index.isdigit():
+        candidate_index = ""
     templates = (
         visible_templates_for_team(request.team)
         .filter(
@@ -1480,7 +1483,11 @@ def template_library_search(request, team_slug):
         if request.GET.get("context") == "guided_setup"
         else "devices/partials/template_search_results.html"
     )
-    return render(request, template_name, {"templates": templates[:10]})
+    return render(
+        request,
+        template_name,
+        {"templates": templates[:10], "candidate_index": candidate_index, "query": query},
+    )
 
 
 @require_permission("manage_devices")

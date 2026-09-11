@@ -19,7 +19,7 @@
      hx-target="this"
      hx-trigger="{% if scan_state.key == 'scanning' or commissioning.validation_equipment_count %}every 2s{% else %}none{% endif %}"
      hx-swap="outerHTML"
-     x-data="{ selectedCount: {{ commissioning.ready_candidates|length }} }"
+     x-data="{ selectedCount: {{ commissioning.selected_candidate_count }} }"
      @change="if ($event.target.name === 'device_index') selectedCount = $root.querySelectorAll('input[name=device_index]:checked').length"
      @candidate-selection-changed="selectedCount = $root.querySelectorAll('input[name=device_index]:checked').length">
     <form method="post">
