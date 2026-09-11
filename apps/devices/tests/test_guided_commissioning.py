@@ -600,6 +600,35 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(page, 'name="save_candidate_draft" value="0"')
         self.assertContains(page, "Save draft")
 
+        self.gateway.discovery_data = {"status": "complete", "devices": []}
+        self.gateway.save(update_fields=["discovery_data"])
+
+        retained_page = self.client.get(self.url)
+        self.assertEqual(retained_page.status_code, 200)
+        self.assertContains(retained_page, "Main incomer meter")
+        self.assertContains(retained_page, 'data-equipment-row="candidate"')
+        self.assertNotContains(retained_page, 'data-equipment-row="configured"')
+
+        poll_url = reverse("web_team:onboarding:discovery_poll", args=[self.team.slug])
+        retained_poll = self.client.get(poll_url)
+        self.assertEqual(retained_poll.status_code, 200)
+        self.assertContains(retained_poll, "Main incomer meter")
+
+        custom_builder = self.client.post(
+            self.url,
+            {
+                "action": "validate_selected",
+                "start_custom_template": "0",
+                "name_0": "Main incomer meter",
+                "template_0": "",
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "7",
+            },
+        )
+        self.assertEqual(custom_builder.status_code, 302)
+        self.assertIn("workflow=custom", custom_builder.url)
+
     def test_candidate_template_search_is_actionable_and_draft_can_open_custom_builder(self):
         self._enable_guided_setup()
         template = DeviceTemplate.objects.create(

@@ -10,8 +10,8 @@
             <p class="mt-0.5 text-[11px] text-base-content/45 lg:hidden">Configured equipment</p>
         </div>
         <div class="col-start-1 min-w-0 pl-9 lg:col-auto lg:pl-0">
-            <p class="truncate font-mono text-xs text-base-content/65">{{ item.candidate_data.interface|default:item.device.port|default:"Manual setup" }}</p>
-            <p class="mt-0.5 text-[11px] uppercase tracking-wide text-base-content/40">{{ item.device.protocol|default:item.candidate_data.connection|default:"Equipment" }}</p>
+            <p class="truncate font-mono text-xs text-base-content/65">{% if item.candidate_data.interface %}{{ item.candidate_data.interface }}{% elif item.device %}{{ item.device.port|default:"Manual setup" }}{% else %}Manual setup{% endif %}</p>
+            <p class="mt-0.5 text-[11px] uppercase tracking-wide text-base-content/40">{% if item.device %}{{ item.device.protocol|default:"Equipment" }}{% else %}{{ item.candidate_data.connection|default:"Equipment" }}{% endif %}</p>
         </div>
         <div class="col-start-1 pl-9 lg:col-auto lg:pl-0">
             {% if item.state == "validated" or item.state == "telemetry_confirmed" or item.state == "queued" or item.state == "applied" %}
@@ -63,7 +63,7 @@
             {% endfor %}
         </div>
         {% endif %}
-        {% if item.device.template.mapping_strategy == "site_defined" %}
+        {% if item.device and item.device.template.mapping_strategy == "site_defined" %}
         <a class="btn btn-outline btn-xs mt-3" href="{% url 'web_team:devices:device_datapoint_mapping' request.team.slug item.device.pk %}">Review signal mapping</a>
         {% endif %}
     </div>

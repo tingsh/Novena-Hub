@@ -116,6 +116,16 @@ def _candidate_connection_from_post(post, candidate, index):
     return connection, candidate
 
 
+def _candidate_for_index(discovered_devices, run, index):
+    """Return current discovery evidence, falling back to a durable saved draft."""
+    if 0 <= index < len(discovered_devices):
+        return dict(discovered_devices[index])
+    draft_item = run.items.filter(discovery_index=index, device__isnull=True).first()
+    if draft_item and draft_item.candidate_data:
+        return dict(draft_item.candidate_data)
+    raise IndexError("Equipment is no longer available in this setup run")
+
+
 def _reattach_running_discovery(run):
     """Keep Guided Setup aligned with a Gateway scan that is already running."""
     discovery = run.gateway.discovery_data or {}
@@ -742,7 +752,7 @@ def step_3_discover(request, team_slug):
         }:
             try:
                 index = int(raw_draft_index)
-                candidate = dict(discovered_devices[index])
+                candidate = _candidate_for_index(discovered_devices, run, index)
                 connection, candidate = _candidate_connection_from_post(request.POST, candidate, index)
             except (IndexError, TypeError, ValueError) as exc:
                 messages.error(request, f"This equipment draft could not be saved: {exc}")
@@ -837,7 +847,7 @@ def step_3_discover(request, team_slug):
             for raw_index in selected:
                 try:
                     index = int(raw_index)
-                    candidate = dict(discovered_devices[index])
+                    candidate = _candidate_for_index(discovered_devices, run, index)
                     template = get_object_or_404(
                         visible_templates_for_team(request.team),
                         pk=request.POST.get(f"template_{index}"),

@@ -546,8 +546,11 @@ def _commissioning_candidates(gateway):
         )
     }
     candidates = []
+    rendered_draft_indexes = set()
     for index, discovery in enumerate((gateway.discovery_data or {}).get("devices", [])):
         draft_item = draft_items.get(index)
+        if draft_item:
+            rendered_draft_indexes.add(index)
         draft_data = dict(draft_item.candidate_data or {}) if draft_item else {}
         draft_connection = dict(draft_item.connection or {}) if draft_item else {}
         interface = str(discovery.get("interface") or discovery.get("port") or "")
@@ -604,6 +607,61 @@ def _commissioning_candidates(gateway):
                 "template_request_manufacturer": draft_data.get("template_request_manufacturer", ""),
                 "template_request_model": draft_data.get("template_request_model", ""),
                 "raw": discovery,
+            }
+        )
+    for index, draft_item in draft_items.items():
+        if index in rendered_draft_indexes:
+            continue
+        draft_data = dict(draft_item.candidate_data or {})
+        draft_connection = dict(draft_item.connection or {})
+        connection_type = draft_data.get("connection") or draft_data.get("protocol") or "unknown"
+        host = str(draft_connection.get("host") or draft_data.get("host") or "")
+        port = draft_connection.get("port") or draft_data.get("port")
+        interface = str(draft_data.get("interface") or "")
+        if not interface and connection_type == "modbus_tcp" and host:
+            interface = f"{host}:{port or 502}"
+        if interface and interface in registered_ports:
+            continue
+        matched_template = draft_item.selected_template
+        score = min(100, max(0, int(draft_data.get("matched_template_score") or 0)))
+        template_requested = bool(draft_data.get("template_request_reference"))
+        candidates.append(
+            {
+                "index": index,
+                "interface": interface,
+                "signature": draft_data.get("customer_name") or draft_data.get("signature") or "Equipment",
+                "connection": connection_type,
+                "host": host,
+                "port": port,
+                "slave_id": draft_connection.get("slave_id") or draft_data.get("slave_id"),
+                "protocol_verified": bool(draft_data.get("protocol_verified")),
+                "baud_rate": draft_connection.get("baudrate") or draft_data.get("baud_rate"),
+                "matched_template": matched_template,
+                "matched_template_name": matched_template.name if matched_template else "",
+                "confidence_score": score,
+                "confidence_label": confidence_label(score),
+                "confidence_explanation": (
+                    "Saved draft retained from an earlier discovery scan. "
+                    "Live validation will confirm that it is still reachable."
+                ),
+                "trust_label": (
+                    "Novena verified"
+                    if matched_template and matched_template.is_verified
+                    else (
+                        "AI draft"
+                        if matched_template and matched_template.source == "ai_generated"
+                        else "Unvalidated"
+                    )
+                ),
+                "status": "ready" if matched_template else "needs_template",
+                "recommended": bool(matched_template),
+                "selected": bool(matched_template),
+                "draft_saved": True,
+                "template_requested": template_requested,
+                "template_request_reference": draft_data.get("template_request_reference", ""),
+                "template_request_manufacturer": draft_data.get("template_request_manufacturer", ""),
+                "template_request_model": draft_data.get("template_request_model", ""),
+                "raw": draft_data,
             }
         )
     return candidates
