@@ -644,12 +644,14 @@ def _commissioning_candidates(gateway):
         matched_template = draft_item.selected_template
         score = min(100, max(0, int(draft_data.get("matched_template_score") or 0)))
         template_requested = bool(draft_data.get("template_request_reference"))
+        candidate_key = draft_item.candidate_key or equipment_candidate_key(
+            draft_data, draft_connection
+        )
         candidates.append(
             {
                 "index": index,
                 "action_ref": f"saved-{draft_item.pk}",
-                "candidate_key": draft_item.candidate_key
-                or equipment_candidate_key(draft_data, draft_connection),
+                "candidate_key": candidate_key,
                 "setup_item_id": draft_item.pk,
                 "seen_in_latest_scan": False,
                 "is_new": False,

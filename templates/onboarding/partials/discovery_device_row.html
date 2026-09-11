@@ -10,7 +10,9 @@
          searchOpen: false,
          dirty: false
      }"
+     :data-equipment-dirty="dirty ? 'true' : 'false'"
      @beforeunload.window="if (dirty) { $event.preventDefault(); $event.returnValue = '' }"
+     @submit.window="dirty = false"
      @template-picked="templateId = $event.detail.id; templateName = $event.detail.name; templateTrust = $event.detail.trust; selected = true; searchOpen = false; dirty = true; $nextTick(() => $dispatch('candidate-selection-changed'))">
     <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 lg:grid-cols-[2.5rem_minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center">
         <div class="row-span-2 flex items-start pt-1 lg:row-auto lg:pt-0">

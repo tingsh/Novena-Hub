@@ -52,7 +52,7 @@
             {% csrf_token %}<input type="hidden" name="action" value="start_discovery">
             <button type="submit"
                     class="btn btn-primary rounded-lg"
-                    onclick="if (this.dataset.submitted) return false; this.dataset.submitted = '1'; this.classList.add('loading', 'pointer-events-none'); this.setAttribute('aria-disabled', 'true'); this.querySelector('[data-scan-idle-label]').classList.add('hidden'); this.querySelector('[data-scan-loading-label]').classList.remove('hidden');"
+                    onclick="if (document.querySelector('[data-equipment-dirty=true]') && !confirm('You have unsaved equipment changes. Rescan now and discard those unsaved edits? Saved drafts will be kept.')) return false; if (this.dataset.submitted) return false; this.dataset.submitted = '1'; this.classList.add('loading', 'pointer-events-none'); this.setAttribute('aria-disabled', 'true'); this.querySelector('[data-scan-idle-label]').classList.add('hidden'); this.querySelector('[data-scan-loading-label]').classList.remove('hidden');"
                     {% if not guided_setup_available %}disabled{% endif %}>
                 <span data-scan-idle-label><i class="fa fa-search mr-2"></i>{% if scan_state.key == "idle" %}Scan for equipment{% else %}Retry scan{% endif %}</span>
                 <span data-scan-loading-label class="hidden"><i class="fa fa-spinner fa-spin mr-2"></i>Starting scan…</span>
