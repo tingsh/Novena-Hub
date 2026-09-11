@@ -556,6 +556,33 @@ class CommissioningContextTest(TestCase):
         self.assertIn("gateway_claimed", context["completed_stages"])
         self.assertEqual(context["primary_action"]["label"], "Power on gateway")
 
+    def test_discovery_result_keeps_gateway_connection_milestone_complete(self):
+        from apps.devices.services import build_commissioning_context
+
+        self.gateway.lifecycle_status = "commissioning"
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "signature": "Unknown Modbus device",
+                }
+            ],
+        }
+        self.gateway.save(update_fields=["lifecycle_status", "discovery_data"])
+
+        context = build_commissioning_context(self.team, gateway=self.gateway)
+
+        self.assertEqual(context["gateway_state"].status, "offline")
+        self.assertIn("gateway_connected", context["completed_stages"])
+        self.assertEqual(context["current_stage"], "templates_selected")
+        gateway_step = next(
+            item for item in context["checklist"] if item["key"] == "gateway_connected"
+        )
+        self.assertTrue(gateway_step["complete"])
+        self.assertFalse(gateway_step["current"])
+
     def test_online_gateway_with_discovery_splits_ready_and_needs_template(self):
         from django.utils import timezone
 

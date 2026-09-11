@@ -651,7 +651,9 @@ def build_commissioning_context(team, gateway=None, session=None):
     if gateway:
         completed.append("gateway_claimed")
     gateway_state = gateway.freshness if gateway else None
-    if gateway_state and gateway_state.status == "live":
+    # Discovery results are historical proof that this Gateway connected to Hub.
+    # Keep the milestone complete if its latest heartbeat later becomes stale.
+    if (gateway_state and gateway_state.status == "live") or devices or candidates:
         completed.append("gateway_connected")
     if gateway and (gateway.lifecycle_status == "commissioning" or devices or candidates):
         completed.append("device_scan_running")
