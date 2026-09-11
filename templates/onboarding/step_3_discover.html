@@ -32,46 +32,7 @@
         {% include "onboarding/partials/discovery_region.html" %}
     </section>
 
-    {% if setup_items %}
-    <section class="rounded-2xl border border-base-content/10 bg-base-100 p-6 shadow-sm">
-        <div class="flex items-start justify-between gap-4">
-            <div>
-                <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Live validation</p>
-                <h2 class="mt-1 text-xl font-black text-base-content">Equipment checks</h2>
-            </div>
-            <span class="badge badge-outline">{{ setup_run.get_state_display }}</span>
-        </div>
-        <div class="mt-5 space-y-3">
-            {% for item in setup_items %}
-            <div class="rounded-xl border border-base-content/10 p-4">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                        <p class="font-bold text-base-content">{{ item.device.name|default:item.candidate_data.signature }}</p>
-                        <p class="mt-1 text-xs text-base-content/50">{{ item.selected_template.name|default:"Template not selected" }} · {{ item.get_trust_level_display }}</p>
-                        {% if item.validation_result.message %}<p class="mt-2 text-sm text-base-content/70">{{ item.validation_result.message }}</p>{% endif %}
-                        {% if item.validation_result.error %}<p class="mt-2 text-sm text-error">{{ item.validation_result.error }}</p>{% endif %}
-                    </div>
-                    <div class="flex items-center gap-2">
-                    {% if item.device.template.mapping_strategy == "site_defined" %}<a class="btn btn-ghost btn-xs" href="{% url 'web_team:devices:device_datapoint_mapping' request.team.slug item.device.pk %}">Edit signals</a>{% endif %}
-                    <span class="badge {% if item.state == 'validated' or item.state == 'telemetry_confirmed' %}badge-success{% elif item.state == 'needs_attention' or item.state == 'failed' or item.state == 'awaiting_confirmation' %}badge-warning{% else %}badge-ghost{% endif %}">
-                        {{ item.get_state_display }}
-                    </span>
-                    </div>
-                </div>
-                {% if item.validation_result.signals %}
-                <div class="mt-3 flex flex-wrap gap-2">
-                    {% for signal in item.validation_result.signals %}
-                    <span class="badge badge-sm {% if signal.status == 'success' %}badge-success{% else %}badge-error{% endif %}">
-                        {{ signal.key|title }}{% if signal.status == 'success' %}: {{ signal.value }} {{ signal.unit }}{% endif %}
-                    </span>
-                    {% endfor %}
-                </div>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
+    {% include "onboarding/partials/discovery_deployment_preview.html" %}
 
     <details id="manual-device" class="rounded-2xl border border-base-content/10 bg-base-100 shadow-sm">
         <summary class="cursor-pointer list-none p-6">
@@ -223,46 +184,6 @@
             </div>
         </div>
     </details>
-
-    <section class="rounded-2xl border border-base-content/10 bg-base-100 p-6 shadow-sm">
-        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-                <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Deployment preview</p>
-                <h2 class="mt-1 text-xl font-black">What Novena will send</h2>
-                <p class="mt-1 text-sm text-base-content/55">{{ config_preview.connector_count }} connector{{ config_preview.connector_count|pluralize }}, {{ config_preview.device_count }} equipment item{{ config_preview.device_count|pluralize }}.</p>
-            </div>
-            <form method="post">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="deploy">
-                <button class="btn btn-primary rounded-lg" type="submit" {% if not can_deploy %}disabled{% endif %}>Deploy validated equipment<i class="fa fa-arrow-right ml-2"></i></button>
-            </form>
-        </div>
-        <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-            {% for equipment in config_preview.devices %}
-            <div class="rounded-xl bg-base-200/50 p-4">
-                <p class="font-bold">{{ equipment.name }}</p>
-                <p class="mt-1 text-xs text-base-content/50">{{ equipment.protocol }} · {{ equipment.target }}{% if equipment.slave_id %} · Slave {{ equipment.slave_id }}{% endif %} · every {{ equipment.polling_interval }}s</p>
-                <div class="mt-3 flex flex-wrap gap-1">
-                    {% for key in equipment.telemetry_keys|slice:":8" %}<span class="badge badge-ghost badge-sm">{{ key }}</span>{% endfor %}
-                </div>
-            </div>
-            {% empty %}
-            <p class="text-sm text-base-content/50">Validate equipment to build the deployment preview.</p>
-            {% endfor %}
-        </div>
-        <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div class="rounded-xl border border-base-content/10 p-4">
-                <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Dashboard</p>
-                <p class="mt-1 text-sm font-bold">{{ config_preview.dashboard }}</p>
-                <p class="mt-1 text-xs text-base-content/50">Created after the first live telemetry is confirmed.</p>
-            </div>
-            <div class="rounded-xl border border-base-content/10 p-4">
-                <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Alerts</p>
-                <p class="mt-1 text-sm font-bold">{{ profile.name }} recommendations</p>
-                <p class="mt-1 text-xs text-base-content/50">Nothing is activated until you review the recommended presets.</p>
-            </div>
-        </div>
-    </section>
 
     <div class="flex items-center justify-between">
         <a href="{% url 'web_team:onboarding:step_2b_wait' request.team.slug %}" class="btn btn-ghost btn-sm rounded-lg"><i class="fa fa-chevron-left mr-2"></i>Back</a>

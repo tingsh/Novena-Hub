@@ -1137,6 +1137,8 @@ def step_3_discover(request, team_slug):
 @require_permission("view_devices")
 def discovery_poll(request, team_slug):
     """HTMX endpoint: returns discovery device list fragment."""
+    from apps.devices.config_generator import human_config_preview
+
     gateway_id = request.session.get("onboarding_gateway_id")
     if not gateway_id:
         return render(request, "onboarding/partials/discovery_devices.html", {"discovered_devices": []})
@@ -1161,6 +1163,13 @@ def discovery_poll(request, team_slug):
             "title": "Ready to scan",
             "message": "Connect your equipment to the Gateway, then start a scan.",
         }
+    can_deploy = bool(
+        setup_run
+        and setup_run.items.filter(
+            state__in=[DeploymentSetupItem.State.VALIDATED, DeploymentSetupItem.State.TELEMETRY_CONFIRMED],
+            device__isnull=False,
+        ).exists()
+    )
     return render(
         request,
         "onboarding/partials/discovery_region.html",
@@ -1174,6 +1183,8 @@ def discovery_poll(request, team_slug):
             "scan_state": scan_state,
             "guided_setup_available": bool(gateway and "guided_setup_v1" in set(gateway.gateway_capabilities or [])),
             "include_scan_oob": True,
+            "can_deploy": can_deploy,
+            "config_preview": human_config_preview(gateway) if gateway else {},
             "commissioning": build_commissioning_context(request.team, gateway=gateway, session=request.session),
         },
     )

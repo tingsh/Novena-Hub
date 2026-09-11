@@ -1,44 +1,45 @@
-{% if commissioning.device_candidates %}
-<div class="p-6 space-y-6">
-    {% if commissioning.ready_candidates %}
-    <section>
-        <div class="mb-3 flex items-center justify-between">
-            <h3 class="text-xs font-black uppercase tracking-widest text-green-700 dark:text-green-300">High-confidence matches</h3>
-            <span class="text-xs text-base-content/45">{{ commissioning.ready_candidates|length }} suggested</span>
+{% if commissioning.device_candidates or commissioning.equipment_setup_items %}
+<div class="p-5 sm:p-6">
+    <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+            <h2 class="text-base font-black text-base-content">Equipment checklist</h2>
+            {% if commissioning.review_equipment_count %}
+            <p class="mt-1 text-sm text-base-content/60">
+                {{ commissioning.review_equipment_count }} equipment item{{ commissioning.review_equipment_count|pluralize }} still need{{ commissioning.review_equipment_count|pluralize:"s," }} review and a matching template before deployment.
+            </p>
+            {% elif commissioning.validation_equipment_count %}
+            <p class="mt-1 text-sm text-base-content/60">Live validation is in progress. Results will appear here automatically.</p>
+            {% else %}
+            <p class="mt-1 text-sm text-success"><i class="fa fa-circle-check mr-1" aria-hidden="true"></i>All listed equipment is ready for the next step.</p>
+            {% endif %}
         </div>
-        <div class="space-y-3">
-            {% for candidate in commissioning.ready_candidates %}
-            {% include "onboarding/partials/discovery_device_card.html" with candidate=candidate selected=True templates=templates %}
+        <span class="whitespace-nowrap text-xs font-bold text-base-content/55">
+            {{ commissioning.completed_equipment_count }} of {{ commissioning.equipment_count }} validated
+        </span>
+    </div>
+
+    <div class="overflow-hidden rounded-xl border border-base-content/10 bg-base-100" role="table" aria-label="Discovered equipment">
+        <div class="hidden bg-base-200/50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-base-content/45 lg:grid lg:grid-cols-[2.5rem_minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center" role="row">
+            <span aria-label="Selection"></span>
+            <span role="columnheader">Equipment</span>
+            <span role="columnheader">Connection</span>
+            <span role="columnheader">Status</span>
+            <span role="columnheader">Template</span>
+            <span role="columnheader">Action</span>
+            <span class="sr-only" role="columnheader">Completion</span>
+        </div>
+        <div role="rowgroup">
+            {% for candidate in commissioning.device_candidates %}
+            {% include "onboarding/partials/discovery_device_row.html" with candidate=candidate templates=templates %}
+            {% endfor %}
+            {% for item in commissioning.equipment_setup_items %}
+            {% include "onboarding/partials/discovery_setup_item_row.html" with item=item %}
             {% endfor %}
         </div>
-    </section>
-    {% endif %}
-    {% if commissioning.needs_template_candidates %}
-    <section>
-        <div class="mb-3 flex items-center justify-between">
-            <h3 class="text-xs font-black uppercase tracking-widest text-amber-700 dark:text-amber-300">Review before validation</h3>
-            <span class="text-xs text-base-content/45">Confirm or choose another template</span>
-        </div>
-        <div class="space-y-3">
-            {% for candidate in commissioning.needs_template_candidates %}
-            {% include "onboarding/partials/discovery_device_card.html" with candidate=candidate selected=False templates=templates %}
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
-    {% if commissioning.registered_candidates %}
-    <section>
-        <h3 class="mb-3 text-xs font-black uppercase tracking-widest text-base-content/45">Already registered</h3>
-        <div class="space-y-3">
-            {% for candidate in commissioning.registered_candidates %}
-            {% include "onboarding/partials/discovery_device_card.html" with candidate=candidate selected=False templates=templates disabled=True %}
-            {% endfor %}
-        </div>
-    </section>
-    {% endif %}
+    </div>
 </div>
 {% else %}
-<div class="py-14 text-center px-6">
+<div class="px-6 py-14 text-center">
     <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-base-200 text-base-content/35">
         <i class="fa fa-search text-2xl"></i>
     </div>

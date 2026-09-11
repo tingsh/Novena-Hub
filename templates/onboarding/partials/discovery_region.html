@@ -10,25 +10,33 @@
     {% include "onboarding/partials/discovery_scan_state.html" %}
 </div>
 {% endif %}
+{% if include_scan_oob %}
+{% include "onboarding/partials/discovery_deployment_preview.html" with deployment_preview_oob=True %}
+{% endif %}
 <div id="discovery-list"
      hx-get="{% url 'web_team:onboarding:discovery_poll' request.team.slug %}"
      hx-disinherit="hx-target hx-select"
      hx-target="this"
-     hx-trigger="{% if scan_state.key == 'scanning' %}every 2s{% else %}none{% endif %}"
+     hx-trigger="{% if scan_state.key == 'scanning' or commissioning.validation_equipment_count %}every 2s{% else %}none{% endif %}"
      hx-swap="outerHTML"
      x-data="{ selectedCount: {{ commissioning.ready_candidates|length }} }"
-     @change="if ($event.target.name === 'device_index') selectedCount = $root.querySelectorAll('input[name=device_index]:checked').length">
+     @change="if ($event.target.name === 'device_index') selectedCount = $root.querySelectorAll('input[name=device_index]:checked').length"
+     @candidate-selection-changed="selectedCount = $root.querySelectorAll('input[name=device_index]:checked').length">
     <form method="post">
         {% csrf_token %}
         <input type="hidden" name="action" value="validate_selected">
         {% include "onboarding/partials/discovery_devices.html" %}
+        {% if commissioning.device_candidates %}
         <div class="flex flex-col gap-3 border-t border-base-content/10 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <p class="text-xs text-base-content/50">Validation performs read-only checks. It does not start monitoring or change equipment.</p>
-            <button type="submit" class="btn btn-primary btn-sm rounded-lg"
-                    :disabled="selectedCount === 0" {% if not commissioning.device_candidates %}disabled{% endif %}>
+            <div>
+                <p class="text-sm font-bold text-base-content">Review each item and choose its equipment template.</p>
+                <p class="mt-1 text-xs text-base-content/50">Validation performs read-only checks. It does not start monitoring or change equipment.</p>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm rounded-lg" :disabled="selectedCount === 0">
                 Validate selected equipment<i class="fa fa-arrow-right ml-2"></i>
             </button>
         </div>
+        {% endif %}
     </form>
     {% if scan_state.key != "scanning" and guided_setup_available %}
     <div class="border-t border-base-content/10 bg-base-200/20 p-5">

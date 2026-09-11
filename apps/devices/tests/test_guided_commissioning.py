@@ -526,6 +526,77 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, 'hx-trigger="none"')
         self.assertContains(response, 'id="advanced-discovery-settings" hx-preserve')
 
+    def test_discovery_renders_many_results_as_a_compact_equipment_checklist(self):
+        self._enable_guided_setup()
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": f"10.0.0.{index + 20}:502",
+                    "connection": "modbus_tcp",
+                    "signature": f"Unknown device {index + 1}",
+                }
+                for index in range(5)
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, "Equipment checklist")
+        self.assertContains(response, 'role="table" aria-label="Discovered equipment"')
+        self.assertContains(response, 'data-equipment-row="candidate"', count=5)
+        self.assertContains(response, "0 of 5 validated")
+        self.assertContains(response, "5 equipment items still need review")
+        self.assertContains(response, "Review this equipment before validation", count=5)
+        self.assertNotContains(response, "High-confidence matches")
+
+    def test_validation_poll_updates_row_completion_and_next_step(self):
+        self._enable_guided_setup()
+        template = DeviceTemplate.objects.create(
+            name="Validated meter",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
+            is_verified=True,
+        )
+        device = Device.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Main meter",
+            template=template,
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            port="10.0.0.20:502",
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        item = DeploymentSetupItem.objects.create(
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=template,
+            state=DeploymentSetupItem.State.VALIDATING,
+            candidate_data={"interface": "10.0.0.20:502", "connection": "modbus_tcp"},
+        )
+        poll_url = reverse("web_team:onboarding:discovery_poll", args=[self.team.slug])
+
+        validating = self.client.get(poll_url)
+
+        self.assertContains(validating, 'hx-trigger="every 2s"')
+        self.assertContains(validating, "Validating")
+        self.assertContains(validating, 'id="deployment-preview" hx-swap-oob="true"')
+
+        item.state = DeploymentSetupItem.State.VALIDATED
+        item.validation_result = {"status": "success", "message": "Selected signals were read successfully."}
+        item.save(update_fields=["state", "validation_result", "updated_at"])
+        complete = self.client.get(poll_url)
+
+        self.assertContains(complete, "1 of 1 validated")
+        self.assertContains(complete, 'aria-label="Validation complete"')
+        self.assertContains(complete, "Deploy and continue")
+        self.assertContains(complete, 'hx-trigger="none"')
+
     def test_recent_scan_start_keeps_customer_visible_scanning_state(self):
         self._enable_guided_setup()
         run = self._scan_run()
@@ -1018,6 +1089,13 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(item.state, "validated")
         self.assertEqual(item.trust_level, "novena_verified")
         self.assertFalse(RemoteCommand.objects.filter(gateway=self.gateway).exists())
+
+        page = self.client.get(self.url)
+        self.assertContains(page, 'data-equipment-row="configured"')
+        self.assertContains(page, "1 of 1 validated")
+        self.assertContains(page, 'aria-label="Validation complete"')
+        self.assertContains(page, "All listed equipment is ready for the next step")
+        self.assertContains(page, "Deploy and continue")
 
     def test_template_request_has_support_reference(self):
         response = self.client.post(

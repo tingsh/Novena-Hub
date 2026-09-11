@@ -602,6 +602,23 @@ def build_commissioning_context(team, gateway=None, session=None):
             setup_run = sync_setup_run(setup_run)
         readiness = gateway_readiness(gateway)
 
+    setup_items = list(
+        setup_run.items.select_related("device", "selected_template") if setup_run else []
+    )
+    candidate_indexes = {candidate["index"] for candidate in candidates}
+    equipment_setup_items = [
+        item for item in setup_items if item.device_id or item.discovery_index not in candidate_indexes
+    ]
+    completed_item_states = {"validated", "queued", "applied", "telemetry_confirmed"}
+    completed_equipment_count = sum(
+        item.state in completed_item_states for item in equipment_setup_items
+    )
+    review_item_count = sum(
+        item.state not in completed_item_states and item.state != "validating"
+        for item in equipment_setup_items
+    )
+    equipment_count = len(candidates) + len(equipment_setup_items)
+
     completed = []
     if site:
         completed.append("site_created")
@@ -667,6 +684,11 @@ def build_commissioning_context(team, gateway=None, session=None):
         "ready_candidates": [candidate for candidate in candidates if candidate["status"] == "ready"],
         "needs_template_candidates": [candidate for candidate in candidates if candidate["status"] == "needs_template"],
         "registered_candidates": [candidate for candidate in candidates if candidate["status"] == "registered"],
+        "equipment_count": equipment_count,
+        "completed_equipment_count": completed_equipment_count,
+        "review_equipment_count": len(candidates) + review_item_count,
+        "validation_equipment_count": sum(item.state == "validating" for item in equipment_setup_items),
+        "equipment_setup_items": equipment_setup_items,
         "provisioned_devices": devices,
         "latest_config_status": latest_config.status if latest_config else None,
         "latest_config": latest_config,
