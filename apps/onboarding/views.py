@@ -80,26 +80,26 @@ def _bounded_float(value, default, minimum, maximum):
     return min(maximum, max(minimum, parsed))
 
 
-def _candidate_connection_from_post(post, candidate, index):
+def _candidate_connection_from_post(post, candidate, field_key):
     """Apply customer-edited connection values to one discovered candidate."""
     from apps.devices.deployment_setup import connection_from_candidate
 
     candidate = dict(candidate)
     connection = connection_from_candidate(candidate)
-    slave_id = int(post.get(f"slave_id_{index}", connection.get("slave_id") or 1))
+    slave_id = int(post.get(f"slave_id_{field_key}", connection.get("slave_id") or 1))
     if not 1 <= slave_id <= 247:
         raise ValueError("Equipment unit ID must be between 1 and 247")
     connection["slave_id"] = slave_id
     protocol = candidate.get("connection") or candidate.get("protocol")
     if protocol == "modbus_tcp":
-        host = post.get(f"host_{index}", connection.get("host", "")).strip()
+        host = post.get(f"host_{field_key}", connection.get("host", "")).strip()
         try:
             parsed_host = ipaddress.ip_address(host)
         except ValueError as exc:
             raise ValueError("Enter a valid equipment IP address") from exc
         if parsed_host.is_unspecified or parsed_host.is_loopback or parsed_host.is_multicast:
             raise ValueError("Enter a safe, reachable equipment IP address")
-        port = int(post.get(f"port_{index}", connection.get("port", 502)))
+        port = int(post.get(f"port_{field_key}", connection.get("port", 502)))
         if not 1 <= port <= 65535:
             raise ValueError("Modbus TCP port must be between 1 and 65535")
         connection.update({"host": str(parsed_host), "port": port})
@@ -116,14 +116,53 @@ def _candidate_connection_from_post(post, candidate, index):
     return connection, candidate
 
 
-def _candidate_for_index(discovered_devices, run, index):
-    """Return current discovery evidence, falling back to a durable saved draft."""
-    if 0 <= index < len(discovered_devices):
-        return dict(discovered_devices[index])
-    draft_item = run.items.filter(discovery_index=index, device__isnull=True).first()
-    if draft_item and draft_item.candidate_data:
-        return dict(draft_item.candidate_data)
-    raise IndexError("Equipment is no longer available in this setup run")
+def _candidate_for_ref(discovered_devices, run, candidate_ref, expected_key=""):
+    """Resolve a current scan row or a retained saved draft without trusting row order."""
+    from apps.devices.deployment_setup import equipment_candidate_key
+
+    candidate_ref = str(candidate_ref or "")
+    if candidate_ref.startswith("saved-"):
+        try:
+            item_id = int(candidate_ref.removeprefix("saved-"))
+        except ValueError as exc:
+            raise IndexError("Invalid saved equipment reference") from exc
+        item = run.items.filter(pk=item_id, device__isnull=True, removed_at__isnull=True).first()
+        if not item or not item.candidate_data:
+            raise IndexError("Equipment draft is no longer available")
+        candidate = dict(item.candidate_data)
+        actual_key = item.candidate_key or equipment_candidate_key(candidate, item.connection)
+        if expected_key and actual_key != expected_key:
+            raise ValueError("The equipment list changed. Review this row again before saving.")
+        return candidate, item.discovery_index, item
+
+    try:
+        index = int(candidate_ref)
+    except ValueError as exc:
+        raise IndexError("Invalid equipment reference") from exc
+    if not 0 <= index < len(discovered_devices):
+        raise IndexError("Equipment is no longer present in the latest scan")
+    candidate = dict(discovered_devices[index])
+    candidate_key = equipment_candidate_key(candidate)
+    if expected_key and candidate_key != expected_key:
+        raise ValueError("The equipment list changed after this page loaded. Review it again before saving.")
+    item = (
+        run.items.filter(candidate_key=candidate_key, device__isnull=True, removed_at__isnull=True).first()
+        if candidate_key
+        else None
+    )
+    if not item:
+        legacy = run.items.filter(
+            discovery_index=index,
+            device__isnull=True,
+            candidate_key="",
+            removed_at__isnull=True,
+        ).first()
+        if legacy and (
+            not equipment_candidate_key(legacy.candidate_data, legacy.connection)
+            or equipment_candidate_key(legacy.candidate_data, legacy.connection) == candidate_key
+        ):
+            item = legacy
+    return candidate, index, item
 
 
 def _reattach_running_discovery(run):
@@ -619,6 +658,7 @@ def step_3_discover(request, team_slug):
             "save_candidate_draft",
             "start_custom_template",
             "request_candidate_template",
+            "remove_candidate_draft",
         ):
             candidate_index = request.POST.get(candidate_action)
             if candidate_index is not None:
@@ -749,17 +789,46 @@ def step_3_discover(request, team_slug):
             "save_candidate_draft",
             "start_custom_template",
             "request_candidate_template",
+            "remove_candidate_draft",
         }:
             try:
-                index = int(raw_draft_index)
-                candidate = _candidate_for_index(discovered_devices, run, index)
-                connection, candidate = _candidate_connection_from_post(request.POST, candidate, index)
+                candidate, index, existing_item = _candidate_for_ref(
+                    discovered_devices,
+                    run,
+                    raw_draft_index,
+                    request.POST.get(f"candidate_key_{raw_draft_index}", ""),
+                )
             except (IndexError, TypeError, ValueError) as exc:
                 messages.error(request, f"This equipment draft could not be saved: {exc}")
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
+            if draft_action == "remove_candidate_draft":
+                if not existing_item:
+                    messages.info(request, "This equipment does not have a saved draft to remove.")
+                else:
+                    existing_item.removed_at = timezone.now()
+                    existing_item.save(update_fields=["removed_at", "updated_at"])
+                    append_setup_event(
+                        run,
+                        "candidate_draft_removed",
+                        "Equipment draft removed from Guided Setup.",
+                        item=existing_item,
+                        actor=request.user,
+                        evidence={"candidate_key": existing_item.candidate_key},
+                    )
+                    messages.success(request, "Saved equipment draft removed.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+
+            try:
+                connection, candidate = _candidate_connection_from_post(
+                    request.POST, candidate, raw_draft_index
+                )
+            except (TypeError, ValueError) as exc:
+                messages.error(request, f"This equipment draft could not be saved: {exc}")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+
             template = None
-            template_id = request.POST.get(f"template_{index}", "").strip()
+            template_id = request.POST.get(f"template_{raw_draft_index}", "").strip()
             if template_id:
                 template = visible_templates_for_team(request.team).filter(pk=template_id).first()
                 if not template:
@@ -767,7 +836,7 @@ def step_3_discover(request, team_slug):
                     return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
             candidate["customer_name"] = (
-                request.POST.get(f"name_{index}", "").strip()
+                request.POST.get(f"name_{raw_draft_index}", "").strip()
                 or candidate.get("customer_name")
                 or candidate.get("signature")
                 or "Equipment"
@@ -802,12 +871,12 @@ def step_3_discover(request, team_slug):
             if draft_action == "start_custom_template":
                 return redirect(
                     f"{reverse('web_team:onboarding:step_3_discover', args=[team_slug])}"
-                    f"?candidate={index}&workflow=custom#custom-template"
+                    f"?candidate=saved-{item.pk}&workflow=custom#custom-template"
                 )
             if draft_action == "request_candidate_template":
                 return redirect(
                     f"{reverse('web_team:onboarding:step_3_discover', args=[team_slug])}"
-                    f"?candidate={index}&workflow=request#template-request"
+                    f"?candidate=saved-{item.pk}&workflow=request#template-request"
                 )
             messages.success(request, "Draft saved. You can return and choose a template later.")
             return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
@@ -846,11 +915,15 @@ def step_3_discover(request, team_slug):
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             for raw_index in selected:
                 try:
-                    index = int(raw_index)
-                    candidate = _candidate_for_index(discovered_devices, run, index)
+                    candidate, index, _existing_item = _candidate_for_ref(
+                        discovered_devices,
+                        run,
+                        raw_index,
+                        request.POST.get(f"candidate_key_{raw_index}", ""),
+                    )
                     template = get_object_or_404(
                         visible_templates_for_team(request.team),
-                        pk=request.POST.get(f"template_{index}"),
+                        pk=request.POST.get(f"template_{raw_index}"),
                     )
                     if not guided_capable and not template.is_verified:
                         messages.error(
@@ -859,7 +932,15 @@ def step_3_discover(request, team_slug):
                             "Update the Gateway to validate private or AI draft templates.",
                         )
                         continue
-                    connection, candidate = _candidate_connection_from_post(request.POST, candidate, index)
+                    connection, candidate = _candidate_connection_from_post(
+                        request.POST, candidate, raw_index
+                    )
+                    candidate["customer_name"] = (
+                        request.POST.get(f"name_{raw_index}", "").strip()
+                        or candidate.get("customer_name")
+                        or candidate.get("signature")
+                        or template.name
+                    )
                     item = create_or_update_candidate_item(run=run, index=index, candidate=candidate)
                     if not item.device:
                         from apps.subscriptions.enforcement import can_add_device, get_device_limit_for_team
@@ -873,7 +954,8 @@ def step_3_discover(request, team_slug):
                             )
                             break
                     device_name = (
-                        request.POST.get(f"name_{index}", "").strip()
+                        request.POST.get(f"name_{raw_index}", "").strip()
+                        or candidate.get("customer_name")
                         or candidate.get("signature")
                         or template.name
                     )
@@ -1090,12 +1172,19 @@ def step_3_discover(request, team_slug):
             )
             raw_draft_index = request.POST.get("draft_index", "").strip()
             try:
-                draft_index = int(raw_draft_index) if raw_draft_index else None
-                discovered_candidate = (
-                    dict(discovered_devices[draft_index]) if draft_index is not None else {}
+                discovered_candidate, draft_index, draft_item = (
+                    _candidate_for_ref(
+                        discovered_devices,
+                        run,
+                        raw_draft_index,
+                        request.POST.get("draft_candidate_key", ""),
+                    )
+                    if raw_draft_index
+                    else ({}, None, None)
                 )
             except (IndexError, TypeError, ValueError):
                 draft_index = None
+                draft_item = None
                 discovered_candidate = {}
             candidate_data = {
                 **discovered_candidate,
@@ -1103,8 +1192,14 @@ def step_3_discover(request, team_slug):
                 "customer_name": name,
                 "connection": protocol,
                 "interface": port_key,
+                **(
+                    {"host": connection.get("host"), "port": connection.get("port")}
+                    if protocol == "modbus_tcp"
+                    else {}
+                ),
+                "slave_id": connection.get("slave_id"),
             }
-            if draft_index is not None:
+            if draft_index is not None or draft_item is not None:
                 item = create_or_update_candidate_item(
                     run=run,
                     index=draft_index,
@@ -1180,14 +1275,18 @@ def step_3_discover(request, team_slug):
             )
             raw_draft_index = request.POST.get("draft_index", "").strip()
             try:
-                draft_index = int(raw_draft_index) if raw_draft_index else None
-            except ValueError:
-                draft_index = None
-            draft_item = (
-                run.items.filter(discovery_index=draft_index, device__isnull=True).first()
-                if draft_index is not None
-                else None
-            )
+                _candidate, _draft_index, draft_item = (
+                    _candidate_for_ref(
+                        discovered_devices,
+                        run,
+                        raw_draft_index,
+                        request.POST.get("draft_candidate_key", ""),
+                    )
+                    if raw_draft_index
+                    else ({}, None, None)
+                )
+            except (IndexError, TypeError, ValueError):
+                draft_item = None
             if draft_item:
                 candidate_data = dict(draft_item.candidate_data or {})
                 candidate_data.update(
@@ -1266,15 +1365,12 @@ def step_3_discover(request, team_slug):
     template_workflow = request.GET.get("workflow", "")
     if template_workflow not in {"custom", "request"}:
         template_workflow = ""
-    try:
-        active_candidate_index = int(request.GET.get("candidate", ""))
-    except (TypeError, ValueError):
-        active_candidate_index = None
+    active_candidate_ref = request.GET.get("candidate", "")
     active_candidate = next(
         (
             candidate
             for candidate in commissioning["device_candidates"]
-            if candidate["index"] == active_candidate_index
+            if candidate["action_ref"] == active_candidate_ref
         ),
         None,
     )

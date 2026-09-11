@@ -668,6 +668,12 @@ class DeploymentSetupItem(BaseTeamModel):
         related_name="deployment_setup_items",
     )
     discovery_index = models.PositiveIntegerField(null=True, blank=True)
+    candidate_key = models.CharField(
+        max_length=320,
+        blank=True,
+        db_index=True,
+        help_text=_("Stable identity used to retain an equipment draft across discovery scans."),
+    )
     candidate_data = models.JSONField(default=dict, blank=True)
     selected_template = models.ForeignKey(
         DeviceTemplate,
@@ -691,10 +697,18 @@ class DeploymentSetupItem(BaseTeamModel):
         related_name="deployment_validation_items",
     )
     first_telemetry_at = models.DateTimeField(null=True, blank=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["created_at"]
         indexes = [models.Index(fields=["run", "state"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run", "candidate_key"],
+                condition=~models.Q(candidate_key=""),
+                name="unique_setup_candidate_key_per_run",
+            )
+        ]
 
 
 class DeploymentSetupEvent(models.Model):

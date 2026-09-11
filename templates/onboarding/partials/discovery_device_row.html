@@ -1,4 +1,4 @@
-<div id="candidate-row-{{ candidate.index }}" hx-preserve
+<div id="candidate-row-{{ candidate.action_ref }}" hx-preserve
      class="border-t border-base-content/10 first:border-t-0" data-equipment-row="candidate"
      x-data="{
          open: false,
@@ -7,13 +7,16 @@
          templateName: '{{ candidate.matched_template_name|escapejs }}',
          templateTrust: '{{ candidate.trust_label|escapejs }}',
          equipmentName: '{{ candidate.signature|escapejs }}',
-         searchOpen: false
+         searchOpen: false,
+         dirty: false
      }"
-     @template-picked="templateId = $event.detail.id; templateName = $event.detail.name; templateTrust = $event.detail.trust; selected = true; searchOpen = false; $nextTick(() => $dispatch('candidate-selection-changed'))">
+     @beforeunload.window="if (dirty) { $event.preventDefault(); $event.returnValue = '' }"
+     @template-picked="templateId = $event.detail.id; templateName = $event.detail.name; templateTrust = $event.detail.trust; selected = true; searchOpen = false; dirty = true; $nextTick(() => $dispatch('candidate-selection-changed'))">
     <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 lg:grid-cols-[2.5rem_minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center">
         <div class="row-span-2 flex items-start pt-1 lg:row-auto lg:pt-0">
-            <input x-ref="selector" type="checkbox" name="device_index" value="{{ candidate.index }}"
+            <input x-ref="selector" type="checkbox" name="device_index" value="{{ candidate.action_ref }}"
                    x-model="selected" @change="$dispatch('candidate-selection-changed')"
+                   {% if not candidate.seen_in_latest_scan %}disabled{% endif %}
                    :aria-label="`Select ${equipmentName} for validation`"
                    class="checkbox checkbox-primary checkbox-sm rounded">
         </div>
@@ -26,7 +29,9 @@
             <p class="mt-0.5 text-[11px] uppercase tracking-wide text-base-content/40">{{ candidate.connection|default:"Unknown" }}</p>
         </div>
         <div class="col-start-1 pl-9 lg:col-auto lg:pl-0">
-            {% if candidate.template_requested %}
+            {% if not candidate.seen_in_latest_scan %}
+            <span class="badge badge-neutral badge-outline badge-sm whitespace-nowrap">Not seen in latest scan</span>
+            {% elif candidate.template_requested %}
             <span class="badge badge-info badge-outline badge-sm whitespace-nowrap">Template requested</span>
             {% else %}
             <span x-show="templateId" class="badge badge-success badge-outline badge-sm whitespace-nowrap">{% if candidate.draft_saved %}Ready to validate{% else %}Template suggested{% endif %}</span>
@@ -44,43 +49,49 @@
         </button>
         <span class="col-start-2 row-start-2 flex h-6 w-6 items-center justify-center self-end rounded-full border border-base-content/15 text-[10px] text-base-content/25 lg:col-auto lg:row-auto lg:self-auto"
               title="Review and validate this equipment">
-            <i class="fa fa-minus" aria-hidden="true"></i>
+            <i class="fa {% if candidate.seen_in_latest_scan %}fa-minus{% else %}fa-clock-rotate-left{% endif %}" aria-hidden="true"></i>
         </span>
     </div>
 
     <div x-show="open" x-cloak class="border-t border-base-content/10 bg-base-200/25 px-4 py-4 lg:pl-[4.5rem]">
+        <input type="hidden" name="candidate_key_{{ candidate.action_ref }}" value="{{ candidate.candidate_key }}">
         <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
                 <p class="text-sm font-bold text-base-content">Review this equipment before validation</p>
                 <p class="mt-1 text-xs text-base-content/55">Choose the matching template. Novena will perform a read-only live check before marking this row complete.</p>
             </div>
-            <button type="button" class="btn btn-ghost btn-xs self-start"
+            <button type="button" class="btn btn-ghost btn-xs self-start" {% if not candidate.seen_in_latest_scan %}disabled{% endif %}
                     @click="selected = !selected; $nextTick(() => $dispatch('candidate-selection-changed'))">
                 <i class="fa mr-1" :class="selected ? 'fa-square-check text-primary' : 'fa-square'" aria-hidden="true"></i>
                 <span x-text="selected ? 'Included in validation' : 'Include in validation'">Include in validation</span>
             </button>
         </div>
+        {% if not candidate.seen_in_latest_scan %}
+        <div class="mb-4 rounded-lg border border-warning/25 bg-warning/5 px-3 py-2 text-xs text-base-content/65">
+            This saved draft was retained, but the endpoint was not seen in the latest scan. Check that the equipment is powered and connected, then rescan before validation.
+        </div>
+        {% endif %}
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label class="form-control">
                 <span class="label-text mb-1 text-xs font-bold">Equipment name</span>
-                <input type="text" name="name_{{ candidate.index }}" value="{{ candidate.signature }}"
-                       x-model="equipmentName"
+                <input type="text" name="name_{{ candidate.action_ref }}" value="{{ candidate.signature }}"
+                       x-model="equipmentName" @input="dirty = true"
                        class="input input-bordered input-sm w-full rounded-lg">
             </label>
-            <div class="form-control" id="template-search-context-{{ candidate.index }}"
+            <div class="form-control" id="template-search-context-{{ candidate.action_ref }}"
                  @click.outside="searchOpen = false"
                  @keydown.escape.window="searchOpen = false">
                 <span class="label-text mb-1 text-xs font-bold">Equipment template</span>
-                <input type="hidden" name="template_{{ candidate.index }}" :value="templateId">
+                <input type="hidden" name="template_{{ candidate.action_ref }}" :value="templateId">
                 <input type="hidden" name="context" value="guided_setup">
-                <input type="hidden" name="candidate_index" value="{{ candidate.index }}">
+                <input type="hidden" name="candidate_index" value="{{ candidate.action_ref }}">
                 <div x-show="templateId" class="mb-2 flex items-center justify-between gap-3 rounded-lg border border-success/25 bg-success/5 px-3 py-2">
                     <span class="min-w-0">
                         <span class="block truncate text-sm font-bold" x-text="templateName"></span>
                         <span class="block text-[11px] text-base-content/45" x-text="templateTrust"></span>
                     </span>
                     <button type="button" class="btn btn-ghost btn-xs" aria-label="Clear selected template"
-                            @click="templateId = ''; templateName = ''; templateTrust = ''; selected = false; searchOpen = true; $nextTick(() => $dispatch('candidate-selection-changed'))">
+                            @click="templateId = ''; templateName = ''; templateTrust = ''; selected = false; searchOpen = true; dirty = true; $nextTick(() => $dispatch('candidate-selection-changed'))">
                         Change
                     </button>
                 </div>
@@ -90,13 +101,13 @@
                            class="input input-bordered input-sm w-full rounded-lg pr-9"
                            hx-get="{% url 'web_team:devices:template_library_search' request.team.slug %}"
                            hx-trigger="focus once, keyup changed delay:300ms"
-                           hx-target="#template-results-{{ candidate.index }}"
-                           hx-include="#template-search-context-{{ candidate.index }}"
+                           hx-target="#template-results-{{ candidate.action_ref }}"
+                           hx-include="#template-search-context-{{ candidate.action_ref }}"
                            hx-sync="this:replace"
                            @focus="searchOpen = true">
                     <i class="fa fa-search pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-base-content/30" aria-hidden="true"></i>
                 </div>
-                <div id="template-results-{{ candidate.index }}" x-show="searchOpen" x-cloak
+                <div id="template-results-{{ candidate.action_ref }}" x-show="searchOpen" x-cloak
                      class="mt-2 max-h-56 overflow-y-auto rounded-lg border border-base-content/10 bg-base-100 shadow-lg">
                     <p class="p-3 text-xs text-base-content/45">Start typing to search the Novena template library.</p>
                 </div>
@@ -108,18 +119,18 @@
                     {% if candidate.connection == "modbus_tcp" %}
                     <label class="form-control sm:col-span-2">
                         <span class="label-text mb-1 text-xs font-bold">Equipment IP address</span>
-                        <input type="text" name="host_{{ candidate.index }}" value="{{ candidate.host }}"
+                        <input type="text" name="host_{{ candidate.action_ref }}" value="{{ candidate.host }}" @input="dirty = true"
                                class="input input-bordered input-sm w-full rounded-lg" :required="selected">
                     </label>
                     <label class="form-control">
                         <span class="label-text mb-1 text-xs font-bold">Network port</span>
-                        <input type="number" min="1" max="65535" name="port_{{ candidate.index }}" value="{{ candidate.port|default:502 }}"
+                        <input type="number" min="1" max="65535" name="port_{{ candidate.action_ref }}" value="{{ candidate.port|default:502 }}" @input="dirty = true"
                                class="input input-bordered input-sm w-full rounded-lg" :required="selected">
                     </label>
                     {% endif %}
                     <label class="form-control">
                         <span class="label-text mb-1 text-xs font-bold">Equipment unit ID</span>
-                        <input type="number" min="1" max="247" name="slave_id_{{ candidate.index }}" value="{{ candidate.slave_id|default:1 }}"
+                        <input type="number" min="1" max="247" name="slave_id_{{ candidate.action_ref }}" value="{{ candidate.slave_id|default:1 }}" @input="dirty = true"
                                class="input input-bordered input-sm w-full rounded-lg" :required="selected">
                     </label>
                 </div>
@@ -137,16 +148,25 @@
             <div>
                 <p class="text-xs font-bold text-base-content/65">Can’t find the matching template?</p>
                 <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                    <button type="submit" name="request_candidate_template" value="{{ candidate.index }}" formnovalidate
+                    <button type="submit" name="request_candidate_template" value="{{ candidate.action_ref }}" formnovalidate
                             class="text-xs font-semibold text-primary hover:underline">Request a Novena template</button>
-                    <button type="submit" name="start_custom_template" value="{{ candidate.index }}" formnovalidate
+                    <button type="submit" name="start_custom_template" value="{{ candidate.action_ref }}" formnovalidate
                             class="text-xs font-semibold text-primary hover:underline">Create a custom template</button>
                 </div>
             </div>
-            <button type="submit" name="save_candidate_draft" value="{{ candidate.index }}" formnovalidate
-                    class="btn btn-outline btn-sm rounded-lg">
-                <i class="fa fa-floppy-disk mr-2" aria-hidden="true"></i>Save draft
-            </button>
+            <div class="flex items-center gap-2">
+                {% if candidate.draft_saved %}
+                <button type="submit" name="remove_candidate_draft" value="{{ candidate.action_ref }}" formnovalidate
+                        class="btn btn-ghost btn-sm rounded-lg text-error"
+                        onclick="return confirm('Remove this saved equipment draft? The latest scan result will remain available if the equipment is currently connected.')">
+                    Remove draft
+                </button>
+                {% endif %}
+                <button type="submit" name="save_candidate_draft" value="{{ candidate.action_ref }}" formnovalidate
+                        @click="dirty = false" class="btn btn-outline btn-sm rounded-lg">
+                    <i class="fa fa-floppy-disk mr-2" aria-hidden="true"></i>Save draft
+                </button>
+            </div>
         </div>
     </div>
 </div>

@@ -529,28 +529,41 @@ def _commissioning_candidates(gateway):
     if not gateway:
         return []
 
-    from .deployment_setup import confidence_explanation, confidence_label
+    from .deployment_setup import confidence_explanation, confidence_label, equipment_candidate_key
 
     registered_ports = {
         str(device.port): device.name for device in gateway.devices.exclude(port__isnull=True).exclude(port="")
     }
     latest_run = gateway.deployment_setup_runs.order_by("-created_at").first()
-    draft_items = {
-        item.discovery_index: item
-        for item in (
-            latest_run.items.filter(device__isnull=True, discovery_index__isnull=False).select_related(
-                "selected_template"
-            )
-            if latest_run
-            else []
+    draft_items = list(
+        latest_run.items.filter(device__isnull=True, removed_at__isnull=True).select_related(
+            "selected_template"
         )
-    }
+        if latest_run
+        else []
+    )
+    drafts_by_key = {}
+    legacy_drafts_by_index = {}
+    for item in draft_items:
+        key = item.candidate_key or equipment_candidate_key(item.candidate_data, item.connection)
+        if key:
+            drafts_by_key.setdefault(key, item)
+        elif item.discovery_index is not None:
+            legacy_drafts_by_index.setdefault(item.discovery_index, item)
     candidates = []
-    rendered_draft_indexes = set()
+    rendered_draft_ids = set()
+    rendered_keys = set()
     for index, discovery in enumerate((gateway.discovery_data or {}).get("devices", [])):
-        draft_item = draft_items.get(index)
+        candidate_key = equipment_candidate_key(discovery)
+        if candidate_key and candidate_key in rendered_keys:
+            continue
+        draft_item = drafts_by_key.get(candidate_key) if candidate_key else None
+        if not draft_item:
+            draft_item = legacy_drafts_by_index.get(index)
         if draft_item:
-            rendered_draft_indexes.add(index)
+            rendered_draft_ids.add(draft_item.pk)
+        if candidate_key:
+            rendered_keys.add(candidate_key)
         draft_data = dict(draft_item.candidate_data or {}) if draft_item else {}
         draft_connection = dict(draft_item.connection or {}) if draft_item else {}
         interface = str(discovery.get("interface") or discovery.get("port") or "")
@@ -577,6 +590,11 @@ def _commissioning_candidates(gateway):
         candidates.append(
             {
                 "index": index,
+                "action_ref": str(index),
+                "candidate_key": candidate_key,
+                "setup_item_id": draft_item.pk if draft_item else None,
+                "seen_in_latest_scan": True,
+                "is_new": not bool(draft_item),
                 "interface": interface,
                 "signature": draft_data.get("customer_name") or discovery.get("signature") or "Unknown device",
                 "connection": discovery.get("connection") or "unknown",
@@ -609,9 +627,10 @@ def _commissioning_candidates(gateway):
                 "raw": discovery,
             }
         )
-    for index, draft_item in draft_items.items():
-        if index in rendered_draft_indexes:
+    for draft_item in draft_items:
+        if draft_item.pk in rendered_draft_ids:
             continue
+        index = draft_item.discovery_index
         draft_data = dict(draft_item.candidate_data or {})
         draft_connection = dict(draft_item.connection or {})
         connection_type = draft_data.get("connection") or draft_data.get("protocol") or "unknown"
@@ -628,6 +647,12 @@ def _commissioning_candidates(gateway):
         candidates.append(
             {
                 "index": index,
+                "action_ref": f"saved-{draft_item.pk}",
+                "candidate_key": draft_item.candidate_key
+                or equipment_candidate_key(draft_data, draft_connection),
+                "setup_item_id": draft_item.pk,
+                "seen_in_latest_scan": False,
+                "is_new": False,
                 "interface": interface,
                 "signature": draft_data.get("customer_name") or draft_data.get("signature") or "Equipment",
                 "connection": connection_type,
@@ -653,9 +678,9 @@ def _commissioning_candidates(gateway):
                         else "Unvalidated"
                     )
                 ),
-                "status": "ready" if matched_template else "needs_template",
-                "recommended": bool(matched_template),
-                "selected": bool(matched_template),
+                "status": "missing",
+                "recommended": False,
+                "selected": False,
                 "draft_saved": True,
                 "template_requested": template_requested,
                 "template_request_reference": draft_data.get("template_request_reference", ""),
@@ -689,9 +714,11 @@ def build_commissioning_context(team, gateway=None, session=None):
     setup_items = list(
         setup_run.items.select_related("device", "selected_template") if setup_run else []
     )
-    candidate_indexes = {candidate["index"] for candidate in candidates}
+    represented_setup_item_ids = {
+        candidate["setup_item_id"] for candidate in candidates if candidate.get("setup_item_id")
+    }
     equipment_setup_items = [
-        item for item in setup_items if item.device_id or item.discovery_index not in candidate_indexes
+        item for item in setup_items if item.device_id or item.pk not in represented_setup_item_ids
     ]
     completed_item_states = {"validated", "queued", "applied", "telemetry_confirmed"}
     completed_equipment_count = sum(
@@ -775,6 +802,9 @@ def build_commissioning_context(team, gateway=None, session=None):
         "review_equipment_count": len(candidates) + review_item_count,
         "validation_equipment_count": sum(item.state == "validating" for item in equipment_setup_items),
         "selected_candidate_count": sum(candidate["selected"] for candidate in candidates),
+        "current_discovery_count": sum(candidate["seen_in_latest_scan"] for candidate in candidates),
+        "retained_missing_count": sum(not candidate["seen_in_latest_scan"] for candidate in candidates),
+        "new_candidate_count": sum(candidate["is_new"] for candidate in candidates),
         "equipment_setup_items": equipment_setup_items,
         "provisioned_devices": devices,
         "latest_config_status": latest_config.status if latest_config else None,

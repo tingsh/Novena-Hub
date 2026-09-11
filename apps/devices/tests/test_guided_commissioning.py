@@ -32,6 +32,7 @@ from apps.devices.models import (
     RpcCommand,
     Site,
 )
+from apps.devices.services import build_commissioning_context
 from apps.teams.models import Membership, Team
 from apps.users.models import CustomUser
 
@@ -618,16 +619,140 @@ class GuidedSetupViewTest(TestCase):
             self.url,
             {
                 "action": "validate_selected",
-                "start_custom_template": "0",
-                "name_0": "Main incomer meter",
-                "template_0": "",
-                "host_0": "10.0.0.20",
-                "port_0": "502",
-                "slave_id_0": "7",
+                "start_custom_template": f"saved-{item.pk}",
+                f"candidate_key_saved-{item.pk}": item.candidate_key,
+                f"name_saved-{item.pk}": "Main incomer meter",
+                f"template_saved-{item.pk}": "",
+                f"host_saved-{item.pk}": "10.0.0.20",
+                f"port_saved-{item.pk}": "502",
+                f"slave_id_saved-{item.pk}": "7",
             },
         )
         self.assertEqual(custom_builder.status_code, 302)
         self.assertIn("workflow=custom", custom_builder.url)
+
+    def test_rescan_reconciles_saved_drafts_by_endpoint_instead_of_row_order(self):
+        self._enable_guided_setup()
+        first = {
+            "interface": "10.0.0.20:502",
+            "connection": "modbus_tcp",
+            "host": "10.0.0.20",
+            "port": 502,
+            "signature": "Unknown device A",
+        }
+        second = {
+            "interface": "10.0.0.21:502",
+            "connection": "modbus_tcp",
+            "host": "10.0.0.21",
+            "port": 502,
+            "signature": "Unknown device B",
+        }
+        self.gateway.discovery_data = {"status": "complete", "devices": [first, second]}
+        self.gateway.save(update_fields=["discovery_data"])
+        self.client.post(
+            self.url,
+            {
+                "save_candidate_draft": "0",
+                "name_0": "Main incomer meter",
+                "template_0": "",
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "1",
+            },
+        )
+        saved = DeploymentSetupItem.objects.get(run__gateway=self.gateway)
+
+        third = {
+            "interface": "10.0.0.22:1502",
+            "connection": "modbus_tcp",
+            "host": "10.0.0.22",
+            "port": 1502,
+            "signature": "Unknown device C",
+        }
+        self.gateway.discovery_data = {"status": "complete", "devices": [second, first, third]}
+        self.gateway.save(update_fields=["discovery_data"])
+
+        context = build_commissioning_context(self.team, gateway=self.gateway)
+        by_interface = {candidate["interface"]: candidate for candidate in context["device_candidates"]}
+        self.assertEqual(by_interface["10.0.0.20:502"]["signature"], "Main incomer meter")
+        self.assertEqual(by_interface["10.0.0.20:502"]["setup_item_id"], saved.pk)
+        self.assertEqual(by_interface["10.0.0.20:502"]["action_ref"], "1")
+        self.assertTrue(by_interface["10.0.0.21:502"]["is_new"])
+        self.assertTrue(by_interface["10.0.0.22:1502"]["is_new"])
+        self.assertEqual(DeploymentSetupItem.objects.count(), 1)
+
+    def test_missing_endpoint_keeps_draft_but_cannot_be_selected_for_validation(self):
+        self._enable_guided_setup()
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Unknown device",
+                }
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        self.client.post(
+            self.url,
+            {
+                "save_candidate_draft": "0",
+                "name_0": "Packaging meter",
+                "template_0": "",
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "1",
+            },
+        )
+        saved = DeploymentSetupItem.objects.get(run__gateway=self.gateway)
+        self.gateway.discovery_data = {"status": "complete", "devices": []}
+        self.gateway.save(update_fields=["discovery_data"])
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, "Not seen in latest scan")
+        self.assertContains(response, "1 saved draft not seen in the latest scan")
+        self.assertContains(response, f'value="saved-{saved.pk}"')
+        self.assertContains(response, "disabled")
+
+    def test_stale_scan_row_is_rejected_instead_of_overwriting_another_endpoint(self):
+        self._enable_guided_setup()
+        first = {
+            "interface": "10.0.0.20:502",
+            "connection": "modbus_tcp",
+            "host": "10.0.0.20",
+            "port": 502,
+            "signature": "First endpoint",
+        }
+        replacement = {
+            "interface": "10.0.0.21:502",
+            "connection": "modbus_tcp",
+            "host": "10.0.0.21",
+            "port": 502,
+            "signature": "Replacement endpoint",
+        }
+        self.gateway.discovery_data = {"status": "complete", "devices": [replacement]}
+        self.gateway.save(update_fields=["discovery_data"])
+
+        response = self.client.post(
+            self.url,
+            {
+                "save_candidate_draft": "0",
+                "candidate_key_0": "modbus_tcp|10.0.0.20|502",
+                "name_0": "Must not move",
+                "template_0": "",
+                "host_0": first["host"],
+                "port_0": "502",
+                "slave_id_0": "1",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "equipment list changed")
+        self.assertFalse(DeploymentSetupItem.objects.exists())
 
     def test_candidate_template_search_is_actionable_and_draft_can_open_custom_builder(self):
         self._enable_guided_setup()

@@ -49,7 +49,8 @@
                   x-data="{ protocol: '{% if active_candidate.connection == 'modbus_rtu' %}modbus_rtu{% else %}modbus_tcp{% endif %}', advanced: false }">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="manual">
-                {% if active_candidate %}<input type="hidden" name="draft_index" value="{{ active_candidate.index }}">{% endif %}
+                {% if active_candidate %}<input type="hidden" name="draft_index" value="{{ active_candidate.action_ref }}">{% endif %}
+                {% if active_candidate %}<input type="hidden" name="draft_candidate_key" value="{{ active_candidate.candidate_key }}">{% endif %}
                 <div>
                     <p class="text-xs font-black uppercase tracking-widest text-indigo-600">Advanced</p>
                     <h3 class="mt-1 text-lg font-black">Create a custom template</h3>
@@ -168,7 +169,8 @@
                 <form id="template-request" method="post" enctype="multipart/form-data" class="rounded-xl border {% if template_workflow == 'request' %}border-primary/40 ring-2 ring-primary/10{% else %}border-base-content/10{% endif %} p-5 space-y-4">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="request_template">
-                    {% if active_candidate %}<input type="hidden" name="draft_index" value="{{ active_candidate.index }}">{% endif %}
+                    {% if active_candidate %}<input type="hidden" name="draft_index" value="{{ active_candidate.action_ref }}">{% endif %}
+                    {% if active_candidate %}<input type="hidden" name="draft_candidate_key" value="{{ active_candidate.candidate_key }}">{% endif %}
                     <div>
                         <p class="text-xs font-black uppercase tracking-widest text-indigo-600">Request a Novena template</p>
                         <p class="mt-1 text-sm text-base-content/55">Send the equipment identity and documentation to support. Discovery evidence is attached automatically.</p>

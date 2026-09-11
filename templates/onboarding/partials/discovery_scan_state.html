@@ -9,6 +9,9 @@
             {% endif %}
             <p class="text-lg font-black text-base-content">{{ scan_state.title }}</p>
             <p class="mt-1 text-sm text-base-content/60">{{ scan_state.message }}</p>
+            {% if commissioning.device_candidates and scan_state.key != "scanning" %}
+            <p class="mt-1 text-xs text-base-content/45">Rescanning keeps saved equipment names and template choices.</p>
+            {% endif %}
             {% if scan_state.key == "scanning" %}
             <div class="mt-3 max-w-md rounded-xl border border-primary/15 bg-primary/5 p-3">
                 <div class="mb-2 flex items-center justify-between gap-3 text-xs">

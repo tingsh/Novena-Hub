@@ -3,6 +3,11 @@
     <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
             <h2 class="text-base font-black text-base-content">Equipment checklist</h2>
+            {% if commissioning.retained_missing_count %}
+            <p class="mt-1 text-sm font-semibold text-base-content/70">
+                {{ commissioning.current_discovery_count }} found now · {{ commissioning.retained_missing_count }} saved draft{{ commissioning.retained_missing_count|pluralize }} not seen in the latest scan
+            </p>
+            {% endif %}
             {% if commissioning.review_equipment_count %}
             <p class="mt-1 text-sm text-base-content/60">
                 {{ commissioning.review_equipment_count }} equipment item{{ commissioning.review_equipment_count|pluralize }} still need{{ commissioning.review_equipment_count|pluralize:"s," }} review and a matching template before deployment.

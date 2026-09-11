@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+import re
 import uuid
 from datetime import datetime
 
@@ -1464,7 +1465,7 @@ def htmx_device_create(request, team_slug):
 def template_library_search(request, team_slug):
     query = request.GET.get("q", "").strip()[:100]
     candidate_index = request.GET.get("candidate_index", "")
-    if not candidate_index.isdigit():
+    if not re.fullmatch(r"(?:\d+|saved-\d+)", candidate_index):
         candidate_index = ""
     templates = (
         visible_templates_for_team(request.team)

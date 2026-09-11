@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
-from datetime import timedelta, timezone as datetime_timezone
+from datetime import timedelta
+from datetime import timezone as datetime_timezone
 
 from django.conf import settings
 from django.db import transaction
-from django.utils.dateparse import parse_datetime
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from apps.dashboard.services import generate_default_dashboard
 
@@ -202,6 +204,42 @@ def connection_from_candidate(candidate: dict) -> dict:
             }
         )
     return connection
+
+
+def equipment_candidate_key(candidate: dict, connection: dict | None = None) -> str:
+    """Return a normalized endpoint identity that remains stable when scan order changes."""
+    candidate = candidate or {}
+    connection = connection or connection_from_candidate(candidate)
+    protocol = str(candidate.get("connection") or candidate.get("protocol") or "unknown").strip().lower()
+    interface = str(candidate.get("interface") or candidate.get("port") or "").strip()
+
+    if protocol == "modbus_tcp":
+        host = str(connection.get("host") or candidate.get("host") or "").strip()
+        port = connection.get("port") or candidate.get("port") or 502
+        if not host:
+            parsed_host, separator, raw_port = interface.rpartition(":")
+            host = parsed_host if separator else interface
+            if separator and raw_port.isdigit():
+                port = raw_port
+        try:
+            host = str(ipaddress.ip_address(host))
+        except ValueError:
+            host = host.lower()
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            port = 502
+        return f"modbus_tcp|{host}|{port}" if host else ""
+
+    if protocol == "modbus_rtu":
+        serial_port = str(connection.get("serial_port") or interface).strip().lower()
+        try:
+            unit_id = int(connection.get("slave_id") or candidate.get("slave_id") or 1)
+        except (TypeError, ValueError):
+            unit_id = 1
+        return f"modbus_rtu|{serial_port}|{unit_id}" if serial_port else ""
+
+    return f"{protocol}|{interface.lower()}" if interface else ""
 
 
 @transaction.atomic
@@ -505,19 +543,39 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
     }
 
 
-def create_or_update_candidate_item(*, run, index: int, candidate: dict) -> DeploymentSetupItem:
+def create_or_update_candidate_item(*, run, index: int | None, candidate: dict) -> DeploymentSetupItem:
     score = min(100, max(0, int(candidate.get("matched_template_score") or 0)))
-    item, _ = DeploymentSetupItem.objects.update_or_create(
-        run=run,
-        discovery_index=index,
-        defaults={
-            "team": run.team,
-            "candidate_data": candidate,
-            "confidence_score": score,
-            "confidence_explanation": confidence_explanation(candidate),
-            "connection": connection_from_candidate(candidate),
-        },
-    )
+    connection = connection_from_candidate(candidate)
+    candidate_key = equipment_candidate_key(candidate, connection)
+    item = None
+    if candidate_key:
+        item = DeploymentSetupItem.objects.filter(run=run, candidate_key=candidate_key).first()
+    if item is None and index is not None:
+        legacy_items = DeploymentSetupItem.objects.filter(
+            run=run,
+            discovery_index=index,
+            device__isnull=True,
+            candidate_key="",
+        )
+        item = next(
+            (
+                legacy
+                for legacy in legacy_items
+                if not equipment_candidate_key(legacy.candidate_data, legacy.connection)
+                or equipment_candidate_key(legacy.candidate_data, legacy.connection) == candidate_key
+            ),
+            None,
+        )
+    if item is None:
+        item = DeploymentSetupItem(run=run, team=run.team)
+    item.discovery_index = index
+    item.candidate_key = candidate_key
+    item.candidate_data = candidate
+    item.confidence_score = score
+    item.confidence_explanation = confidence_explanation(candidate)
+    item.connection = connection
+    item.removed_at = None
+    item.save()
     return item
 
 
@@ -665,6 +723,11 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
                     "scan_id": active_scan_id,
                     "device_count": len(discovery.get("devices") or []),
                     "error_count": len(discovery.get("errors") or []),
+                    "candidate_keys": [
+                        equipment_candidate_key(candidate)
+                        for candidate in (discovery.get("devices") or [])
+                        if equipment_candidate_key(candidate)
+                    ],
                 },
             )
 
