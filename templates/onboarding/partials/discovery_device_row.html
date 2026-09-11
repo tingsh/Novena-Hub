@@ -65,7 +65,9 @@
                 <input type="text" name="name_{{ candidate.index }}" value="{{ candidate.signature }}"
                        class="input input-bordered input-sm w-full rounded-lg">
             </label>
-            <div class="form-control" id="template-search-context-{{ candidate.index }}">
+            <div class="form-control" id="template-search-context-{{ candidate.index }}"
+                 @click.outside="searchOpen = false"
+                 @keydown.escape.window="searchOpen = false">
                 <span class="label-text mb-1 text-xs font-bold">Equipment template</span>
                 <input type="hidden" name="template_{{ candidate.index }}" :value="templateId">
                 <input type="hidden" name="context" value="guided_setup">
@@ -92,7 +94,7 @@
                            @focus="searchOpen = true">
                     <i class="fa fa-search pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-base-content/30" aria-hidden="true"></i>
                 </div>
-                <div id="template-results-{{ candidate.index }}" x-show="searchOpen"
+                <div id="template-results-{{ candidate.index }}" x-show="searchOpen" x-cloak
                      class="mt-2 max-h-56 overflow-y-auto rounded-lg border border-base-content/10 bg-base-100 shadow-lg">
                     <p class="p-3 text-xs text-base-content/45">Start typing to search the Novena template library.</p>
                 </div>

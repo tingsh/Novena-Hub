@@ -549,6 +549,9 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, "0 of 5 validated")
         self.assertContains(response, "5 equipment items still need review")
         self.assertContains(response, "Review this equipment before validation", count=5)
+        self.assertContains(response, '@click.outside="searchOpen = false"', count=5)
+        self.assertContains(response, '@keydown.escape.window="searchOpen = false"', count=5)
+        self.assertContains(response, 'x-show="searchOpen" x-cloak', count=5)
         self.assertNotContains(response, "High-confidence matches")
 
     def test_discovered_equipment_name_can_be_saved_without_a_template(self):
