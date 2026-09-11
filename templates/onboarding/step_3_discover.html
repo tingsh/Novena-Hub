@@ -29,11 +29,7 @@
             {% include "onboarding/partials/discovery_scan_state.html" %}
         </div>
 
-        <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="validate_selected">
-            {% include "onboarding/partials/discovery_region.html" %}
-        </form>
+        {% include "onboarding/partials/discovery_region.html" %}
     </section>
 
     {% if setup_items %}

@@ -38,24 +38,29 @@
                         {% endfor %}
                     </select>
                 </label>
-                {% if candidate.connection == "modbus_tcp" %}
-                <label class="form-control">
-                    <span class="label-text text-xs font-bold mb-1">Equipment IP address</span>
-                    <input type="text" name="host_{{ candidate.index }}" value="{{ candidate.host }}" {% if disabled %}disabled{% endif %}
-                           class="input input-bordered input-sm w-full rounded-lg" required>
-                </label>
-                <label class="form-control">
-                    <span class="label-text text-xs font-bold mb-1">Modbus TCP port</span>
-                    <input type="number" min="1" max="65535" name="port_{{ candidate.index }}" value="{{ candidate.port|default:502 }}" {% if disabled %}disabled{% endif %}
-                           class="input input-bordered input-sm w-full rounded-lg" required>
-                </label>
-                {% endif %}
                 {% if candidate.connection == "modbus_tcp" or candidate.connection == "modbus_rtu" %}
-                <label class="form-control">
-                    <span class="label-text text-xs font-bold mb-1">Modbus slave / unit ID</span>
-                    <input type="number" min="1" max="247" name="slave_id_{{ candidate.index }}" value="{{ candidate.slave_id|default:1 }}" {% if disabled %}disabled{% endif %}
-                           class="input input-bordered input-sm w-full rounded-lg" required>
-                </label>
+                <details class="rounded-lg border border-base-content/10 bg-base-200/30 sm:col-span-2">
+                    <summary class="cursor-pointer px-3 py-2 text-xs font-bold text-base-content/60">Advanced connection settings</summary>
+                    <div class="grid grid-cols-1 gap-3 border-t border-base-content/10 p-3 sm:grid-cols-3">
+                        {% if candidate.connection == "modbus_tcp" %}
+                        <label class="form-control sm:col-span-2">
+                            <span class="label-text text-xs font-bold mb-1">Equipment IP address</span>
+                            <input type="text" name="host_{{ candidate.index }}" value="{{ candidate.host }}" {% if disabled %}disabled{% endif %}
+                                   class="input input-bordered input-sm w-full rounded-lg" required>
+                        </label>
+                        <label class="form-control">
+                            <span class="label-text text-xs font-bold mb-1">Network port</span>
+                            <input type="number" min="1" max="65535" name="port_{{ candidate.index }}" value="{{ candidate.port|default:502 }}" {% if disabled %}disabled{% endif %}
+                                   class="input input-bordered input-sm w-full rounded-lg" required>
+                        </label>
+                        {% endif %}
+                        <label class="form-control">
+                            <span class="label-text text-xs font-bold mb-1">Equipment unit ID</span>
+                            <input type="number" min="1" max="247" name="slave_id_{{ candidate.index }}" value="{{ candidate.slave_id|default:1 }}" {% if disabled %}disabled{% endif %}
+                                   class="input input-bordered input-sm w-full rounded-lg" required>
+                        </label>
+                    </div>
+                </details>
                 {% endif %}
             </div>
             {% if candidate.matched_template_name %}

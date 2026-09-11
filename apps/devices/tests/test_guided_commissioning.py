@@ -400,7 +400,10 @@ class GuidedSetupViewTest(TestCase):
         self._enable_guided_setup()
 
         page = self.client.get(self.url)
-        self.assertContains(page, "Check a specific Modbus TCP address or simulator port")
+        self.assertContains(page, "Advanced settings")
+        self.assertContains(page, "Check equipment using a known network address")
+        self.assertContains(page, "Most customers do not need this")
+        self.assertNotContains(page, "simulator port")
         self.assertContains(page, 'name="target_port"')
 
         response = self.client.post(
@@ -521,7 +524,7 @@ class GuidedSetupViewTest(TestCase):
         self.gateway.save(update_fields=["discovery_data"])
         response = self.client.get(self.url)
         self.assertContains(response, 'hx-trigger="none"')
-        self.assertContains(response, 'id="specific-endpoint-scan" hx-preserve')
+        self.assertContains(response, 'id="advanced-discovery-settings" hx-preserve')
 
     def test_recent_scan_start_keeps_customer_visible_scanning_state(self):
         self._enable_guided_setup()

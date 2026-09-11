@@ -18,12 +18,48 @@
      hx-swap="outerHTML"
      x-data="{ selectedCount: {{ commissioning.ready_candidates|length }} }"
      @change="if ($event.target.name === 'device_index') selectedCount = $root.querySelectorAll('input[name=device_index]:checked').length">
-    {% include "onboarding/partials/discovery_devices.html" %}
-    <div class="flex flex-col gap-3 border-t border-base-content/10 p-5 sm:flex-row sm:items-center sm:justify-between">
-        <p class="text-xs text-base-content/50">Validation performs read-only checks. It does not start monitoring or change equipment.</p>
-        <button type="submit" class="btn btn-primary btn-sm rounded-lg"
-                :disabled="selectedCount === 0" {% if not commissioning.device_candidates %}disabled{% endif %}>
-            Validate selected equipment<i class="fa fa-arrow-right ml-2"></i>
-        </button>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="validate_selected">
+        {% include "onboarding/partials/discovery_devices.html" %}
+        <div class="flex flex-col gap-3 border-t border-base-content/10 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-xs text-base-content/50">Validation performs read-only checks. It does not start monitoring or change equipment.</p>
+            <button type="submit" class="btn btn-primary btn-sm rounded-lg"
+                    :disabled="selectedCount === 0" {% if not commissioning.device_candidates %}disabled{% endif %}>
+                Validate selected equipment<i class="fa fa-arrow-right ml-2"></i>
+            </button>
+        </div>
+    </form>
+    {% if scan_state.key != "scanning" and guided_setup_available %}
+    <div class="border-t border-base-content/10 bg-base-200/20 p-5">
+        <details id="advanced-discovery-settings" hx-preserve class="rounded-xl border border-base-content/10 bg-base-100">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-4">
+                <span>
+                    <span class="block text-sm font-bold text-base-content/75">Advanced settings</span>
+                    <span class="mt-1 block text-xs text-base-content/50">Check equipment using a known network address</span>
+                </span>
+                <i class="fa fa-chevron-down text-xs text-base-content/35" aria-hidden="true"></i>
+            </summary>
+            <div class="border-t border-base-content/10 p-4">
+                <p class="mb-4 max-w-3xl text-xs text-base-content/55">
+                    Most customers do not need this. Use it when equipment was not found and your installer, controls engineer, or IT team provided its network details.
+                </p>
+                <form method="post" class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="start_target_discovery">
+                    <label class="form-control">
+                        <span class="label-text mb-1 text-xs font-bold">Equipment IP address</span>
+                        <input class="input input-bordered input-sm rounded-lg" name="target_host" required placeholder="10.0.0.20" inputmode="decimal">
+                    </label>
+                    <label class="form-control">
+                        <span class="label-text mb-1 text-xs font-bold">Network port</span>
+                        <input class="input input-bordered input-sm rounded-lg" type="number" name="target_port" min="1" max="65535" value="502" required>
+                    </label>
+                    <button class="btn btn-outline btn-sm rounded-lg" type="submit">Check address</button>
+                </form>
+                <p class="mt-3 text-xs text-base-content/45">Modbus TCP normally uses port 502. Only the address and port you enter will be checked.</p>
+            </div>
+        </details>
     </div>
+    {% endif %}
 </div>

@@ -43,6 +43,6 @@
         <i class="fa fa-search text-2xl"></i>
     </div>
     <p class="text-sm font-semibold text-base-content/65">{% if scan_state.key == "empty" %}No equipment found{% elif scan_state.key == "error" %}Scan failed{% elif scan_state.key == "scanning" %}Scanning connected equipment{% else %}Ready to scan{% endif %}</p>
-    <p class="mt-1 text-xs text-base-content/45">{% if scan_state.key == "scanning" %}Results will appear here as the Gateway checks wired Ethernet and Modbus RTU ports.{% else %}Connect equipment to the Gateway field Ethernet port or Modbus RTU serial, then scan or use the manual fallback.{% endif %}</p>
+    <p class="mt-1 text-xs text-base-content/45">{% if scan_state.key == "scanning" %}Results will appear here as the Gateway checks wired Ethernet and Modbus RTU ports.{% else %}Connect equipment to the Gateway field Ethernet port or Modbus RTU serial, then scan. If it is still missing, open Advanced settings below.{% endif %}</p>
 </div>
 {% endif %}
