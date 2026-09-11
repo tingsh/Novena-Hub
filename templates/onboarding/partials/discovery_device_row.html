@@ -6,6 +6,7 @@
          templateId: '{% if candidate.matched_template %}{{ candidate.matched_template.id }}{% endif %}',
          templateName: '{{ candidate.matched_template_name|escapejs }}',
          templateTrust: '{{ candidate.trust_label|escapejs }}',
+         equipmentName: '{{ candidate.signature|escapejs }}',
          searchOpen: false
      }"
      @template-picked="templateId = $event.detail.id; templateName = $event.detail.name; templateTrust = $event.detail.trust; selected = true; searchOpen = false; $nextTick(() => $dispatch('candidate-selection-changed'))">
@@ -13,11 +14,11 @@
         <div class="row-span-2 flex items-start pt-1 lg:row-auto lg:pt-0">
             <input x-ref="selector" type="checkbox" name="device_index" value="{{ candidate.index }}"
                    x-model="selected" @change="$dispatch('candidate-selection-changed')"
-                   aria-label="Select {{ candidate.signature }} for validation"
+                   :aria-label="`Select ${equipmentName} for validation`"
                    class="checkbox checkbox-primary checkbox-sm rounded">
         </div>
         <div class="min-w-0">
-            <p class="truncate text-sm font-bold text-base-content">{{ candidate.signature }}</p>
+            <p class="truncate text-sm font-bold text-base-content" x-text="equipmentName">{{ candidate.signature }}</p>
             <p class="mt-0.5 text-[11px] text-base-content/45 lg:hidden">Detected equipment</p>
         </div>
         <div class="col-start-1 min-w-0 pl-9 lg:col-auto lg:pl-0">
@@ -63,6 +64,7 @@
             <label class="form-control">
                 <span class="label-text mb-1 text-xs font-bold">Equipment name</span>
                 <input type="text" name="name_{{ candidate.index }}" value="{{ candidate.signature }}"
+                       x-model="equipmentName"
                        class="input input-bordered input-sm w-full rounded-lg">
             </label>
             <div class="form-control" id="template-search-context-{{ candidate.index }}"
@@ -135,13 +137,13 @@
             <div>
                 <p class="text-xs font-bold text-base-content/65">Can’t find the matching template?</p>
                 <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                    <button type="submit" name="action" value="request_candidate_template:{{ candidate.index }}" formnovalidate
+                    <button type="submit" name="request_candidate_template" value="{{ candidate.index }}" formnovalidate
                             class="text-xs font-semibold text-primary hover:underline">Request a Novena template</button>
-                    <button type="submit" name="action" value="start_custom_template:{{ candidate.index }}" formnovalidate
+                    <button type="submit" name="start_custom_template" value="{{ candidate.index }}" formnovalidate
                             class="text-xs font-semibold text-primary hover:underline">Create a custom template</button>
                 </div>
             </div>
-            <button type="submit" name="action" value="save_candidate_draft:{{ candidate.index }}" formnovalidate
+            <button type="submit" name="save_candidate_draft" value="{{ candidate.index }}" formnovalidate
                     class="btn btn-outline btn-sm rounded-lg">
                 <i class="fa fa-floppy-disk mr-2" aria-hidden="true"></i>Save draft
             </button>

@@ -605,6 +605,15 @@ def step_3_discover(request, team_slug):
 
     if request.method == "POST":
         action = request.POST.get("action", "validate_selected")
+        for candidate_action in (
+            "save_candidate_draft",
+            "start_custom_template",
+            "request_candidate_template",
+        ):
+            candidate_index = request.POST.get(candidate_action)
+            if candidate_index is not None:
+                action = f"{candidate_action}:{candidate_index}"
+                break
         if action in {"start_discovery", "start_target_discovery"}:
             if not gateway_supports_guided_setup(gateway):
                 messages.warning(

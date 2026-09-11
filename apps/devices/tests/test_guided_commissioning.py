@@ -573,7 +573,8 @@ class GuidedSetupViewTest(TestCase):
         response = self.client.post(
             self.url,
             {
-                "action": "save_candidate_draft:0",
+                "action": "validate_selected",
+                "save_candidate_draft": "0",
                 "name_0": "Main incomer meter",
                 "template_0": "",
                 "host_0": "10.0.0.20",
@@ -594,6 +595,9 @@ class GuidedSetupViewTest(TestCase):
         page = self.client.get(self.url)
         self.assertContains(page, "Draft saved · Needs template")
         self.assertContains(page, 'name="name_0" value="Main incomer meter"')
+        self.assertContains(page, "equipmentName: 'Main incomer meter'")
+        self.assertContains(page, 'x-text="equipmentName"')
+        self.assertContains(page, 'name="save_candidate_draft" value="0"')
         self.assertContains(page, "Save draft")
 
     def test_candidate_template_search_is_actionable_and_draft_can_open_custom_builder(self):
@@ -634,7 +638,8 @@ class GuidedSetupViewTest(TestCase):
         redirect_to_builder = self.client.post(
             self.url,
             {
-                "action": "start_custom_template:0",
+                "action": "validate_selected",
+                "start_custom_template": "0",
                 "name_0": "Main incomer meter",
                 "template_0": "",
                 "host_0": "10.0.0.20",
@@ -713,7 +718,8 @@ class GuidedSetupViewTest(TestCase):
         self.client.post(
             self.url,
             {
-                "action": "request_candidate_template:0",
+                "action": "validate_selected",
+                "request_candidate_template": "0",
                 "name_0": "Packaging meter",
                 "template_0": "",
                 "host_0": "10.0.0.20",
