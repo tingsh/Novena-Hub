@@ -42,7 +42,8 @@ class OnboardingConnectionTest(TestCase):
     def test_gateway_config_endpoint_contract(self):
         url = reverse("web_team:devices:gateway_push_config", args=[self.team.slug, self.gateway.pk])
         self.gateway.gateway_capabilities = ["guided_setup_v1"]
-        self.gateway.save(update_fields=["gateway_capabilities"])
+        self.gateway.remote_control_clock_ready = True
+        self.gateway.save(update_fields=["gateway_capabilities", "remote_control_clock_ready"])
 
         invalid = self.client.post(
             url,

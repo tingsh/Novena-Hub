@@ -18,6 +18,7 @@ from apps.devices.deployment_setup import (
 )
 from apps.devices.gateway_config_delivery import (
     dispatch_gateway_config_outbox,
+    gateway_supports_guided_setup,
     queue_gateway_config,
 )
 from apps.devices.models import (
@@ -55,6 +56,7 @@ class GatewayConfigDeliveryTest(TestCase):
             serial_number="NF-GUIDED-001",
             access_token="guided-token",
             gateway_capabilities=["guided_setup_v1"],
+            remote_control_clock_ready=True,
             status="online",
             mqtt_connected=True,
             last_seen=timezone.now(),
@@ -75,6 +77,13 @@ class GatewayConfigDeliveryTest(TestCase):
         self.assertTrue(GatewayConfigOutbox.objects.filter(config=first, status="completed").exists())
         self.assertTrue(GatewayConfigOutbox.objects.filter(config=second, status="pending").exists())
         schedule.assert_not_called()
+
+    def test_guided_setup_capability_requires_live_clock_readiness(self):
+        self.assertTrue(gateway_supports_guided_setup(self.gateway))
+
+        self.gateway.remote_control_clock_ready = False
+
+        self.assertFalse(gateway_supports_guided_setup(self.gateway))
 
     @patch("apps.telemetry.mqtt_publisher.publish_config_envelope")
     @patch("apps.devices.gateway_config_delivery._schedule_config_dispatch")
@@ -120,6 +129,7 @@ class DeploymentSetupWorkflowTest(TestCase):
             mqtt_connected=True,
             tls_ok=True,
             firmware_version="1.0.0",
+            remote_control_clock_ready=True,
             last_seen=timezone.now(),
         )
         self.template = DeviceTemplate.objects.create(
@@ -318,7 +328,18 @@ class GuidedSetupViewTest(TestCase):
 
     def _enable_guided_setup(self):
         self.gateway.gateway_capabilities = ["guided_setup_v1"]
-        self.gateway.save(update_fields=["gateway_capabilities"])
+        self.gateway.remote_control_clock_ready = True
+        self.gateway.save(update_fields=["gateway_capabilities", "remote_control_clock_ready"])
+
+    def test_scan_waits_for_clock_without_claiming_gateway_update_is_required(self):
+        self.gateway.gateway_capabilities = ["guided_setup_v1"]
+        self.gateway.remote_control_clock_ready = False
+        self.gateway.save(update_fields=["gateway_capabilities", "remote_control_clock_ready"])
+
+        response = self.client.post(self.url, {"action": "start_discovery"}, follow=True)
+
+        self.assertContains(response, "synchronizing its secure clock")
+        self.assertContains(response, "scanning will unlock automatically")
 
     def test_gateway_wait_refreshes_stale_blocked_readiness_after_heartbeat(self):
         self.gateway.status = "offline"
@@ -333,8 +354,11 @@ class GuidedSetupViewTest(TestCase):
         self.gateway.status = "online"
         self.gateway.mqtt_connected = True
         self.gateway.tls_ok = True
+        self.gateway.remote_control_clock_ready = True
         self.gateway.last_seen = timezone.now()
-        self.gateway.save(update_fields=["status", "mqtt_connected", "tls_ok", "last_seen"])
+        self.gateway.save(
+            update_fields=["status", "mqtt_connected", "tls_ok", "remote_control_clock_ready", "last_seen"]
+        )
 
         response = self.client.get(reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug]))
 
@@ -1297,8 +1321,7 @@ class GuidedSetupViewTest(TestCase):
 
     @patch("apps.devices.deployment_setup.start_validation")
     def test_manual_setup_creates_private_unverified_template(self, _validation):
-        self.gateway.gateway_capabilities = ["guided_setup_v1"]
-        self.gateway.save(update_fields=["gateway_capabilities"])
+        self._enable_guided_setup()
         response = self.client.post(
             self.url,
             {
@@ -1334,8 +1357,7 @@ class GuidedSetupViewTest(TestCase):
 
     @patch("apps.devices.deployment_setup.start_validation")
     def test_manual_setup_enforces_team_device_limit(self, validation):
-        self.gateway.gateway_capabilities = ["guided_setup_v1"]
-        self.gateway.save(update_fields=["gateway_capabilities"])
+        self._enable_guided_setup()
         for index in range(3):
             Device.objects.create(
                 team=self.team,

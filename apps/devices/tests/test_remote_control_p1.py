@@ -110,6 +110,22 @@ class RemoteControlP1Test(TestCase):
             )
         self.assertEqual(raised.exception.code, "protocol_not_advertised")
 
+    def test_signed_setup_diagnostic_is_blocked_until_gateway_clock_is_ready(self):
+        self.gateway.remote_control_clock_ready = False
+        self.gateway.save(update_fields=["remote_control_clock_ready"])
+
+        with self.assertRaises(CommandDenied) as raised:
+            request_remote_command(
+                gateway=self.gateway,
+                operation="deployment_discover",
+                requested_by=self.user,
+                params={"scope": "attached_interfaces"},
+            )
+
+        self.assertEqual(raised.exception.code, "gateway_clock_not_ready")
+        command = RemoteCommand.objects.get(operation="deployment_discover")
+        self.assertEqual(command.status, RemoteCommand.Status.POLICY_DENIED)
+
     def test_unknown_compatibility_methods_are_rejected_without_write_inference(self):
         with self.assertRaisesRegex(ValueError, "Unknown or unsupported"):
             canonical_device_operation("toggle")

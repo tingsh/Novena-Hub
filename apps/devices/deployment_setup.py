@@ -296,7 +296,8 @@ def get_or_create_setup_run(*, team, gateway: Gateway, initiated_by=None) -> Dep
 
 def gateway_readiness(gateway: Gateway) -> dict:
     freshness = gateway.freshness
-    capability_ready = "guided_setup_v1" in set(gateway.gateway_capabilities or [])
+    clock_ready = bool(gateway.remote_control_clock_ready)
+    capability_ready = clock_ready and "guided_setup_v1" in set(gateway.gateway_capabilities or [])
     checks = [
         {
             "key": "gateway_online",
@@ -334,6 +335,18 @@ def gateway_readiness(gateway: Gateway) -> dict:
             "blocking": True,
         },
         {
+            "key": "clock",
+            "label": "Gateway clock",
+            "status": "pass" if clock_ready else "fail",
+            "message": (
+                "Gateway clock is synchronized."
+                if clock_ready
+                else "The Gateway is synchronizing its secure clock."
+            ),
+            "action": "Keep the Gateway online. Setup unlocks automatically after time synchronization.",
+            "blocking": True,
+        },
+        {
             "key": "firmware",
             "label": "Gateway software",
             "status": "pass" if gateway.firmware_version else "warning",
@@ -352,9 +365,17 @@ def gateway_readiness(gateway: Gateway) -> dict:
             "message": (
                 "Secure Guided Setup is available."
                 if capability_ready
-                else "This Gateway can continue with basic setup, but some guided checks are unavailable."
+                else (
+                    "Guided Setup will become available after clock synchronization."
+                    if not clock_ready
+                    else "This Gateway can continue with basic setup, but some guided checks are unavailable."
+                )
             ),
-            "action": "Ask a technician to update the Gateway software before the next commissioning visit.",
+            "action": (
+                "Wait for secure clock synchronization."
+                if not clock_ready
+                else "Ask a technician to update the Gateway software before the next commissioning visit."
+            ),
             "blocking": False,
         },
         {

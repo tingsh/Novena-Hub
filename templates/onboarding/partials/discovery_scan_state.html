@@ -64,6 +64,10 @@
 </div>
 {% if not guided_setup_available %}
 <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+    {% if gateway and not gateway.remote_control_clock_ready %}
+    <i class="fa fa-clock mr-2"></i>The Gateway is synchronizing its secure clock. Keep it connected to the internet; scanning will unlock automatically when it is ready.
+    {% else %}
     <i class="fa fa-circle-info mr-2"></i>This Gateway is in compatibility mode. You can use saved discovery results with a Novena-verified template. Secure scanning, private templates, and guided manual validation require a Gateway software/key update.
+    {% endif %}
 </div>
 {% endif %}

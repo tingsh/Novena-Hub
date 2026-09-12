@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from django.contrib.auth.hashers import check_password
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from apps.devices.activation import encrypt_activation_secret
 from apps.devices.config_generator import generate_connector_config
@@ -132,8 +133,6 @@ class GatewayClaimWorkflowTest(TestCase):
         mock_publish.assert_called_once()
 
     def test_activation_acknowledgement_clears_secret_and_is_idempotent(self):
-        from django.utils import timezone
-
         from apps.telemetry.management.commands.mqtt_consumer import Command
 
         gateway = Gateway.objects.create(
@@ -178,6 +177,60 @@ class GatewayClaimWorkflowTest(TestCase):
         self.assertEqual(activation.encrypted_mqtt_password, "")
         self.assertEqual(gateway.credential_rotation_status, "success")
         self.assertEqual(gateway.lifecycle_status, "online")
+
+    def test_heartbeat_with_large_clock_skew_blocks_signed_setup(self):
+        from apps.telemetry.management.commands.mqtt_consumer import Command
+
+        gateway = Gateway.objects.create(
+            team=self.team,
+            site=self.site,
+            name="Skewed Gateway",
+            serial_number="NF-SKEWED-001",
+            access_token="skewed-token",
+            remote_control_clock_ready=True,
+            gateway_capabilities=["guided_setup_v1"],
+        )
+        Command()._handle_attributes(
+            {
+                "serial_number": gateway.serial_number,
+                "ts": int((timezone.now() - timezone.timedelta(minutes=3)).timestamp() * 1000),
+                "attributes": {
+                    "remote_control_clock_ready": True,
+                    "gateway_capabilities": ["guided_setup_v1"],
+                },
+            },
+            gateway=gateway,
+        )
+
+        gateway.refresh_from_db()
+        self.assertFalse(gateway.remote_control_clock_ready)
+        self.assertNotIn("guided_setup_v1", gateway.gateway_capabilities)
+
+    def test_heartbeat_with_current_clock_preserves_signed_setup_readiness(self):
+        from apps.telemetry.management.commands.mqtt_consumer import Command
+
+        gateway = Gateway.objects.create(
+            team=self.team,
+            site=self.site,
+            name="Synchronized Gateway",
+            serial_number="NF-SYNCED-001",
+            access_token="synced-token",
+        )
+        Command()._handle_attributes(
+            {
+                "serial_number": gateway.serial_number,
+                "ts": int(timezone.now().timestamp() * 1000),
+                "attributes": {
+                    "remote_control_clock_ready": True,
+                    "gateway_capabilities": ["guided_setup_v1"],
+                },
+            },
+            gateway=gateway,
+        )
+
+        gateway.refresh_from_db()
+        self.assertTrue(gateway.remote_control_clock_ready)
+        self.assertIn("guided_setup_v1", gateway.gateway_capabilities)
 
     def test_stale_activation_ack_does_not_acknowledge_current_activation(self):
         from uuid import uuid4

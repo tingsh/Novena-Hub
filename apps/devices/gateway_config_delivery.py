@@ -26,13 +26,20 @@ class GatewayConfigUnsupported(ValueError):
 
 
 def gateway_supports_guided_setup(gateway) -> bool:
-    return GUIDED_SETUP_CAPABILITY in set(gateway.gateway_capabilities or [])
+    return bool(
+        gateway.remote_control_clock_ready
+        and GUIDED_SETUP_CAPABILITY in set(gateway.gateway_capabilities or [])
+    )
 
 
 def ensure_gateway_configurable(gateway):
     if gateway.lifecycle_status in {"release_pending", "released"}:
         raise GatewayConfigUnsupported("This Gateway is being released and cannot receive settings.")
     if not gateway_supports_guided_setup(gateway):
+        if not gateway.remote_control_clock_ready:
+            raise GatewayConfigUnsupported(
+                "The Gateway clock is still synchronizing. Wait for it to become ready before sending settings."
+            )
         raise GatewayConfigUnsupported(
             "Update this Gateway before sending settings. Its current software does not support secure Guided Setup."
         )

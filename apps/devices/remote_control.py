@@ -363,6 +363,16 @@ def _request_remote_command_atomic(
         site=device.site if device else gateway.site,
     ):
         denial = ("permission_denied", "You do not have permission to request this command.")
+    elif operation in {
+        "scan_devices",
+        "deployment_preflight",
+        "deployment_discover",
+        "deployment_validate",
+    } and not gateway.remote_control_clock_ready:
+        denial = (
+            "gateway_clock_not_ready",
+            "The Gateway clock is still synchronizing. Wait a moment, then retry.",
+        )
     elif definition.state_changing and team.remote_control_mode != Team.RemoteControlMode.CONTROLLED:
         denial = ("monitoring_only", "Remote state-changing commands are disabled for this team.")
     elif definition.state_changing and (capability_denial := state_change_capability_error(gateway)):

@@ -146,7 +146,11 @@
                     <select class="select select-bordered select-sm" name="manual_stopbits"><option value="1">1 stop bit</option><option value="2">2 stop bits</option></select>
                 </div>
                 <button class="btn btn-primary w-full rounded-lg" type="submit" {% if not guided_setup_available %}disabled{% endif %}>Create private template and review signals</button>
-                {% if not guided_setup_available %}<p class="text-xs text-amber-700 dark:text-amber-300">Update this Gateway to validate manual or AI-assisted drafts safely.</p>{% endif %}
+                {% if not guided_setup_available %}
+                <p class="text-xs text-amber-700 dark:text-amber-300">
+                    {% if gateway and not gateway.remote_control_clock_ready %}The Gateway clock is synchronizing. This form will unlock automatically when secure validation is ready.{% else %}Update this Gateway to validate manual or AI-assisted drafts safely.{% endif %}
+                </p>
+                {% endif %}
             </form>
 
             <div class="space-y-6">

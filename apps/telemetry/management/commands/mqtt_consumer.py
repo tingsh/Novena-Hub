@@ -8,6 +8,7 @@ from django.db.models.fields import NOT_PROVIDED
 from django.utils import timezone
 
 logger = logging.getLogger("novena_hub")
+MAX_SIGNED_COMMAND_CLOCK_SKEW_SECONDS = 120
 
 SCOPED_INBOUND_TOPICS = {
     "telemetry": "v1/gateway/+/telemetry",
@@ -22,6 +23,20 @@ LEGACY_SHARED_TOPICS = {
     "v1/gateway/attributes": "attributes",
     "v1/gateway/rpc/response": "rpc_response",
 }
+
+
+def heartbeat_clock_skew_seconds(payload, *, received_at=None):
+    """Return absolute Gateway-to-Hub clock skew from a heartbeat timestamp."""
+    try:
+        gateway_timestamp = float(payload.get("ts"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if gateway_timestamp <= 0:
+        return None
+    if gateway_timestamp > 100_000_000_000:
+        gateway_timestamp /= 1000
+    received_at = received_at or timezone.now()
+    return abs(received_at.timestamp() - gateway_timestamp)
 
 
 class Command(BaseCommand):
@@ -309,6 +324,7 @@ class Command(BaseCommand):
                 return
 
         attrs = payload.get("attributes", {})
+        previously_clock_ready = gateway.remote_control_clock_ready
 
         # Update gateway fields
         update_fields = ["last_seen"]
@@ -371,6 +387,22 @@ class Command(BaseCommand):
                     continue
                 setattr(gateway, model_field, value)
                 update_fields.append(model_field)
+
+        clock_skew = heartbeat_clock_skew_seconds(payload)
+        if clock_skew is not None and clock_skew > MAX_SIGNED_COMMAND_CLOCK_SKEW_SECONDS:
+            gateway.remote_control_clock_ready = False
+            gateway.gateway_capabilities = [
+                capability
+                for capability in (gateway.gateway_capabilities or [])
+                if capability != "guided_setup_v1"
+            ]
+            update_fields.extend(["remote_control_clock_ready", "gateway_capabilities"])
+            if previously_clock_ready or attrs.get("remote_control_clock_ready"):
+                logger.warning(
+                    "Gateway %s clock differs from Hub by %.0f seconds; signed setup commands are blocked.",
+                    gateway.serial_number,
+                    clock_skew,
+                )
 
         if attrs.get("status") == "online" and gateway.lifecycle_status == "claimed":
             gateway.lifecycle_status = "online"

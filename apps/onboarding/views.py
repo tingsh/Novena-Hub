@@ -666,11 +666,18 @@ def step_3_discover(request, team_slug):
                 break
         if action in {"start_discovery", "start_target_discovery"}:
             if not gateway_supports_guided_setup(gateway):
-                messages.warning(
-                    request,
-                    "This Gateway cannot run the safe Guided Setup scan yet. "
-                    "Update its software or use the manual option.",
-                )
+                if not gateway.remote_control_clock_ready:
+                    messages.warning(
+                        request,
+                        "The Gateway is synchronizing its secure clock. Keep it online; "
+                        "scanning will unlock automatically when it is ready.",
+                    )
+                else:
+                    messages.warning(
+                        request,
+                        "This Gateway cannot run the safe Guided Setup scan yet. "
+                        "Update its software or use the manual option.",
+                    )
             else:
                 run = _reattach_running_discovery(run)
                 if _has_active_discovery_scan(run):
@@ -1037,11 +1044,18 @@ def step_3_discover(request, team_slug):
 
         if action == "manual":
             if not guided_capable:
-                messages.warning(
-                    request,
-                    "Guided manual validation requires a Gateway software/key update. "
-                    "Use a Novena-verified template from saved discovery results for now.",
-                )
+                if not gateway.remote_control_clock_ready:
+                    messages.warning(
+                        request,
+                        "The Gateway is synchronizing its secure clock. Your saved work is safe; "
+                        "live validation will unlock automatically when it is ready.",
+                    )
+                else:
+                    messages.warning(
+                        request,
+                        "Guided manual validation requires a Gateway software/key update. "
+                        "Use a Novena-verified template from saved discovery results for now.",
+                    )
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             protocol = request.POST.get("manual_protocol")
             if protocol not in {"modbus_tcp", "modbus_rtu"}:
@@ -1313,11 +1327,18 @@ def step_3_discover(request, team_slug):
 
         if action == "deploy":
             if not guided_capable:
-                messages.error(
-                    request,
-                    "Update this Gateway before deploying settings. "
-                    "Secure remote setup is not available on its current software.",
-                )
+                if not gateway.remote_control_clock_ready:
+                    messages.error(
+                        request,
+                        "The Gateway is synchronizing its secure clock. Your configuration is saved; "
+                        "deployment will unlock automatically when it is ready.",
+                    )
+                else:
+                    messages.error(
+                        request,
+                        "Update this Gateway before deploying settings. "
+                        "Secure remote setup is not available on its current software.",
+                    )
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             run = sync_setup_run(run)
             validated_items = list(
@@ -1398,6 +1419,7 @@ def step_3_discover(request, team_slug):
 def discovery_poll(request, team_slug):
     """HTMX endpoint: returns discovery device list fragment."""
     from apps.devices.config_generator import human_config_preview
+    from apps.devices.gateway_config_delivery import gateway_supports_guided_setup
 
     gateway_id = request.session.get("onboarding_gateway_id")
     if not gateway_id:
@@ -1441,7 +1463,7 @@ def discovery_poll(request, team_slug):
             "setup_run": setup_run,
             "setup_items": setup_run.items.select_related("device", "selected_template") if setup_run else [],
             "scan_state": scan_state,
-            "guided_setup_available": bool(gateway and "guided_setup_v1" in set(gateway.gateway_capabilities or [])),
+            "guided_setup_available": bool(gateway and gateway_supports_guided_setup(gateway)),
             "include_scan_oob": True,
             "can_deploy": can_deploy,
             "config_preview": human_config_preview(gateway) if gateway else {},
