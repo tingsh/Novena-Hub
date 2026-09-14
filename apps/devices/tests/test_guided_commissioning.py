@@ -222,6 +222,13 @@ class DeploymentSetupWorkflowTest(TestCase):
         device.save(update_fields=["last_telemetry_at"])
         item.state = "applied"
         item.save(update_fields=["state"])
+        DeploymentSetupItem.objects.create(
+            team=self.team,
+            run=run,
+            candidate_key="modbus_tcp|10.0.0.99|502",
+            candidate_data={"skipped_for_now": True},
+            state="discovered",
+        )
 
         completed = sync_setup_run(run)
         item.refresh_from_db()
@@ -561,7 +568,7 @@ class GuidedSetupViewTest(TestCase):
                     "connection": "modbus_tcp",
                     "signature": f"Unknown device {index + 1}",
                 }
-                for index in range(5)
+                for index in range(12)
             ],
         }
         self.gateway.save(update_fields=["discovery_data"])
@@ -570,13 +577,17 @@ class GuidedSetupViewTest(TestCase):
 
         self.assertContains(response, "Equipment checklist")
         self.assertContains(response, 'role="table" aria-label="Discovered equipment"')
-        self.assertContains(response, 'data-equipment-row="candidate"', count=5)
-        self.assertContains(response, "0 of 5 validated")
-        self.assertContains(response, "5 equipment items still need review")
-        self.assertContains(response, "Review this equipment before validation", count=5)
-        self.assertContains(response, '@click.outside="searchOpen = false"', count=5)
-        self.assertContains(response, '@keydown.escape.window="searchOpen = false"', count=5)
-        self.assertContains(response, 'x-show="searchOpen" x-cloak', count=5)
+        self.assertContains(response, 'data-equipment-row="candidate"', count=12)
+        self.assertContains(response, "0 of 12 validated")
+        self.assertContains(response, "12 equipment items still need review")
+        self.assertContains(response, "Review this equipment before validation", count=12)
+        self.assertContains(response, '@click.outside="searchOpen = false"', count=12)
+        self.assertContains(response, '@keydown.escape.window="searchOpen = false"', count=12)
+        self.assertContains(response, 'x-show="searchOpen" x-cloak', count=12)
+        self.assertContains(response, 'data-row-status="Needs template"', count=12)
+        self.assertNotContains(response, "Include in validation")
+        self.assertNotContains(response, 'name="device_index"')
+        self.assertNotContains(response, "Validate selected equipment")
         self.assertNotContains(response, "High-confidence matches")
 
     def test_discovered_equipment_name_can_be_saved_without_a_template(self):
@@ -618,7 +629,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertFalse(Device.objects.filter(gateway=self.gateway).exists())
 
         page = self.client.get(self.url)
-        self.assertContains(page, "Draft saved · Needs template")
+        self.assertContains(page, "Saved as draft")
         self.assertContains(page, 'name="name_0" value="Main incomer meter"')
         self.assertContains(page, "equipmentName: 'Main incomer meter'")
         self.assertContains(page, 'x-text="equipmentName"')
@@ -654,6 +665,184 @@ class GuidedSetupViewTest(TestCase):
         )
         self.assertEqual(custom_builder.status_code, 302)
         self.assertIn("workflow=custom", custom_builder.url)
+
+    def test_skip_state_survives_reload_and_rescan_until_customer_resumes(self):
+        self._enable_guided_setup()
+        endpoint = {
+            "interface": "10.0.0.20:502",
+            "connection": "modbus_tcp",
+            "host": "10.0.0.20",
+            "port": 502,
+            "signature": "Unknown device",
+        }
+        self.gateway.discovery_data = {"status": "complete", "devices": [endpoint]}
+        self.gateway.save(update_fields=["discovery_data"])
+
+        skipped = self.client.post(
+            self.url,
+            {
+                "skip_candidate": "0",
+                "name_0": "Packaging meter",
+                "template_0": "",
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "1",
+            },
+        )
+
+        self.assertEqual(skipped.status_code, 302)
+        item = DeploymentSetupItem.objects.get(run__gateway=self.gateway)
+        self.assertTrue(item.candidate_data["skipped_for_now"])
+        page = self.client.get(self.url)
+        self.assertContains(page, "Saved as draft")
+        self.assertContains(page, "Skipped for now")
+        self.assertContains(page, 'name="resume_candidate" value="0"')
+
+        self.gateway.discovery_data = {"status": "complete", "devices": [{**endpoint, "signature": "Rediscovered"}]}
+        self.gateway.save(update_fields=["discovery_data"])
+        context = build_commissioning_context(self.team, gateway=self.gateway)
+        self.assertTrue(context["device_candidates"][0]["skipped_for_now"])
+        self.assertEqual(context["device_candidates"][0]["signature"], "Packaging meter")
+
+        resumed = self.client.post(
+            self.url,
+            {
+                "resume_candidate": "0",
+                "candidate_key_0": item.candidate_key,
+                "name_0": "Packaging meter",
+                "template_0": "",
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "1",
+            },
+        )
+        self.assertEqual(resumed.status_code, 302)
+        item.refresh_from_db()
+        self.assertFalse(item.candidate_data["skipped_for_now"])
+
+    def test_complete_draft_becomes_ready_and_validates_from_its_row(self):
+        self._enable_guided_setup()
+        template = DeviceTemplate.objects.create(
+            name="Simulator template",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
+            is_verified=True,
+        )
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [{
+                "interface": "10.0.0.20:502",
+                "connection": "modbus_tcp",
+                "host": "10.0.0.20",
+                "port": 502,
+                "signature": "Unknown device",
+            }],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        self.client.post(
+            self.url,
+            {
+                "save_candidate_draft": "0",
+                "name_0": "Simulator",
+                "template_0": str(template.pk),
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "7",
+            },
+        )
+
+        ready_page = self.client.get(self.url)
+        self.assertContains(ready_page, "Ready to validate")
+        self.assertContains(ready_page, 'name="save_and_validate" value="0"')
+
+        with patch("apps.devices.deployment_setup.start_validation") as validation:
+            response = self.client.post(
+                self.url,
+                {
+                    "save_and_validate": "0",
+                    "candidate_key_0": DeploymentSetupItem.objects.get(run__gateway=self.gateway).candidate_key,
+                    "name_0": "Simulator",
+                    "template_0": str(template.pk),
+                    "host_0": "10.0.0.20",
+                    "port_0": "502",
+                    "slave_id_0": "7",
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Device.objects.filter(gateway=self.gateway, name="Simulator").exists())
+        validation.assert_called_once()
+
+    def test_one_validated_device_unlocks_deployment_while_other_rows_remain_pending(self):
+        template = DeviceTemplate.objects.create(
+            name="Validated meter template",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
+            is_verified=True,
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            port="10.0.0.10:502",
+            name="Validated meter",
+            template=template,
+            device_type=template.device_type,
+            protocol=template.protocol,
+            connection_config={"host": "10.0.0.10", "port": 502, "slave_id": 1},
+        )
+        DeploymentSetupItem.objects.create(
+            team=self.team,
+            run=run,
+            device=device,
+            candidate_key="modbus_tcp|10.0.0.10|502",
+            candidate_data={"interface": "10.0.0.10:502", "connection": "modbus_tcp"},
+            selected_template=template,
+            state=DeploymentSetupItem.State.VALIDATED,
+        )
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Draft device",
+                },
+                {
+                    "interface": "10.0.0.21:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.21",
+                    "port": 502,
+                    "signature": "Skipped device",
+                },
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        for action, index in (("save_candidate_draft", "0"), ("skip_candidate", "1")):
+            self.client.post(
+                self.url,
+                {
+                    action: index,
+                    f"name_{index}": "Pending equipment",
+                    f"template_{index}": "",
+                    f"host_{index}": f"10.0.0.2{index}",
+                    f"port_{index}": "502",
+                    f"slave_id_{index}": "1",
+                },
+            )
+
+        page = self.client.get(self.url)
+
+        self.assertTrue(page.context["can_deploy"])
+        self.assertContains(page, "1 of 3 validated")
+        self.assertContains(page, "Deploy and continue")
+        self.assertContains(page, "Saved as draft")
+        self.assertContains(page, "Skipped for now")
 
     def test_rescan_reconciles_saved_drafts_by_endpoint_instead_of_row_order(self):
         self._enable_guided_setup()

@@ -14,6 +14,8 @@
             </p>
             {% elif commissioning.validation_equipment_count %}
             <p class="mt-1 text-sm text-base-content/60">Live validation is in progress. Results will appear here automatically.</p>
+            {% elif commissioning.skipped_candidate_count %}
+            <p class="mt-1 text-sm text-base-content/60">All remaining equipment is skipped for now. You can resume any row when you are ready.</p>
             {% else %}
             <p class="mt-1 text-sm text-success"><i class="fa fa-circle-check mr-1" aria-hidden="true"></i>All listed equipment is ready for the next step.</p>
             {% endif %}
@@ -23,9 +25,8 @@
         </span>
     </div>
 
-    <div class="overflow-hidden rounded-xl border border-base-content/10 bg-base-100" role="table" aria-label="Discovered equipment">
-        <div class="hidden bg-base-200/50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-base-content/45 lg:grid lg:grid-cols-[2.5rem_minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center" role="row">
-            <span aria-label="Selection"></span>
+    <div class="overflow-x-auto rounded-xl border border-base-content/10 bg-base-100" role="table" aria-label="Discovered equipment">
+        <div class="hidden bg-base-200/50 px-4 py-2 text-[11px] font-bold uppercase tracking-wide text-base-content/45 lg:grid lg:grid-cols-[minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center" role="row">
             <span role="columnheader">Equipment</span>
             <span role="columnheader">Connection</span>
             <span role="columnheader">Status</span>

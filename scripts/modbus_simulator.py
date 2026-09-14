@@ -6,7 +6,7 @@ pushes connector config.
 
 Default setup:
   python -m pip install "pymodbus==3.8.0"
-  python scripts/modbus_simulator.py --host 10.0.0.20 --port 502 --scenario factory
+  python scripts/modbus_simulator.py --host 10.0.0.20 --port 502 --scenario factory --mode normal
 
 Use an elevated/admin shell for port 502 on Windows, macOS, or Linux.
 """
@@ -100,17 +100,15 @@ def set_coil(store, address, value):
     store.setValues(address + 1, [bool(value)])
 
 
-def update_values(hr_store, coil_store, scenario, interval_seconds):
+def update_values(hr_store, coil_store, scenario, interval_seconds, requested_mode, mode_seconds):
     energy = 43012.0
     run_hours = 1192.0
-    mode = "normal"
+    mode = "normal" if requested_mode == "cycle" else requested_mode
     last_mode_change = time.time()
 
     while True:
-        if time.time() - last_mode_change > 90:
-            mode = "incident" if mode == "normal" else "recovery"
-            if scenario == "cold":
-                mode = "incident" if mode == "recovery" else mode
+        if requested_mode == "cycle" and time.time() - last_mode_change > mode_seconds:
+            mode = {"normal": "incident", "incident": "recovery", "recovery": "normal"}[mode]
             last_mode_change = time.time()
 
         voltage = round(random.uniform(228.0, 235.0), 2)
@@ -182,8 +180,28 @@ def parse_args():
         default="factory",
         help="Which pilot scenario register map to serve.",
     )
+    parser.add_argument(
+        "--mode",
+        choices=("normal", "incident", "cycle"),
+        default="cycle",
+        help=(
+            "Fixed normal/incident values, or a repeating normal -> incident -> recovery cycle. "
+            "Use fixed modes for deterministic alert and recovery evidence."
+        ),
+    )
+    parser.add_argument(
+        "--mode-seconds",
+        type=float,
+        default=90.0,
+        help="Seconds per phase when --mode cycle is used. Default: 90.",
+    )
     parser.add_argument("--interval-seconds", type=float, default=5.0, help="Seconds between value updates.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.interval_seconds <= 0:
+        parser.error("--interval-seconds must be greater than zero")
+    if args.mode_seconds <= 0:
+        parser.error("--mode-seconds must be greater than zero")
+    return args
 
 
 if __name__ == "__main__":
@@ -195,11 +213,19 @@ if __name__ == "__main__":
     print("Power meter registers: current=3000, voltage=3028, active_power=3060, frequency=3100, energy=3200")
     print("Cold-room registers/coils: temperature=3000, humidity=3002, door_open coil=10, compressor coil=11")
     print("Chiller registers/coils: temperature=100, compressor coil=101, active_power=102, run_hours=103")
+    print(f"Operating mode: {args.mode}")
     print("Press Ctrl+C to stop.\n")
 
     updater = threading.Thread(
         target=update_values,
-        args=(hr_store, coil_store, args.scenario, args.interval_seconds),
+        args=(
+            hr_store,
+            coil_store,
+            args.scenario,
+            args.interval_seconds,
+            args.mode,
+            args.mode_seconds,
+        ),
         daemon=True,
     )
     updater.start()

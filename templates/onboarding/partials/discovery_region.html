@@ -18,25 +18,11 @@
      hx-disinherit="hx-target hx-select"
      hx-target="this"
      hx-trigger="{% if scan_state.key == 'scanning' or commissioning.validation_equipment_count %}every 2s{% else %}none{% endif %}"
-     hx-swap="outerHTML"
-     x-data="{ selectedCount: {{ commissioning.selected_candidate_count }} }"
-     @change="if ($event.target.name === 'device_index') selectedCount = $root.querySelectorAll('input[name=device_index]:checked').length"
-     @candidate-selection-changed="selectedCount = $root.querySelectorAll('input[name=device_index]:checked').length">
+     hx-swap="outerHTML">
     <form method="post">
         {% csrf_token %}
-        <input type="hidden" name="action" value="validate_selected">
+        <input type="hidden" name="action" value="review_equipment">
         {% include "onboarding/partials/discovery_devices.html" %}
-        {% if commissioning.device_candidates %}
-        <div class="flex flex-col gap-3 border-t border-base-content/10 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-                <p class="text-sm font-bold text-base-content">Review each item and choose its equipment template.</p>
-                <p class="mt-1 text-xs text-base-content/50">Validation performs read-only checks. It does not start monitoring or change equipment.</p>
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm rounded-lg" :disabled="selectedCount === 0">
-                Validate selected equipment<i class="fa fa-arrow-right ml-2"></i>
-            </button>
-        </div>
-        {% endif %}
     </form>
     {% if scan_state.key != "scanning" and guided_setup_available %}
     <div class="border-t border-base-content/10 bg-base-200/20 p-5">

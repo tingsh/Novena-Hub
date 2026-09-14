@@ -5,7 +5,7 @@
 Prefer simple WSL invocations:
 
 ```powershell
-wsl -e bash -lc "cd /home/shouheng/projects/Novena-Hub && .agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh"
+wsl -e bash -lc "cd /home/shouheng/Novena-Platform/Novena-Hub && .agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh"
 ```
 
 Avoid complex inline Bash through PowerShell. In this project, commands containing pipes or regex alternation such as `A|B|C` were split by PowerShell before Bash received them. Put complex logic in a `.sh` script and call the script instead.
@@ -96,7 +96,7 @@ If migrations are pending:
 For local WSL testing, use:
 
 ```bash
-/usr/sbin/mosquitto -c /home/shouheng/projects/Novena-Hub/mosquitto/wsl-lan-test.conf -v
+/usr/sbin/mosquitto -c /home/shouheng/Novena-Platform/Novena-Hub/mosquitto/wsl-lan-test.conf -v
 ```
 
 That config binds listener `1883` to `0.0.0.0` with anonymous access for local development and hardware tests.

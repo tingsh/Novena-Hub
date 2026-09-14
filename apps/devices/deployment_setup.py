@@ -564,12 +564,21 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
     }
 
 
-def create_or_update_candidate_item(*, run, index: int | None, candidate: dict) -> DeploymentSetupItem:
+def create_or_update_candidate_item(
+    *,
+    run,
+    index: int | None,
+    candidate: dict,
+    existing_item: DeploymentSetupItem | None = None,
+    connection_override: dict | None = None,
+) -> DeploymentSetupItem:
     score = min(100, max(0, int(candidate.get("matched_template_score") or 0)))
-    connection = connection_from_candidate(candidate)
+    connection = connection_override if connection_override is not None else connection_from_candidate(candidate)
     candidate_key = equipment_candidate_key(candidate, connection)
-    item = None
-    if candidate_key:
+    item = existing_item
+    if item is not None and (item.run_id != run.pk or item.device_id):
+        raise ValueError("The saved equipment draft is no longer available.")
+    if item is None and candidate_key:
         item = DeploymentSetupItem.objects.filter(run=run, candidate_key=candidate_key).first()
     if item is None and index is not None:
         legacy_items = DeploymentSetupItem.objects.filter(
@@ -589,6 +598,10 @@ def create_or_update_candidate_item(*, run, index: int | None, candidate: dict) 
         )
     if item is None:
         item = DeploymentSetupItem(run=run, team=run.team)
+    if candidate_key and DeploymentSetupItem.objects.filter(
+        run=run, candidate_key=candidate_key
+    ).exclude(pk=item.pk).exists():
+        raise ValueError("Another saved equipment row already uses this connection.")
     item.discovery_index = index
     item.candidate_key = candidate_key
     item.candidate_data = candidate
@@ -927,7 +940,9 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
                     },
                 )
 
-    states = list(run.items.values_list("state", flat=True))
+    # Drafted and skipped discoveries were never deployed, so they must not keep a
+    # successfully deployed subset from completing the onboarding run.
+    states = list(run.items.filter(device__isnull=False).values_list("state", flat=True))
     if states and all(state == DeploymentSetupItem.State.TELEMETRY_CONFIRMED for state in states):
         run.state = DeploymentSetupRun.State.COMPLETED
         run.current_step = "go_live"

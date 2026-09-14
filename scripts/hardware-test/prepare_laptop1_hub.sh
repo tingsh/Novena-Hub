@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT="${NOVENA_HUB_ROOT:-/home/shouheng/Novena-Platform/Novena-Hub}"
 PYTHON="${NOVENA_HUB_PYTHON:-/home/shouheng/.venvs/novena/bin/python}"
@@ -8,7 +9,7 @@ MQTT_PORT="1883"
 KEY_ID="local-replay-2026-08"
 SKIP_START="0"
 SKIP_PREPARE="0"
-PUBLIC_KEY_FILE="/tmp/novena-replay-gateway-public-key.env"
+PUBLIC_KEY_FILE="/tmp/novena-replay-gateway.env"
 
 usage() {
   cat <<'USAGE_EOF'
@@ -103,6 +104,7 @@ MQTT_HOST = os.environ["NOVENA_REPLAY_MQTT_HOST"]
 MQTT_PORT = os.environ["NOVENA_REPLAY_MQTT_PORT"]
 DEFAULT_KEY_ID = os.environ["NOVENA_REPLAY_KEY_ID"]
 PUBLIC_KEY_FILE = Path(os.environ["NOVENA_REPLAY_PUBLIC_KEY_FILE"])
+GATEWAY_SERIAL = "NOV-AUDIT-FACTORY-HW"
 
 
 def parse_env(lines):
@@ -180,17 +182,30 @@ updates = {
     "REMOTE_CONTROL_SIGNING_PRIVATE_KEY": seed,
 }
 ENV_PATH.write_text(update_env(lines, updates))
+
+# Load the just-updated local settings so the printed replay claim code always
+# follows the configured GATEWAY_CLAIM_SECRET instead of a stale documented value.
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "novena_hub.settings")
+import django
+
+django.setup()
+from apps.devices.services import compute_claim_code
+
+claim_code = compute_claim_code(GATEWAY_SERIAL)
 PUBLIC_KEY_FILE.write_text(
+    f"GATEWAY_SERIAL={GATEWAY_SERIAL}\n"
+    f"GATEWAY_CLAIM_CODE={claim_code}\n"
     f"GATEWAY_CONFIG_KEY_ID={key_id}\n"
     f"GATEWAY_CONFIG_PUBLIC_KEY_B64={public_b64}\n"
 )
+PUBLIC_KEY_FILE.chmod(0o600)
 
 print("Updated .env for local hardware replay.")
-print(f"Public key values written to {PUBLIC_KEY_FILE}")
+print(f"Replay values written to {PUBLIC_KEY_FILE}")
 INNER_PY
 
 echo
-echo "Gateway-facing Guided Setup public key:"
+echo "Gateway-facing replay values:"
 cat "$PUBLIC_KEY_FILE"
 echo
 
@@ -224,5 +239,5 @@ fi
 echo
 echo "Laptop 1 is prepared for hardware replay."
 echo "Hub: http://localhost:8000/"
-echo "Onboarding: http://localhost:8000/a/pilot-factory-energy/onboarding/"
-echo "Gateway serial / claim: NOV-AUDIT-FACTORY-HW / F157DFD4"
+echo "Onboarding entry: http://localhost:8000/a/pilot-factory-energy/onboarding/"
+echo "Replay values: $PUBLIC_KEY_FILE"

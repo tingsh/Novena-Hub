@@ -11,13 +11,13 @@ Use this skill for Novena Hub local development on this Windows PC with WSL.
 
 - Prefer WSL-native commands from the Windows side:
   ```powershell
-  wsl -e bash -lc "cd /home/shouheng/projects/Novena-Hub && <command>"
+  wsl -e bash -lc "cd /home/shouheng/Novena-Platform/Novena-Hub && <command>"
   ```
 - Avoid putting Bash metacharacters such as `|`, `&&`, `>`, `$()`, or complex quoted regexes directly in PowerShell-launched commands when a script can do the work. This session repeatedly lost time because PowerShell interpreted pieces of Bash commands before WSL received them.
 - Prefer the bundled scripts in this skill, then the repo script `scripts/start_wsl_dev_stack.sh`, over reconstructing long startup commands.
 - Use the WSL project path:
   ```bash
-  cd /home/shouheng/projects/Novena-Hub
+  cd /home/shouheng/Novena-Platform/Novena-Hub
   ```
 - Use the WSL Python environment:
   ```bash
@@ -30,13 +30,13 @@ Use this skill for Novena Hub local development on this Windows PC with WSL.
 From PowerShell or Codex shell, start the stack with:
 
 ```powershell
-wsl -e bash -lc "cd /home/shouheng/projects/Novena-Hub && .agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh"
+wsl -e bash -lc "cd /home/shouheng/Novena-Platform/Novena-Hub && .agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh"
 ```
 
 Then verify readiness with:
 
 ```powershell
-wsl -e bash -lc "cd /home/shouheng/projects/Novena-Hub && .agents/skills/novena-local-dev/scripts/health-check.sh"
+wsl -e bash -lc "cd /home/shouheng/Novena-Platform/Novena-Hub && .agents/skills/novena-local-dev/scripts/health-check.sh"
 ```
 
 Expected browser endpoints:
@@ -62,7 +62,7 @@ Expected browser endpoints:
 The repo script starts:
 
 ```bash
-/usr/sbin/mosquitto -c /home/shouheng/projects/Novena-Hub/mosquitto/wsl-lan-test.conf -v
+/usr/sbin/mosquitto -c /home/shouheng/Novena-Platform/Novena-Hub/mosquitto/wsl-lan-test.conf -v
 /home/shouheng/.venvs/novena/bin/python manage.py runserver 0.0.0.0:8000 --noreload
 /home/shouheng/.venvs/novena/bin/celery -A novena_hub worker -l INFO -B --pool=solo
 /home/shouheng/.venvs/novena/bin/python manage.py mqtt_consumer

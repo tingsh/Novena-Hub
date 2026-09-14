@@ -1,21 +1,16 @@
 <div class="border-t border-base-content/10 first:border-t-0" data-equipment-row="configured" x-data="{ open: false }">
-    <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 lg:grid-cols-[2.5rem_minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center">
-        <div class="row-span-2 flex items-start pt-1 lg:row-auto lg:pt-0">
-            <span class="flex h-5 w-5 items-center justify-center rounded border border-base-content/10 bg-base-200 text-[10px] text-base-content/35">
-                <i class="fa fa-lock" aria-hidden="true"></i>
-            </span>
-        </div>
+    <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 lg:grid-cols-[minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center">
         <div class="min-w-0">
             <p class="truncate text-sm font-bold text-base-content">{% if item.device.name %}{{ item.device.name }}{% elif item.candidate_data.signature %}{{ item.candidate_data.signature }}{% else %}Equipment{% endif %}</p>
             <p class="mt-0.5 text-[11px] text-base-content/45 lg:hidden">Configured equipment</p>
         </div>
-        <div class="col-start-1 min-w-0 pl-9 lg:col-auto lg:pl-0">
+        <div class="col-start-1 min-w-0 lg:col-auto">
             <p class="truncate font-mono text-xs text-base-content/65">{% if item.candidate_data.interface %}{{ item.candidate_data.interface }}{% elif item.device %}{{ item.device.port|default:"Manual setup" }}{% else %}Manual setup{% endif %}</p>
             <p class="mt-0.5 text-[11px] uppercase tracking-wide text-base-content/40">{% if item.device %}{{ item.device.protocol|default:"Equipment" }}{% else %}{{ item.candidate_data.connection|default:"Equipment" }}{% endif %}</p>
         </div>
-        <div class="col-start-1 pl-9 lg:col-auto lg:pl-0">
+        <div class="col-start-1 lg:col-auto">
             {% if item.state == "validated" or item.state == "telemetry_confirmed" or item.state == "queued" or item.state == "applied" %}
-            <span class="badge badge-success badge-sm whitespace-nowrap">Validated</span>
+            <span class="badge badge-success badge-sm whitespace-nowrap">Validated ✓</span>
             {% elif item.state == "validating" %}
             <span class="badge badge-info badge-outline badge-sm whitespace-nowrap"><i class="fa fa-spinner fa-spin mr-1"></i>Validating</span>
             {% elif item.state == "needs_attention" or item.state == "failed" or item.state == "awaiting_confirmation" %}
@@ -24,7 +19,7 @@
             <span class="badge badge-ghost badge-sm whitespace-nowrap">{{ item.get_state_display }}</span>
             {% endif %}
         </div>
-        <div class="col-start-1 min-w-0 pl-9 lg:col-auto lg:pl-0">
+        <div class="col-start-1 min-w-0 lg:col-auto">
             <p class="truncate text-xs font-semibold text-base-content/70">{{ item.selected_template.name|default:"Not selected" }}</p>
             <p class="mt-0.5 text-[11px] text-base-content/40">{{ item.get_trust_level_display }}</p>
         </div>
@@ -50,7 +45,7 @@
         </span>
         {% endif %}
     </div>
-    <div x-show="open" x-cloak class="border-t border-base-content/10 bg-base-200/25 px-4 py-4 lg:pl-[4.5rem]">
+    <div x-show="open" x-cloak class="border-t border-base-content/10 bg-base-200/25 px-4 py-4">
         {% if item.validation_result.message %}<p class="text-sm text-base-content/70">{{ item.validation_result.message }}</p>{% endif %}
         {% if item.validation_result.error %}<p class="text-sm text-error">{{ item.validation_result.error }}</p>{% endif %}
         {% if not item.validation_result.message and not item.validation_result.error %}<p class="text-sm text-base-content/55">{{ item.get_state_display }}.</p>{% endif %}

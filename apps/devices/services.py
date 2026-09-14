@@ -1,6 +1,7 @@
 import contextlib
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import secrets
@@ -580,12 +581,29 @@ def _commissioning_candidates(gateway):
         score = min(100, max(0, int(discovery.get("matched_template_score") or 0)))
         if interface and interface in registered_ports:
             continue
-        status = (
-            "ready"
-            if matched_template and (draft_item or (matched_template.is_verified and score >= 80))
-            else "needs_template"
-        )
         draft_saved = bool(draft_item)
+        skipped_for_now = bool(draft_data.get("skipped_for_now"))
+        connection_type = discovery.get("connection") or discovery.get("protocol") or "unknown"
+        connection_ready = _candidate_connection_ready(
+            connection_type,
+            {
+                "host": host,
+                "port": port,
+                "slave_id": draft_connection.get("slave_id") or discovery.get("slave_id") or 1,
+                "serial_port": draft_connection.get("serial_port") or interface,
+            },
+        )
+        ready_for_validation = bool(
+            matched_template and connection_ready and not skipped_for_now
+        )
+        status = "ready" if ready_for_validation else "needs_template"
+        row_status = (
+            "Ready to validate"
+            if ready_for_validation
+            else "Saved as draft"
+            if draft_saved
+            else "Needs template"
+        )
         template_requested = bool(draft_data.get("template_request_reference"))
         candidates.append(
             {
@@ -597,7 +615,7 @@ def _commissioning_candidates(gateway):
                 "is_new": not bool(draft_item),
                 "interface": interface,
                 "signature": draft_data.get("customer_name") or discovery.get("signature") or "Unknown device",
-                "connection": discovery.get("connection") or "unknown",
+                "connection": connection_type,
                 "host": host,
                 "port": port,
                 "slave_id": draft_connection.get("slave_id") or discovery.get("slave_id"),
@@ -617,9 +635,11 @@ def _commissioning_candidates(gateway):
                     )
                 ),
                 "status": status,
+                "row_status": row_status,
+                "ready_for_validation": ready_for_validation,
                 "recommended": status == "ready",
-                "selected": bool(matched_template and status == "ready"),
                 "draft_saved": draft_saved,
+                "skipped_for_now": skipped_for_now,
                 "template_requested": template_requested,
                 "template_request_reference": draft_data.get("template_request_reference", ""),
                 "template_request_manufacturer": draft_data.get("template_request_manufacturer", ""),
@@ -644,6 +664,7 @@ def _commissioning_candidates(gateway):
         matched_template = draft_item.selected_template
         score = min(100, max(0, int(draft_data.get("matched_template_score") or 0)))
         template_requested = bool(draft_data.get("template_request_reference"))
+        skipped_for_now = bool(draft_data.get("skipped_for_now"))
         candidate_key = draft_item.candidate_key or equipment_candidate_key(
             draft_data, draft_connection
         )
@@ -681,9 +702,11 @@ def _commissioning_candidates(gateway):
                     )
                 ),
                 "status": "missing",
+                "row_status": "Saved as draft",
+                "ready_for_validation": False,
                 "recommended": False,
-                "selected": False,
                 "draft_saved": True,
+                "skipped_for_now": skipped_for_now,
                 "template_requested": template_requested,
                 "template_request_reference": draft_data.get("template_request_reference", ""),
                 "template_request_manufacturer": draft_data.get("template_request_manufacturer", ""),
@@ -692,6 +715,26 @@ def _commissioning_candidates(gateway):
             }
         )
     return candidates
+
+
+def _candidate_connection_ready(protocol, connection):
+    """Return whether a discovery row has the minimum safe validation target."""
+    try:
+        slave_id = int(connection.get("slave_id") or 1)
+    except (TypeError, ValueError):
+        return False
+    if not 1 <= slave_id <= 247:
+        return False
+    if protocol == "modbus_tcp":
+        try:
+            host = ipaddress.ip_address(str(connection.get("host") or "").strip())
+            port = int(connection.get("port") or 0)
+        except (TypeError, ValueError):
+            return False
+        return not (host.is_unspecified or host.is_loopback or host.is_multicast) and 1 <= port <= 65535
+    if protocol == "modbus_rtu":
+        return bool(str(connection.get("serial_port") or "").strip())
+    return False
 
 
 def build_commissioning_context(team, gateway=None, session=None):
@@ -730,6 +773,7 @@ def build_commissioning_context(team, gateway=None, session=None):
         item.state not in completed_item_states and item.state != "validating"
         for item in equipment_setup_items
     )
+    candidate_review_count = sum(not candidate["skipped_for_now"] for candidate in candidates)
     equipment_count = len(candidates) + len(equipment_setup_items)
 
     completed = []
@@ -801,9 +845,10 @@ def build_commissioning_context(team, gateway=None, session=None):
         "registered_candidates": [candidate for candidate in candidates if candidate["status"] == "registered"],
         "equipment_count": equipment_count,
         "completed_equipment_count": completed_equipment_count,
-        "review_equipment_count": len(candidates) + review_item_count,
+        "review_equipment_count": candidate_review_count + review_item_count,
         "validation_equipment_count": sum(item.state == "validating" for item in equipment_setup_items),
-        "selected_candidate_count": sum(candidate["selected"] for candidate in candidates),
+        "ready_candidate_count": sum(candidate["ready_for_validation"] for candidate in candidates),
+        "skipped_candidate_count": sum(candidate["skipped_for_now"] for candidate in candidates),
         "current_discovery_count": sum(candidate["seen_in_latest_scan"] for candidate in candidates),
         "retained_missing_count": sum(not candidate["seen_in_latest_scan"] for candidate in candidates),
         "new_candidate_count": sum(candidate["is_new"] for candidate in candidates),

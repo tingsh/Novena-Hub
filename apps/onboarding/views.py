@@ -80,14 +80,23 @@ def _bounded_float(value, default, minimum, maximum):
     return min(maximum, max(minimum, parsed))
 
 
-def _candidate_connection_from_post(post, candidate, field_key):
+def _candidate_connection_from_post(post, candidate, field_key, *, strict=True):
     """Apply customer-edited connection values to one discovered candidate."""
     from apps.devices.deployment_setup import connection_from_candidate
 
     candidate = dict(candidate)
     connection = connection_from_candidate(candidate)
-    slave_id = int(post.get(f"slave_id_{field_key}", connection.get("slave_id") or 1))
-    if not 1 <= slave_id <= 247:
+    raw_slave_id = post.get(f"slave_id_{field_key}", connection.get("slave_id") or 1)
+    try:
+        slave_id = int(raw_slave_id)
+    except (TypeError, ValueError):
+        if strict:
+            raise ValueError("Equipment unit ID must be between 1 and 247") from None
+        slave_id = raw_slave_id
+    if isinstance(slave_id, int) and not 1 <= slave_id <= 247:
+        if strict:
+            raise ValueError("Equipment unit ID must be between 1 and 247")
+    elif not isinstance(slave_id, int) and strict:
         raise ValueError("Equipment unit ID must be between 1 and 247")
     connection["slave_id"] = slave_id
     protocol = candidate.get("connection") or candidate.get("protocol")
@@ -95,20 +104,34 @@ def _candidate_connection_from_post(post, candidate, field_key):
         host = post.get(f"host_{field_key}", connection.get("host", "")).strip()
         try:
             parsed_host = ipaddress.ip_address(host)
-        except ValueError as exc:
-            raise ValueError("Enter a valid equipment IP address") from exc
-        if parsed_host.is_unspecified or parsed_host.is_loopback or parsed_host.is_multicast:
-            raise ValueError("Enter a safe, reachable equipment IP address")
-        port = int(post.get(f"port_{field_key}", connection.get("port", 502)))
-        if not 1 <= port <= 65535:
+        except ValueError:
+            if strict:
+                raise ValueError("Enter a valid equipment IP address") from None
+            parsed_host = None
+        if parsed_host and (parsed_host.is_unspecified or parsed_host.is_loopback or parsed_host.is_multicast):
+            if strict:
+                raise ValueError("Enter a safe, reachable equipment IP address")
+            parsed_host = None
+        raw_port = post.get(f"port_{field_key}", connection.get("port", 502))
+        try:
+            port = int(raw_port)
+        except (TypeError, ValueError):
+            if strict:
+                raise ValueError("Modbus TCP port must be between 1 and 65535") from None
+            port = raw_port
+        if isinstance(port, int) and not 1 <= port <= 65535:
+            if strict:
+                raise ValueError("Modbus TCP port must be between 1 and 65535")
+        elif not isinstance(port, int) and strict:
             raise ValueError("Modbus TCP port must be between 1 and 65535")
-        connection.update({"host": str(parsed_host), "port": port})
+        normalized_host = str(parsed_host) if parsed_host else host
+        connection.update({"host": normalized_host, "port": port})
         candidate.update(
             {
-                "host": str(parsed_host),
+                "host": normalized_host,
                 "port": port,
                 "slave_id": slave_id,
-                "interface": f"{parsed_host}:{port}",
+                "interface": f"{normalized_host}:{port}" if normalized_host else "",
             }
         )
     else:
@@ -656,6 +679,9 @@ def step_3_discover(request, team_slug):
         action = request.POST.get("action", "validate_selected")
         for candidate_action in (
             "save_candidate_draft",
+            "save_and_validate",
+            "skip_candidate",
+            "resume_candidate",
             "start_custom_template",
             "request_candidate_template",
             "remove_candidate_draft",
@@ -794,6 +820,8 @@ def step_3_discover(request, team_slug):
         draft_action, separator, raw_draft_index = action.partition(":")
         if separator and draft_action in {
             "save_candidate_draft",
+            "skip_candidate",
+            "resume_candidate",
             "start_custom_template",
             "request_candidate_template",
             "remove_candidate_draft",
@@ -828,7 +856,7 @@ def step_3_discover(request, team_slug):
 
             try:
                 connection, candidate = _candidate_connection_from_post(
-                    request.POST, candidate, raw_draft_index
+                    request.POST, candidate, raw_draft_index, strict=False
                 )
             except (TypeError, ValueError) as exc:
                 messages.error(request, f"This equipment draft could not be saved: {exc}")
@@ -848,7 +876,19 @@ def step_3_discover(request, team_slug):
                 or candidate.get("signature")
                 or "Equipment"
             )
-            item = create_or_update_candidate_item(run=run, index=index, candidate=candidate)
+            candidate["customer_draft_saved"] = True
+            candidate["skipped_for_now"] = draft_action == "skip_candidate"
+            try:
+                item = create_or_update_candidate_item(
+                    run=run,
+                    index=index,
+                    candidate=candidate,
+                    existing_item=existing_item,
+                    connection_override=connection,
+                )
+            except ValueError as exc:
+                messages.error(request, f"This equipment draft could not be saved: {exc}")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             item.candidate_data = candidate
             item.connection = connection
             item.selected_template = template
@@ -866,10 +906,16 @@ def step_3_discover(request, team_slug):
                     "updated_at",
                 ]
             )
+            event_type = "candidate_skipped" if draft_action == "skip_candidate" else "candidate_draft_saved"
+            event_message = (
+                "Equipment was skipped for now."
+                if draft_action == "skip_candidate"
+                else "Equipment review saved as a draft."
+            )
             append_setup_event(
                 run,
-                "candidate_draft_saved",
-                "Equipment review saved as a draft.",
+                event_type,
+                event_message,
                 item=item,
                 actor=request.user,
                 evidence={"discovery_index": index, "template_id": template.pk if template else None},
@@ -885,6 +931,12 @@ def step_3_discover(request, team_slug):
                     f"{reverse('web_team:onboarding:step_3_discover', args=[team_slug])}"
                     f"?candidate=saved-{item.pk}&workflow=request#template-request"
                 )
+            if draft_action == "skip_candidate":
+                messages.success(request, "Equipment skipped for now. Your saved details will be here when you return.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            if draft_action == "resume_candidate":
+                messages.success(request, "Equipment returned to your review list.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             messages.success(request, "Draft saved. You can return and choose a template later.")
             return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
@@ -915,23 +967,32 @@ def step_3_discover(request, team_slug):
                 messages.error(request, f"Discovery cancellation could not be sent: {exc}")
             return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
-        if action == "validate_selected":
-            selected = request.POST.getlist("device_index")
+        if action == "validate_selected" or action.startswith("save_and_validate:"):
+            selected = (
+                [action.partition(":")[2]]
+                if action.startswith("save_and_validate:")
+                else request.POST.getlist("device_index")
+            )
             if not selected:
-                messages.warning(request, "Select at least one equipment candidate to validate.")
+                messages.warning(request, "Review an equipment row and choose Save and validate.")
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             for raw_index in selected:
                 try:
-                    candidate, index, _existing_item = _candidate_for_ref(
+                    if str(raw_index).startswith("saved-"):
+                        raise ValueError(
+                            "This equipment was not seen in the latest scan. "
+                            "Reconnect it and scan again before validation."
+                        )
+                    candidate, index, existing_item = _candidate_for_ref(
                         discovered_devices,
                         run,
                         raw_index,
                         request.POST.get(f"candidate_key_{raw_index}", ""),
                     )
-                    template = get_object_or_404(
-                        visible_templates_for_team(request.team),
-                        pk=request.POST.get(f"template_{raw_index}"),
-                    )
+                    template_id = request.POST.get(f"template_{raw_index}", "").strip()
+                    template = visible_templates_for_team(request.team).filter(pk=template_id).first()
+                    if not template:
+                        raise ValueError("Choose an equipment template before validation.")
                     if not guided_capable and not template.is_verified:
                         messages.error(
                             request,
@@ -948,7 +1009,11 @@ def step_3_discover(request, team_slug):
                         or candidate.get("signature")
                         or template.name
                     )
-                    item = create_or_update_candidate_item(run=run, index=index, candidate=candidate)
+                    candidate["customer_draft_saved"] = True
+                    candidate["skipped_for_now"] = False
+                    item = create_or_update_candidate_item(
+                        run=run, index=index, candidate=candidate, existing_item=existing_item
+                    )
                     if not item.device:
                         from apps.subscriptions.enforcement import can_add_device, get_device_limit_for_team
 
