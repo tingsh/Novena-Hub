@@ -29,12 +29,12 @@ Before finishing any change that alters production behavior, review whether thes
 If the change introduces a new required production dependency, update the readiness kit in the same branch as the product change. Run the relevant checks before handoff, especially `python manage.py production_readiness_check`, Django checks/tests, `npm run build`, and `docker compose -f docker-compose.prod.yml config` when Docker is available.
 
 ### Local Shell / Runtime Default
-On this Windows development machine, default to WSL for Novena development and testing. The active Hub project is stored in WSL-native storage at:
+On this Ubuntu desktop development machine, default to native Linux shell commands for Novena development and testing. The active Hub project is stored at:
 
-    cd ~/Novena-Platform/Novena-Hub
+    cd ~/Projects/Novena-Platform/Novena-Hub
     source ~/.venvs/novena/bin/activate
 
-Use the WSL-native Python virtual environment ~/.venvs/novena by default for Django, Celery, Redis/Mosquitto-related development, and local hardware testing. Do not use the Windows .venv unless explicitly asked or needed as a temporary fallback.
+Use the native Ubuntu Python virtual environment `~/.venvs/novena` by default for Django, Celery, Redis/Mosquitto-related development, and local hardware testing. Treat old WSL/Windows instructions as historical unless the user explicitly asks about the previous Windows machine.
 
 ## Session Wrap-up (CRITICAL)
 Whenever you complete a feature or are about to end a chat session, update docs/agent_context/skills/novena-project-status/references/project_status.md.

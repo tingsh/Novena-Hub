@@ -1,42 +1,39 @@
 ---
 name: novena-local-dev
-description: Start, restart, inspect, and troubleshoot the Novena Hub local development stack on this Windows PC using WSL. Use when the user asks to start Novena Hub development, bring up Django/Vite/PostgreSQL/TimescaleDB/Redis/Mosquitto/Celery/MQTT consumer, verify the database is ready for testing, diagnose localhost service startup, or avoid Windows PowerShell/WSL command quoting issues for this project.
+description: Start, restart, inspect, and troubleshoot the Novena Hub local development stack on the Ubuntu desktop. Use when the user asks to start Novena Hub development, bring up Django/Vite/PostgreSQL/TimescaleDB/Redis/Mosquitto/Celery/MQTT consumer, verify the database is ready for testing, diagnose localhost service startup, or prepare local hardware integration testing.
 ---
 
 # Novena Local Dev
 
-Use this skill for Novena Hub local development on this Windows PC with WSL.
+Use this skill for Novena Hub local development on the Ubuntu desktop.
 
 ## Key Rules
 
-- Prefer WSL-native commands from the Windows side:
-  ```powershell
-  wsl -e bash -lc "cd /home/shouheng/Novena-Platform/Novena-Hub && <command>"
-  ```
-- Avoid putting Bash metacharacters such as `|`, `&&`, `>`, `$()`, or complex quoted regexes directly in PowerShell-launched commands when a script can do the work. This session repeatedly lost time because PowerShell interpreted pieces of Bash commands before WSL received them.
-- Prefer the bundled scripts in this skill, then the repo script `scripts/start_wsl_dev_stack.sh`, over reconstructing long startup commands.
-- Use the WSL project path:
+- Use native Ubuntu shell commands directly; do not wrap commands in `wsl.exe` or Windows PowerShell.
+- Prefer the bundled scripts in this skill, then the repo script `scripts/start_wsl_dev_stack.sh`, over reconstructing long startup commands. The script name is historical; it now represents the local Ubuntu dev stack.
+- Use the Ubuntu project path:
   ```bash
-  cd /home/shouheng/Novena-Platform/Novena-Hub
+  cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
   ```
-- Use the WSL Python environment:
+- Use the Ubuntu Python environment:
   ```bash
   /home/shouheng/.venvs/novena/bin/python
   ```
-- Do not use the old Windows `.venv` unless the user explicitly asks for a Windows fallback.
+- Do not use old Windows or WSL paths unless the user explicitly asks about the previous machine.
 
 ## Fast Start
 
-From PowerShell or Codex shell, start the stack with:
+From the Ubuntu shell or Codex shell, start the stack with:
 
-```powershell
-wsl -e bash -lc "cd /home/shouheng/Novena-Platform/Novena-Hub && .agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh"
+```bash
+cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
+.agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh
 ```
 
 Then verify readiness with:
 
-```powershell
-wsl -e bash -lc "cd /home/shouheng/Novena-Platform/Novena-Hub && .agents/skills/novena-local-dev/scripts/health-check.sh"
+```bash
+.agents/skills/novena-local-dev/scripts/health-check.sh
 ```
 
 Expected browser endpoints:
@@ -47,7 +44,7 @@ Expected browser endpoints:
 
 ## What The Startup Script Does
 
-1. Checks the WSL repo and virtualenv paths.
+1. Checks the Ubuntu repo and virtualenv paths.
 2. Starts PostgreSQL if port `5432` is not ready.
 3. Starts Redis if `redis-cli ping` does not return `PONG`.
 4. Runs database readiness checks:
@@ -62,7 +59,7 @@ Expected browser endpoints:
 The repo script starts:
 
 ```bash
-/usr/sbin/mosquitto -c /home/shouheng/Novena-Platform/Novena-Hub/mosquitto/wsl-lan-test.conf -v
+/usr/sbin/mosquitto -c /home/shouheng/Projects/Novena-Platform/Novena-Hub/mosquitto/wsl-lan-test.conf -v
 /home/shouheng/.venvs/novena/bin/python manage.py runserver 0.0.0.0:8000 --noreload
 /home/shouheng/.venvs/novena/bin/celery -A novena_hub worker -l INFO -B --pool=solo
 /home/shouheng/.venvs/novena/bin/python manage.py mqtt_consumer
@@ -80,7 +77,7 @@ Logs and PID files are written in the repo:
 
 ## Database Readiness
 
-The local `.env` is expected to point Django at native WSL services:
+The local `.env` is expected to point Django at native Ubuntu services:
 
 ```env
 DATABASE_URL="postgresql://postgres:<local-password>@localhost:5432/novena_hub"
@@ -98,4 +95,4 @@ Treat the database as ready for local testing only when:
 
 ## Troubleshooting
 
-Read `references/wsl-troubleshooting.md` when startup fails, ports are already occupied, WSL services require `sudo`, or browser-localhost behavior differs from WSL-localhost behavior.
+Read `references/wsl-troubleshooting.md` when startup fails, ports are already occupied, services require `sudo`, or browser-localhost behavior differs from the shell checks. The filename is historical; the guidance now targets Ubuntu desktop.

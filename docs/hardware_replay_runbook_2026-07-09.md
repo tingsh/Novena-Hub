@@ -5,8 +5,8 @@ This guide walks through the second-round live hardware/software integration tes
 ```text
 Laptop 2 simulated Modbus device
   -> Pi CM4 Novena Gateway
-  -> MQTT broker on Laptop 1 port 1883
-  -> local Novena Hub on Laptop 1
+  -> MQTT broker on Ubuntu Hub host port 1883
+  -> local Novena Hub on Ubuntu desktop
 ```
 
 Compatibility verdict: use this revised guide. The telemetry protocol and register
@@ -25,26 +25,26 @@ Hub URL:                    http://localhost:8000/
 Onboarding entry:          http://localhost:8000/a/pilot-factory-energy/onboarding/
 Hub login:                  pilot.audit@novena.local / PilotReady123!
 Gateway serial:             NOV-AUDIT-FACTORY-HW
-Gateway claim/password:     use GATEWAY_CLAIM_CODE printed by the Laptop 1 helper
-Laptop 1 MQTT example:      192.168.100.7:1883
+Gateway claim/password:     use GATEWAY_CLAIM_CODE printed by the Hub host helper
+Hub host MQTT example:      <ubuntu-desktop-lan-ip>:1883
 Pi wired test address:      10.0.0.10/24 (no wired gateway)
 Laptop 2 Modbus:            10.0.0.20:502
 Gateway branch:             main
 ```
 
-Teacher note: `localhost` means "this same machine." Hub can use `localhost` because Django, the MQTT consumer, and Mosquitto run on Laptop 1. The Pi must use Laptop 1's LAN IP, not `localhost`, because `localhost` on the Pi means the Pi itself.
+Teacher note: `localhost` means "this same machine." Hub can use `localhost` because Django, the MQTT consumer, and Mosquitto run on the Ubuntu desktop. The Pi must use the Ubuntu desktop's LAN IP, not `localhost`, because `localhost` on the Pi means the Pi itself.
 
 ## Network Layout
 
 ```text
-Laptop 1
+Ubuntu Hub host
   Role:      Novena Hub + Mosquitto MQTT broker
-  LAN IP:    192.168.100.7
+  LAN IP:    use the Ubuntu desktop LAN address
   MQTT:      0.0.0.0:1883
 
 Pi CM4 Gateway
   Role:      Novena Gateway
-  Wi-Fi:     same LAN as Laptop 1
+  Wi-Fi:     same LAN as Ubuntu Hub host
   Ethernet:  same wired test network as Laptop 2
 
 Laptop 2
@@ -53,40 +53,33 @@ Laptop 2
   Modbus:    10.0.0.20:502
 ```
 
-Keep three terminals open: Laptop 1 WSL, Laptop 2, and Pi CM4 SSH/terminal.
+Keep three terminals open: Ubuntu Hub host, Laptop 2, and Pi CM4 SSH/terminal.
 
-# Step 1 - Laptop 1: Prepare Hub And MQTT
+# Step 1 - Ubuntu Hub Host: Prepare Hub And MQTT
 
-## 1.1 Confirm Laptop 1 IP
+## 1.1 Confirm Ubuntu Hub Host IP
 
-Run this in **Windows PowerShell** on Laptop 1:
+Run this on the Ubuntu desktop:
 
-```powershell
-ipconfig
+```bash
+ip -4 address
 ```
 
-Use the IPv4 address of the Wi-Fi adapter that shares the Pi's wireless LAN. The
-previous working address was:
-
-```text
-192.168.100.7
-```
-
-Use your actual reachable IP in the next command. A WSL `hostname -I` address is
-often a private WSL virtual address and is not automatically reachable from the Pi;
-the Pi TCP check in Step 3.2 is the final authority.
+Use the IPv4 address of the network adapter that shares the Pi's wireless LAN.
+Use your actual reachable IP in the next command. The Pi TCP check in Step 3.2
+is the final authority.
 
 ## 1.2 Run The Hub Hardware-Test Helper
 
 ```bash
-cd /home/shouheng/Novena-Platform/Novena-Hub
-bash scripts/hardware-test/prepare_laptop1_hub.sh --mqtt-host 192.168.100.7
+cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
+bash scripts/hardware-test/prepare_laptop1_hub.sh --mqtt-host <ubuntu-desktop-lan-ip>
 ```
 
 What this does:
 
 - Sets Hub's internal MQTT connection to `localhost:1883`.
-- Sets the Gateway-facing MQTT address to `192.168.100.7:1883`.
+- Sets the Gateway-facing MQTT address to `<ubuntu-desktop-lan-ip>:1883`.
 - Generates or reuses the Guided Setup signing key.
 - Prints the Gateway-facing public key values.
 - Starts local Hub services and runs the local health check.
@@ -102,21 +95,21 @@ GATEWAY_CONFIG_KEY_ID=local-replay-2026-08
 GATEWAY_CONFIG_PUBLIC_KEY_B64=<base64-public-key>
 
 OK: MQTT is listening on 0.0.0.0:1883 for the Pi.
-Laptop 1 is prepared for hardware replay.
+Ubuntu Hub host is prepared for hardware replay.
 ```
 
 Keep all four values. The claim code can change when `GATEWAY_CLAIM_SECRET`
 changes, so the helper output is authoritative; do not rely on an older copied
 claim code. You will paste the claim and signing-key values into Step 3.3.
 
-## 1.3 Verify Laptop 1 Services
+## 1.3 Verify Ubuntu Hub Host Services
 
 ```bash
 bash .agents/skills/novena-local-dev/scripts/health-check.sh
 ss -ltnp | grep ':1883'
 ```
 
-Expected: each service prints an `[ok]` line, and Mosquitto is bound to all WSL
+Expected: each service prints an `[ok]` line, and Mosquitto is bound to all
 interfaces:
 
 ```text
@@ -129,7 +122,7 @@ If MQTT shows only `127.0.0.1:1883`, the Pi will not be able to reach the broker
 
 ## 1.4 Open A Serial-Scoped MQTT Evidence Terminal
 
-In a second Laptop 1 WSL terminal, keep this running:
+In a second Ubuntu Hub host terminal, keep this running:
 
 ```bash
 mosquitto_sub -h 127.0.0.1 -p 1883 \
@@ -222,7 +215,7 @@ Expected:
 
 ## 3.2 Configure The Pi Wired Test Address And Confirm Reachability
 
-The Wi-Fi interface keeps the default route to Laptop 1. The direct Ethernet link
+The Wi-Fi interface keeps the default route to the Ubuntu Hub host. The direct Ethernet link
 to Laptop 2 uses a separate subnet with **no gateway**. First confirm the wired
 interface name; it is normally `eth0` on the CM4:
 
@@ -247,36 +240,37 @@ inet 10.0.0.10/24 ...
 ```
 
 Teacher note: no default gateway is added on Ethernet. That prevents the test
-cable from stealing the Wi-Fi route used to reach Laptop 1. This `ip address`
+cable from stealing the Wi-Fi route used to reach the Ubuntu Hub host. This `ip address`
 setting is temporary and must be repeated after a Pi reboot.
 
-Now test both paths from the Pi, replacing the Laptop 1 address if needed:
+Now test both paths from the Pi, replacing the Hub host address as needed:
 
 ```bash
-ping -c 3 192.168.100.7
+ping -c 3 <ubuntu-desktop-lan-ip>
 ping -c 3 10.0.0.20
-timeout 3 bash -c '</dev/tcp/192.168.100.7/1883' && echo 'Laptop 1 MQTT reachable'
+timeout 3 bash -c '</dev/tcp/<ubuntu-desktop-lan-ip>/1883' && echo 'Hub MQTT reachable'
 timeout 3 bash -c '</dev/tcp/10.0.0.20/502' && echo 'Laptop 2 Modbus reachable'
 ```
 
 Expected:
 
 ```text
-Laptop 1 MQTT reachable
+Hub MQTT reachable
 Laptop 2 Modbus reachable
 ```
 
 ## 3.3 Render And Install The Local Gateway Config
 
-Use the public key values printed by Laptop 1 in Step 1.2.
+Use the public key values printed by the Ubuntu Hub host in Step 1.2.
 
 ```bash
-GATEWAY_CLAIM_CODE='PASTE_GATEWAY_CLAIM_CODE_FROM_LAPTOP_1'
-GATEWAY_CONFIG_KEY_ID='PASTE_GATEWAY_CONFIG_KEY_ID_FROM_LAPTOP_1'
-GATEWAY_CONFIG_PUBLIC_KEY_B64='PASTE_GATEWAY_CONFIG_PUBLIC_KEY_B64_FROM_LAPTOP_1'
+HUB_HOST_IP='<ubuntu-desktop-lan-ip>'
+GATEWAY_CLAIM_CODE='PASTE_GATEWAY_CLAIM_CODE_FROM_HUB_HOST'
+GATEWAY_CONFIG_KEY_ID='PASTE_GATEWAY_CONFIG_KEY_ID_FROM_HUB_HOST'
+GATEWAY_CONFIG_PUBLIC_KEY_B64='PASTE_GATEWAY_CONFIG_PUBLIC_KEY_B64_FROM_HUB_HOST'
 
 sudo python3 install/hardware-test/render_local_replay_config.py \
-  --mqtt-host 192.168.100.7 \
+  --mqtt-host "$HUB_HOST_IP" \
   --mqtt-password "$GATEWAY_CLAIM_CODE" \
   --public-key-id "$GATEWAY_CONFIG_KEY_ID" \
   --public-key-b64 "$GATEWAY_CONFIG_PUBLIC_KEY_B64" \
@@ -287,8 +281,8 @@ Expected:
 
 ```text
 Wrote Gateway config: /etc/novena-gateway/config.json
-MQTT target: 192.168.100.7:1883
-Guided Setup key id: <the key id printed on Laptop 1>
+MQTT target: <ubuntu-desktop-lan-ip>:1883
+Guided Setup key id: <the key id printed on the Ubuntu Hub host>
 Manual fallback Modbus target: 10.0.0.20:502
 ```
 
@@ -361,7 +355,7 @@ sudo journalctl -u novena-gateway -f
 Expected log signals:
 
 ```text
-Connected to MQTT broker at 192.168.100.7:1883
+Connected to MQTT broker at <ubuntu-desktop-lan-ip>:1883
 Remote config handler started, listening on: v1/gateway/NOV-AUDIT-FACTORY-HW/config
 Discovery is ready for signed on-demand scans; background scanning is disabled.
 ```
@@ -381,7 +375,7 @@ No discovery result is expected during startup. Discovery now begins only after 
 operator clicks **Scan for devices** in Hub. Gateway health reporting and configured
 device telemetry polling remain active independently of discovery.
 
-# Step 4 - Laptop 1 Browser: Claim And Complete Guided Setup
+# Step 4 - Ubuntu Hub Host Browser: Claim And Complete Guided Setup
 
 Open the onboarding entry URL:
 
@@ -560,7 +554,7 @@ incident and recovered screenshots.
 Run this extension when you want to close the separate physical-CM4 buffering
 gate, after the core go-live/alert/recovery path passes.
 
-1. On Laptop 1 WSL, stop only the replay broker:
+1. On the Ubuntu Hub host, stop only the replay broker:
 
 ```bash
 kill "$(cat .dev-pids/mosquitto-wsl.pid)"
@@ -575,10 +569,10 @@ sudo systemctl restart novena-gateway
 sudo journalctl -u novena-gateway -f
 ```
 
-3. On Laptop 1, restart the local stack and recheck health:
+3. On the Ubuntu Hub host, restart the local stack and recheck health:
 
 ```bash
-cd /home/shouheng/Novena-Platform/Novena-Hub
+cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
 bash scripts/start_wsl_dev_stack.sh
 bash .agents/skills/novena-local-dev/scripts/health-check.sh
 ```
@@ -587,7 +581,7 @@ bash .agents/skills/novena-local-dev/scripts/health-check.sh
    the samples captured during the outage in timestamp order:
 
 ```text
-Connected to MQTT broker at 192.168.100.7:1883
+Connected to MQTT broker at <ubuntu-desktop-lan-ip>:1883
 Replaying batch of ... events from SQLite...
 SQLite database buffer is empty. Replay complete.
 ```
@@ -600,8 +594,8 @@ a reconnect message by itself is transport evidence, not end-to-end persistence.
 Capture these during the test:
 
 ```text
-[ ] Laptop 1 helper output showing public key and MQTT 0.0.0.0:1883.
-[ ] Laptop 1 health check output.
+[ ] Ubuntu Hub host helper output showing public key and MQTT 0.0.0.0:1883.
+[ ] Ubuntu Hub host health check output.
 [ ] Laptop 2 simulator console with changing readings.
 [ ] Pi wired interface showing 10.0.0.10/24 and both TCP checks passing.
 [ ] Pi config-render helper output.
@@ -632,7 +626,7 @@ Symptoms:
 Pi /dev/tcp check fails, Gateway logs show MQTT connect errors, or Hub never sees Gateway online.
 ```
 
-Check on Laptop 1:
+Check on the Ubuntu Hub host:
 
 ```bash
 ss -ltnp | grep ':1883'
@@ -644,26 +638,25 @@ Good:
 LISTEN ... 0.0.0.0:1883 ... mosquitto
 ```
 
-Fix: rerun the Laptop 1 helper, confirm Windows firewall allows inbound TCP `1883`, and make sure no separate system Mosquitto is bound only to `127.0.0.1`.
+Fix: rerun the Hub host helper, confirm the Ubuntu firewall allows inbound TCP `1883` if a firewall is active, and make sure no separate system Mosquitto is bound only to `127.0.0.1`.
 
-## Wrong Laptop 1 IP
+## Wrong Hub Host IP
 
 Symptoms:
 
 ```text
-Laptop 1 services are healthy, but the Pi cannot ping or open 192.168.100.7:1883.
+Ubuntu Hub host services are healthy, but the Pi cannot ping or open the Hub host on port `1883`.
 ```
 
-Check the Windows Wi-Fi IPv4 address in Windows PowerShell:
+Check the Ubuntu host IPv4 address:
 
-```powershell
-ipconfig
+```bash
+ip -4 address
 ```
 
-Fix: rerun the Laptop 1 helper with the correct `--mqtt-host`, then rerun the Pi
-config renderer with the same corrected IP. If WSL shows `0.0.0.0:1883` but the Pi
-TCP check still fails, the remaining boundary is Windows/WSL forwarding or Windows
-Firewall; `ss` inside WSL alone does not prove LAN reachability.
+Fix: rerun the Hub host helper with the correct `--mqtt-host`, then rerun the Pi
+config renderer with the same corrected IP. If Ubuntu shows `0.0.0.0:1883` but
+the Pi TCP check still fails, check LAN routing and the Ubuntu firewall.
 
 ## Modbus Simulator Not Reachable
 
@@ -727,7 +720,7 @@ print('rpc:', cfg['features']['rpc']['trusted_clock'], list(cfg['features']['rpc
 PY
 ```
 
-Fix: copy the exact `GATEWAY_CONFIG_KEY_ID` and `GATEWAY_CONFIG_PUBLIC_KEY_B64` from Laptop 1 again, rerun the Pi config renderer, then restart `novena-gateway`.
+Fix: copy the exact `GATEWAY_CONFIG_KEY_ID` and `GATEWAY_CONFIG_PUBLIC_KEY_B64` from the Ubuntu Hub host again, rerun the Pi config renderer, then restart `novena-gateway`.
 
 ## Telemetry Does Not Appear In Hub
 
@@ -737,7 +730,7 @@ Symptoms:
 Gateway is online, but the device dashboard is stale or empty.
 ```
 
-Check Laptop 1 services:
+Check Ubuntu Hub host services:
 
 ```bash
 bash .agents/skills/novena-local-dev/scripts/health-check.sh
@@ -762,13 +755,13 @@ serial again. To create a deliberately separate Site, choose **New Site** instea
 http://localhost:8000/a/pilot-factory-energy/onboarding/
 ```
 
-After rerunning the Laptop 1 helper, pairing is required even when the old Gateway
+After rerunning the Hub host helper, pairing is required even when the old Gateway
 is still visible. The helper marks the audit inventory unclaimed so Hub rejects
 stale ownership until this deliberate claim step succeeds.
 
 ## Local MQTT Provisioning Shows Failed
 
-The WSL replay listener on `1883` intentionally allows anonymous local-LAN traffic
+The local replay listener on `1883` intentionally allows anonymous local-LAN traffic
 and does not run the production Dynamic Security admin listener on `1884`.
 Therefore operational-credential provisioning can show as unavailable in this
 local test while serial-scoped MQTT and signed Guided Setup still work. Record this

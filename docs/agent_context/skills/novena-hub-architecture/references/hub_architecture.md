@@ -18,7 +18,7 @@ Novena Platform has two main parts:
 - apps/content and templates/content: Wagtail marketing content.
 - novena_hub: settings, ASGI/WSGI, URL configuration, Celery setup.
 - templates: Django templates and app UI surfaces.
-- scripts: local simulators, WSL dev stack helper, seed/config utilities.
+- scripts: local simulators, Ubuntu dev stack helper, seed/config utilities.
 
 ## Data Hierarchy
 Use this tenancy chain as the default mental model:

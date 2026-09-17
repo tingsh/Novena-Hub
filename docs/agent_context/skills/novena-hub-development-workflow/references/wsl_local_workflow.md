@@ -1,15 +1,17 @@
-# WSL Local Development Workflow
+# Ubuntu Local Development Workflow
+
+This file kept its historical name so existing skill references keep working. The current default development host is Ubuntu desktop.
 
 ## Default Path
 
-cd /home/shouheng/Novena-Platform/Novena-Hub
+cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
 source ~/.venvs/novena/bin/activate
 
-Use the WSL-native Python environment ~/.venvs/novena for Hub work.
+Use the native Ubuntu Python environment `~/.venvs/novena` for Hub work.
 Docker remains useful for deployment validation, but it is not the default local test runner on this machine.
 
 ## Local Services
-Production-like local development should use native WSL2 services:
+Production-like local development should use native Ubuntu services:
 
 - PostgreSQL with TimescaleDB-compatible telemetry storage.
 - Redis for queues/cache/Channels.
@@ -52,7 +54,7 @@ DJANGO_SETTINGS_MODULE=novena_hub.settings /home/shouheng/.venvs/novena/bin/pyth
 - Local hardware testing has used plain MQTT on port 1883.
 - Production target remains MQTT over TLS on 8883.
 - Keep browser stream status separate from gateway/device health.
-- If Windows networking, Redis, or process-launch quirks appear, prefer documenting them as local caveats instead of designing production behavior around them.
+- If machine-specific networking, Redis, or process-launch quirks appear, prefer documenting them as local caveats instead of designing production behavior around them.
 
 ## GitHub PR Workflow
 

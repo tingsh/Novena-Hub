@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${NOVENA_HUB_ROOT:-/home/shouheng/Novena-Platform/Novena-Hub}"
+ROOT="${NOVENA_HUB_ROOT:-/home/shouheng/Projects/Novena-Platform/Novena-Hub}"
 VENV="${NOVENA_PYTHON_VENV:-/home/shouheng/.venvs/novena}"
 PYTHON="$VENV/bin/python"
 

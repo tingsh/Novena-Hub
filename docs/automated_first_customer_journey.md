@@ -35,7 +35,7 @@ Cleanup starts from record-level ownership markers and only follows their exact 
 Run from the Novena Hub repository with the normal Hub virtual environment and a non-production `.env`:
 
 ```bash
-cd /home/shouheng/Novena-Platform/Novena-Hub
+cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
 export NOVENA_DEPLOYMENT_MODE=local
 ```
 
@@ -47,7 +47,7 @@ The default MQTT journey requires:
 - `python manage.py mqtt_consumer` subscribed to the broker.
 - a Celery worker with Beat running `apps.telemetry.tasks.flush_telemetry_buffer_task`.
 
-On the supported WSL development machine, start and verify the existing stack:
+On the supported Ubuntu development machine, start and verify the existing stack:
 
 ```bash
 .agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh

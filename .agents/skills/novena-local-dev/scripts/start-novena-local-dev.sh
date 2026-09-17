@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="${NOVENA_HUB_ROOT:-/home/shouheng/Novena-Platform/Novena-Hub}"
+ROOT="${NOVENA_HUB_ROOT:-/home/shouheng/Projects/Novena-Platform/Novena-Hub}"
 VENV="${NOVENA_PYTHON_VENV:-/home/shouheng/.venvs/novena}"
 PYTHON="$VENV/bin/python"
 
@@ -26,7 +26,7 @@ tcp_ready() {
   timeout 2 bash -c "cat < /dev/null > /dev/tcp/$host/$port" >/dev/null 2>&1
 }
 
-start_wsl_service() {
+start_local_service() {
   local service_name="$1"
   if command -v service >/dev/null 2>&1; then
     if sudo -n service "$service_name" start >/dev/null 2>&1; then
@@ -51,15 +51,15 @@ info "Using Python: $PYTHON"
 if command -v pg_isready >/dev/null 2>&1 && pg_isready -h localhost -p 5432 >/dev/null 2>&1; then
   info "PostgreSQL is already ready on localhost:5432"
 else
-  info "Starting PostgreSQL service in WSL"
-  start_wsl_service postgresql || fail "PostgreSQL is not ready and could not be started non-interactively. Run: sudo service postgresql start"
+  info "Starting PostgreSQL service on Ubuntu"
+  start_local_service postgresql || fail "PostgreSQL is not ready and could not be started non-interactively. Run: sudo service postgresql start"
 fi
 
 if command -v redis-cli >/dev/null 2>&1 && redis-cli -h localhost -p 6379 ping >/dev/null 2>&1; then
   info "Redis is already ready on localhost:6379"
 else
-  info "Starting Redis service in WSL"
-  start_wsl_service redis-server || fail "Redis is not ready and could not be started non-interactively. Run: sudo service redis-server start"
+  info "Starting Redis service on Ubuntu"
+  start_local_service redis-server || fail "Redis is not ready and could not be started non-interactively. Run: sudo service redis-server start"
 fi
 
 info "Checking Django configuration"

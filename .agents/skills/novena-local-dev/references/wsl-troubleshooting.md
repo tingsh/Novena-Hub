@@ -1,18 +1,21 @@
-# WSL Troubleshooting
+# Ubuntu Local Dev Troubleshooting
 
-## PowerShell And WSL Quoting
+This file kept its historical name so existing skill references keep working. The current development machine is Ubuntu desktop, not Windows plus WSL.
 
-Prefer simple WSL invocations:
+## Shell Usage
 
-```powershell
-wsl -e bash -lc "cd /home/shouheng/Novena-Platform/Novena-Hub && .agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh"
+Use native Ubuntu shell commands directly:
+
+```bash
+cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
+.agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh
 ```
 
-Avoid complex inline Bash through PowerShell. In this project, commands containing pipes or regex alternation such as `A|B|C` were split by PowerShell before Bash received them. Put complex logic in a `.sh` script and call the script instead.
+Do not wrap local commands in `wsl.exe`, PowerShell, or old `/mnt/c/...` paths unless the task is explicitly about the previous Windows machine.
 
 ## Service Startup
 
-Native WSL development expects these services:
+Native Ubuntu development expects these services:
 
 - PostgreSQL on `localhost:5432`
 - Redis on `localhost:6379`
@@ -37,7 +40,7 @@ Then rerun:
 
 ## Ports
 
-Use these checks inside WSL:
+Use these checks on Ubuntu:
 
 ```bash
 ss -ltnp | grep -E ':8000|:5173|:5432|:6379|:1883'
@@ -50,7 +53,7 @@ ls -la .dev-pids
 cat .dev-pids/*.pid
 ```
 
-The repo's `scripts/start_wsl_dev_stack.sh` kills and replaces only the PIDs it previously wrote in `.dev-pids`.
+The repo's `scripts/start_wsl_dev_stack.sh` kills and replaces only the PIDs it previously wrote in `.dev-pids`. The script name is historical; it is still the active local dev stack launcher.
 
 ## Logs
 
@@ -66,7 +69,7 @@ tail -n 80 mosquitto-wsl.err.log
 
 ## Database
 
-The local `.env` should use native WSL hostnames:
+The local `.env` should use native Ubuntu hostnames:
 
 ```env
 DATABASE_URL="postgresql://postgres:<local-password>@localhost:5432/novena_hub"
@@ -75,7 +78,7 @@ MQTT_BROKER_HOST=localhost
 MQTT_BROKER_PORT=1883
 ```
 
-Do not use Docker hostnames like `db` or `redis` for native WSL development.
+Do not use Docker hostnames like `db` or `redis` for native Ubuntu development.
 
 Check readiness:
 
@@ -93,12 +96,12 @@ If migrations are pending:
 
 ## Mosquitto
 
-For local WSL testing, use:
+For local Ubuntu testing, use:
 
 ```bash
-/usr/sbin/mosquitto -c /home/shouheng/Novena-Platform/Novena-Hub/mosquitto/wsl-lan-test.conf -v
+/usr/sbin/mosquitto -c /home/shouheng/Projects/Novena-Platform/Novena-Hub/mosquitto/wsl-lan-test.conf -v
 ```
 
 That config binds listener `1883` to `0.0.0.0` with anonymous access for local development and hardware tests.
 
-For Pi-facing Windows LAN tests, use the Windows-specific notes in `docs/local_development_machine_notes.md`; that is a different path from the default WSL workflow.
+For the old Pi-facing Windows LAN setup, use the historical notes in `docs/local_development_machine_notes.md`; that is no longer the default local workflow.

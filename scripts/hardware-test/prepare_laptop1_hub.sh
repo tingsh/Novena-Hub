@@ -2,7 +2,7 @@
 set -euo pipefail
 umask 077
 
-ROOT="${NOVENA_HUB_ROOT:-/home/shouheng/Novena-Platform/Novena-Hub}"
+ROOT="${NOVENA_HUB_ROOT:-/home/shouheng/Projects/Novena-Platform/Novena-Hub}"
 PYTHON="${NOVENA_HUB_PYTHON:-/home/shouheng/.venvs/novena/bin/python}"
 MQTT_HOST=""
 MQTT_PORT="1883"
@@ -14,18 +14,18 @@ PUBLIC_KEY_FILE="/tmp/novena-replay-gateway.env"
 usage() {
   cat <<'USAGE_EOF'
 Usage:
-  bash scripts/hardware-test/prepare_laptop1_hub.sh --mqtt-host <laptop-1-lan-ip>
+  bash scripts/hardware-test/prepare_laptop1_hub.sh --mqtt-host <hub-host-lan-ip>
 
 Options:
-  --mqtt-host <ip-or-host>   Laptop 1 address reachable from the Pi CM4.
+  --mqtt-host <ip-or-host>   Ubuntu Hub host address reachable from the Pi CM4.
   --mqtt-port <port>         MQTT port for the local test. Must be 1883. Default: 1883.
   --key-id <id>              Guided Setup signing key id. Default: local-replay-2026-08.
   --skip-start               Update config and keys, but do not start local services.
   --skip-prepare             Do not run pilot_readiness_audit prepare.
   -h, --help                 Show this help.
 
-This script prepares Laptop 1 as the local Hub machine for the path:
-Laptop 2 Modbus simulator > Pi CM4 Gateway > Laptop 1 MQTT:1883 > local Novena Hub.
+This script prepares the Ubuntu Hub host for the path:
+Laptop 2 Modbus simulator > Pi CM4 Gateway > Ubuntu Hub MQTT:1883 > local Novena Hub.
 USAGE_EOF
 }
 
@@ -64,7 +64,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$MQTT_HOST" ]]; then
-  echo "Missing --mqtt-host. Use the Laptop 1 LAN IP reachable by the Pi." >&2
+  echo "Missing --mqtt-host. Use the Ubuntu Hub host LAN IP reachable by the Pi." >&2
   exit 2
 fi
 
@@ -237,7 +237,7 @@ else
 fi
 
 echo
-echo "Laptop 1 is prepared for hardware replay."
+echo "Ubuntu Hub host is prepared for hardware replay."
 echo "Hub: http://localhost:8000/"
 echo "Onboarding entry: http://localhost:8000/a/pilot-factory-energy/onboarding/"
 echo "Replay values: $PUBLIC_KEY_FILE"

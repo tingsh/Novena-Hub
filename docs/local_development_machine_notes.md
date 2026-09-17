@@ -1,6 +1,6 @@
 # Local Development Machine Notes
 
-These notes capture quirks observed on this Windows Laptop 1 development machine during local Novena Hub and Raspberry Pi CM4 hardware testing.
+These notes are mostly historical. They capture quirks observed on the old Windows Laptop 1 development machine during local Novena Hub and Raspberry Pi CM4 hardware testing. The current default development host is the Ubuntu desktop at `/home/shouheng/Projects/Novena-Platform/Novena-Hub`.
 
 ## Dev Server Launch Quirks
 
@@ -66,20 +66,17 @@ For production, prefer not exposing any admin/provisioning listener publicly. Be
 2. Use the production TLS listener `8883` with a tightly restricted admin client and ACLs.
 3. Run provisioning from the same host/container network as Mosquitto so the control path is not internet-facing.
 
-## WSL Development Default
+## Current Ubuntu Development Default
 
-Moving forward, Novena development on this machine should default to WSL rather than Git Bash or Windows PowerShell.
+Moving forward, Novena development should default to the Ubuntu desktop native shell. Use the old Windows/WSL notes above only when deliberately reproducing that previous machine setup.
 
 Use this project path and virtual environment:
 
 ```bash
-cd ~/Novena-Platform/Novena-Hub
+cd ~/Projects/Novena-Platform/Novena-Hub
 source ~/.venvs/novena/bin/activate
 ```
 
-Keep the existing Windows `.venv` only as a temporary fallback until the WSL setup has been verified end-to-end with Django, Vite, Redis, Celery, Mosquitto, MQTT ingestion, and Pi CM4 connectivity.
+Do not use the old Windows `.venv` or WSL paths for current work unless the task explicitly asks about the previous Windows machine.
 
-Do not mix the Windows and WSL Python environments:
-
-- WSL work should use `~/.venvs/novena/bin/python` and Linux tools.
-- Windows fallback work should use `.venv\Scripts\python.exe` and Windows tools.
+Current Ubuntu work should use `~/.venvs/novena/bin/python` and native Linux tools.
