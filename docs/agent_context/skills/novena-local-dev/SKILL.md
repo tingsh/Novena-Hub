@@ -15,11 +15,22 @@ Use this skill for Novena Hub local development on the Ubuntu desktop.
   ```bash
   cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
   ```
-- Use the Ubuntu Python environment:
+- Use Python 3.12, as specified by `.python-version`, in the Ubuntu Python environment:
   ```bash
   /home/shouheng/.venvs/novena/bin/python
   ```
 - Do not use old Windows or WSL paths unless the user explicitly asks about the previous machine.
+
+## Dependency Restore
+
+Use the project lockfiles, keeping Python 3.12 rather than Ubuntu's system Python 3.14:
+
+```bash
+UV_PROJECT_ENVIRONMENT=/home/shouheng/.venvs/novena /home/shouheng/.local/bin/uv sync --frozen --python 3.12
+npm ci --no-audit --no-fund
+```
+
+The Ubuntu desktop has uv installed at `~/.local/bin/uv`.
 
 ## Fast Start
 
@@ -51,10 +62,18 @@ Expected browser endpoints:
    - `python manage.py check`
    - `python manage.py migrate --check`
    - `python manage.py verify_timescale`
+   - Read-only Community/aggregate/compression/retention verification via `scripts/database/verify_timescale_policies.sql`.
 5. Delegates app process startup to the repo's known-good script:
    ```bash
    scripts/start_wsl_dev_stack.sh
    ```
+
+On Ubuntu, configure the local LAN listener in
+`/etc/mosquitto/conf.d/novena-local-replay.conf` and start the Mosquitto system
+service. The launcher reuses that service and checks for `0.0.0.0:1883`.
+Ubuntu AppArmor blocks Mosquitto from reading the old project-home configuration;
+see `docs/local_development_machine_notes.md` for setup. The project broker command
+below is only the fallback for machines without an active system broker.
 
 The repo script starts:
 

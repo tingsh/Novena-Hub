@@ -557,7 +557,7 @@ gate, after the core go-live/alert/recovery path passes.
 1. On the Ubuntu Hub host, stop only the replay broker:
 
 ```bash
-kill "$(cat .dev-pids/mosquitto-wsl.pid)"
+sudo systemctl stop mosquitto
 ```
 
 2. Leave the normal Laptop 2 simulator running for at least one polling interval.
@@ -569,10 +569,11 @@ sudo systemctl restart novena-gateway
 sudo journalctl -u novena-gateway -f
 ```
 
-3. On the Ubuntu Hub host, restart the local stack and recheck health:
+3. On the Ubuntu Hub host, start the system broker, restart the local stack and recheck health:
 
 ```bash
 cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
+sudo systemctl start mosquitto
 bash scripts/start_wsl_dev_stack.sh
 bash .agents/skills/novena-local-dev/scripts/health-check.sh
 ```
@@ -638,7 +639,7 @@ Good:
 LISTEN ... 0.0.0.0:1883 ... mosquitto
 ```
 
-Fix: rerun the Hub host helper, confirm the Ubuntu firewall allows inbound TCP `1883` if a firewall is active, and make sure no separate system Mosquitto is bound only to `127.0.0.1`.
+Fix: configure the Ubuntu system broker LAN listener in `/etc/mosquitto/conf.d/novena-local-replay.conf` as described in `docs/local_development_machine_notes.md`, restart it with `sudo systemctl restart mosquitto`, and rerun the Hub host helper. Confirm the Ubuntu firewall allows inbound TCP `1883` if active. The system service avoids Ubuntu AppArmor denying the old project-home configuration.
 
 ## Wrong Hub Host IP
 

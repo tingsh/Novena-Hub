@@ -46,7 +46,11 @@ check_tcp() {
   fi
 }
 
-check_pid mosquitto-wsl
+if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet mosquitto; then
+  ok "Mosquitto system service is running"
+else
+  check_pid mosquitto-wsl
+fi
 check_pid django-wsl
 check_pid celery-wsl
 check_pid mqtt-consumer-wsl
@@ -72,3 +76,4 @@ fi
 
 "$PYTHON" manage.py migrate --check
 "$PYTHON" manage.py verify_timescale
+"$PYTHON" manage.py dbshell -- -X -v ON_ERROR_STOP=1 -f "$ROOT/scripts/database/verify_timescale_policies.sql"

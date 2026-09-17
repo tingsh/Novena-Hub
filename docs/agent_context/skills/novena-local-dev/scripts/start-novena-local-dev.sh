@@ -72,6 +72,7 @@ fi
 
 info "Checking TimescaleDB hypertable state"
 "$PYTHON" manage.py verify_timescale
+"$PYTHON" manage.py dbshell -- -X -v ON_ERROR_STOP=1 -f "$ROOT/scripts/database/verify_timescale_policies.sql"
 
 info "Starting Mosquitto, Django, Celery, MQTT consumer, and Vite via repo script"
 bash "$ROOT/scripts/start_wsl_dev_stack.sh"

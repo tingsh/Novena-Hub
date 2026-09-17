@@ -53,7 +53,7 @@ ls -la .dev-pids
 cat .dev-pids/*.pid
 ```
 
-The repo's `scripts/start_wsl_dev_stack.sh` kills and replaces only the PIDs it previously wrote in `.dev-pids`. The script name is historical; it is still the active local dev stack launcher.
+The repo's `scripts/start_wsl_dev_stack.sh` restarts matching local app processes and previously recorded PIDs; it reuses an active system Mosquitto service. The script name is historical; it is still the active local dev stack launcher.
 
 ## Logs
 
@@ -96,7 +96,21 @@ If migrations are pending:
 
 ## Mosquitto
 
-For local Ubuntu testing, use:
+On Ubuntu 26.04, Mosquitto's AppArmor profile prevents reading configuration
+inside the project home directory. Use the system service with this file:
+
+```text
+# /etc/mosquitto/conf.d/novena-local-replay.conf
+listener 1883 0.0.0.0
+allow_anonymous true
+```
+
+Then run `sudo systemctl restart mosquitto`. The Novena launcher automatically
+reuses the system broker. Do not run a second broker on the same port.
+See `docs/local_development_machine_notes.md` for the restored Ubuntu baseline.
+
+On machines without that AppArmor restriction or an active system broker, the
+legacy project launcher uses:
 
 ```bash
 /usr/sbin/mosquitto -c /home/shouheng/Projects/Novena-Platform/Novena-Hub/mosquitto/wsl-lan-test.conf -v

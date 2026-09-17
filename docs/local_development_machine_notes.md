@@ -2,6 +2,57 @@
 
 These notes are mostly historical. They capture quirks observed on the old Windows Laptop 1 development machine during local Novena Hub and Raspberry Pi CM4 hardware testing. The current default development host is the Ubuntu desktop at `/home/shouheng/Projects/Novena-Platform/Novena-Hub`.
 
+
+## Restored Ubuntu Runtime — 2026-09-17
+
+- Python 3.12.14 at `~/.venvs/novena`, matching `.python-version`; 189 locked
+  Python application/dev dependencies restored with `uv sync --frozen --python 3.12`.
+- uv is installed at `~/.local/bin/uv`. The original Python 3.14 environment is
+  preserved at `~/.venvs/novena-python314-before-restore-20260917`.
+- Node 22.23.2 and npm 10.9.8; frontend packages restored using `npm ci`.
+- PostgreSQL 18.6 / TimescaleDB Community 2.29.2 and Redis run as native services.
+- Use system Mosquitto, with `/etc/mosquitto/conf.d/novena-local-replay.conf`:
+
+```text
+listener 1883 0.0.0.0
+allow_anonymous true
+```
+
+Ubuntu AppArmor allows this location but blocks the previous home-directory
+broker config. Run `sudo systemctl restart mosquitto` after changing the file.
+The local launcher reuses an active LAN-bound system broker; broker logs are in
+`/var/log/mosquitto/mosquitto.log` or `journalctl -u mosquitto`, not the project log.
+For the optional physical offline-buffer replay, stop/start this system broker
+with `sudo systemctl stop mosquitto` and `sudo systemctl start mosquitto` instead
+of using the old `.dev-pids/mosquitto-wsl.pid` commands.
+
+The current Ubuntu LAN address is `192.168.0.16`; use it as the Pi's MQTT host on
+port 1883. Recheck the address after changing networks. Local browser Hub remains
+`http://localhost:8000/`. The prior environment was backed up under
+`backups/ubuntu-runtime-20260917/`. Local email uses the console backend and
+WhatsApp uses `mock`; external delivery testing requires a deliberate switch back.
+The bundle's media and environment keys were already present. Existing login
+accounts were retained, and the standard pilot fixture was prepared because the
+new database contained no teams/gateways. The old database dump was not restored
+over this working database. Current replay values are in the private file
+`/tmp/novena-replay-gateway.env`; regenerate with the hardware helper after reboot
+if needed.
+
+Start and verify:
+
+```bash
+cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
+source ~/.venvs/novena/bin/activate
+bash .agents/skills/novena-local-dev/scripts/start-novena-local-dev.sh
+bash .agents/skills/novena-local-dev/scripts/health-check.sh
+```
+
+Runtime verification passed: dependency consistency, Django/migration checks,
+TypeScript/frontend build, PDF rendering, seven focused customer-journey tests,
+real HTTP pilot login/onboarding, Celery ping, synchronized Ubuntu clock and the
+live MQTT canary (10 samples/20 telemetry points, with successful cleanup).
+Physical Pi connectivity and replay still need testing.
+
 ## Dev Server Launch Quirks
 
 - Django itself starts cleanly, but launching it through sandboxed PowerShell can fail when `Start-Process` inherits duplicate environment keys (`Path` and `PATH`). If this happens, launch the dev server outside the sandbox/elevated shell:
