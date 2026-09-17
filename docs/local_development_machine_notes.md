@@ -80,3 +80,45 @@ source ~/.venvs/novena/bin/activate
 Do not use the old Windows `.venv` or WSL paths for current work unless the task explicitly asks about the previous Windows machine.
 
 Current Ubuntu work should use `~/.venvs/novena/bin/python` and native Linux tools.
+
+
+## Ubuntu TimescaleDB Repair — 2026-09-17
+
+Ubuntu's `postgresql-18-timescaledb` 2.25.1+dfsg-1 package supplied only Apache
+features (`SHOW timescaledb.license` returned `apache`). Novena requires Community
+features for compression, continuous aggregates and scheduled retention. The
+migration fallbacks had marked migrations as applied while leaving an ordinary,
+unpopulated `hourly_telemetry_stats` view and no telemetry jobs.
+
+Replaced that package with official `timescaledb-2-postgresql-18` and
+`timescaledb-2-loader-postgresql-18` 2.29.2~ubuntu26.04-1806 packages. PostgreSQL
+remains 18.6. The package replacement requires a PostgreSQL restart, followed by
+`ALTER EXTENSION timescaledb UPDATE TO '2.29.2';` as the first statement in a fresh
+`psql -X` connection. Community now reports `timescaledb.license = timescale`.
+The downloaded packages were verified against SHA256 values from the official
+package repository. They were installed locally; configure the official repository
+before expecting future Community package updates through apt.
+
+Official package source: https://packagecloud.io/timescale/timescaledb
+
+After backing up, applied `scripts/database/repair_apache_timescale_fallback.sql`
+to replace only the unpopulated fallback view and restore the policies defined by
+the original migrations. The script is guarded for this specific broken state;
+it refuses a populated fallback or an already-correct continuous aggregate and
+never resets Django migration records or deletes raw telemetry. The raw telemetry
+table contained zero rows before and after this repair; other app tables remain
+intact. The three uncommitted fallback migration edits were backed up in the local
+migration bundle and restored to their Git versions.
+
+Use `scripts/database/verify_timescale_policies.sql` through a connection to the
+intended database (`psql -X -v ON_ERROR_STOP=1 -f ...`) to check Community features,
+compression after seven days, hourly continuous-aggregate refresh, and 90-day raw
+and aggregate retention. The existing `manage.py verify_timescale` only checks
+hypertable metadata and is not sufficient to detect this failure.
+
+Verification passed on the repaired database and on a disposable database created
+using the SQL from original migrations 0002/0003/0005. A separate synthetic-data
+replay verified aggregate averages, raw-row preservation during repair, actual
+compression, and expiration of old samples. Disposable databases were removed.
+Django application checks remain pending: `~/.venvs/novena/bin/python` currently
+cannot import Django. No full Hub or physical CM4 replay was claimed by this repair.
