@@ -153,6 +153,12 @@ Gateway:    blank
 
 Copy `scripts/modbus_simulator.py` from the Hub repo to Laptop 2, or run it from a cloned Hub checkout.
 
+Before relying on the fixed `--mode` commands below, run
+`python scripts/modbus_simulator.py --help` on Laptop 2 and confirm `--mode`
+is listed. The older script rejects `--mode` and cycles normal → incident →
+recovery every 90 seconds. Update Laptop 2's Hub checkout from current `main`
+after checking for local changes to get deterministic fixed modes.
+
 Install the dependency:
 
 ```bash

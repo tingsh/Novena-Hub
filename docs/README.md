@@ -32,6 +32,7 @@ The Gateway repository's `ARCHITECTURE.md` is the current edge-runtime guide. Hi
 - [Telemetry retention policy](telemetry_retention_policy.md)
 - [Pilot readiness audit](pilot_readiness_audit.md) and [scorecard](pilot_readiness_scorecard.md)
 - [Hardware replay runbook](hardware_replay_runbook_2026-07-09.md)
+- [Factory-energy CM4 replay result (2026-10-08)](factory_energy_cm4_replay_2026-10-08.md) — observed end-to-end behavior, fixes and remaining gates.
 - [Local development machine notes](local_development_machine_notes.md)
 
 ## External integrations
