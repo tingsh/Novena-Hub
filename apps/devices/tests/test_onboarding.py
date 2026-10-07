@@ -897,3 +897,56 @@ class SolutionProfileOnboardingTest(TestCase):
         self.assertGreaterEqual(first["automations"], 1)
         self.assertEqual(second["alerts"], 0)
         self.assertEqual(second["automations"], 0)
+
+    def test_guided_setup_waits_for_alert_review_before_enabling_template_presets(self):
+        site = Site.objects.create(team=self.team, name="Factory", solution_profile="factory_energy")
+        template = DeviceTemplate.objects.create(
+            name="Power Meter",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            category="energy",
+            register_map={"active_power": {"address": 3060}},
+            alert_presets=[
+                {"key": "active_power", "condition": "gt", "threshold": 1200.0, "severity": "warning"}
+            ],
+        )
+        device = Device.objects.create(
+            team=self.team,
+            site=site,
+            name="Meter",
+            template=template,
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            metadata={"guided_setup_validation": "pending"},
+        )
+        self.assertFalse(AlertRule.objects.filter(device=device).exists())
+
+        created = apply_solution_profile_presets(site, self.user)
+
+        rules = AlertRule.objects.filter(device=device, telemetry_key="active_power")
+        self.assertEqual(created["alerts"], 1)
+        self.assertEqual(rules.count(), 1)
+        self.assertEqual(rules.get().duration_seconds, 60)
+
+    def test_profile_review_disables_legacy_duplicate_template_rule(self):
+        site = Site.objects.create(team=self.team, name="Factory", solution_profile="factory_energy")
+        template = DeviceTemplate.objects.create(
+            name="Power Meter",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            category="energy",
+            register_map={"active_power": {"address": 3060}},
+            alert_presets=[
+                {"key": "active_power", "condition": "gt", "threshold": 1200, "severity": "warning"}
+            ],
+        )
+        device = Device.objects.create(team=self.team, site=site, name="Meter", template=template)
+        self.assertEqual(AlertRule.objects.filter(device=device, is_active=True).count(), 1)
+
+        apply_solution_profile_presets(site, self.user)
+        apply_solution_profile_presets(site, self.user)
+
+        active = AlertRule.objects.get(device=device, is_active=True)
+        self.assertEqual(active.name, "Meter Power Spike")
+        self.assertEqual(active.duration_seconds, 60)
+        self.assertEqual(AlertRule.objects.filter(device=device, is_active=False).count(), 1)

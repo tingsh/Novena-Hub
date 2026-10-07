@@ -295,6 +295,20 @@ def apply_solution_profile_presets(site, user=None):
                 if user:
                     _rule.recipients.add(user)
 
+            # Older Guided Setup runs could create an immediate template rule
+            # before the customer approved this profile recommendation. Keep
+            # its history, but prevent a second live rule for the same limit.
+            AlertRule.objects.filter(
+                team=site.team,
+                device=device,
+                telemetry_key=preset.key,
+                condition=preset.condition,
+                threshold=preset.threshold,
+                name__startswith=f"Auto: {device.name} {preset.key} {preset.condition} ",
+                duration_seconds=0,
+                create_maintenance_ticket=False,
+            ).exclude(pk=_rule.pk).update(is_active=False)
+
             if preset.create_maintenance_ticket:
                 automation, automation_created = Automation.objects.get_or_create(
                     team=site.team,

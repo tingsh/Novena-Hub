@@ -10,5 +10,7 @@ def auto_configure_device(sender, instance, created, **kwargs):
     """
     Trigger automation logic when a new device is created.
     """
-    if created:
+    # Guided Setup asks the customer to approve recommended alerts after live
+    # validation. Template defaults must not activate before that review.
+    if created and (instance.metadata or {}).get("guided_setup_validation") != "pending":
         apply_template_presets(instance)
