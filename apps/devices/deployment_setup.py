@@ -773,6 +773,19 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
                 },
             )
 
+    latest_config = run.configurations.first()
+    if latest_config and latest_config.status == "active":
+        # Restore retry items before checking telemetry so a single refresh can
+        # confirm data that arrived while the prior revision was rolled back.
+        run.items.filter(
+            state__in=[
+                DeploymentSetupItem.State.QUEUED,
+                DeploymentSetupItem.State.FAILED,
+                DeploymentSetupItem.State.ROLLED_BACK,
+            ],
+            device__isnull=False,
+        ).update(state=DeploymentSetupItem.State.APPLIED)
+
     for item in run.items.select_related("device", "selected_template", "validation_command"):
         if item.state == DeploymentSetupItem.State.VALIDATING and item.validation_command_id:
             rpc = RpcCommand.objects.filter(remote_command=item.validation_command).order_by("-sent_at").first()
@@ -857,7 +870,6 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
                 item=item,
             )
 
-    latest_config = run.configurations.first()
     if latest_config:
         if latest_config.status in {"queued", "waiting_for_gateway", "published", "accepted"}:
             run.state = DeploymentSetupRun.State.DEPLOYING
@@ -880,17 +892,6 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
                     },
                 )
         elif latest_config.status == "active":
-            # A retry can activate a newer revision after the previous one
-            # rolled back or failed. Those items still belong to this run and
-            # must resume telemetry verification with the successful revision.
-            run.items.filter(
-                state__in=[
-                    DeploymentSetupItem.State.QUEUED,
-                    DeploymentSetupItem.State.FAILED,
-                    DeploymentSetupItem.State.ROLLED_BACK,
-                ],
-                device__isnull=False,
-            ).update(state=DeploymentSetupItem.State.APPLIED)
             run.state = DeploymentSetupRun.State.VERIFYING
             run.current_step = "verify"
             if not run.events.filter(event_type="configuration_active").exists():

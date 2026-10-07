@@ -275,11 +275,6 @@ class DeploymentSetupWorkflowTest(TestCase):
             status="active",
         )
 
-        first = sync_setup_run(run)
-        item.refresh_from_db()
-        self.assertEqual(first.state, "verifying")
-        self.assertEqual(item.state, "applied")
-
         completed = sync_setup_run(run)
         item.refresh_from_db()
         self.assertEqual(completed.state, "completed")
