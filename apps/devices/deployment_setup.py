@@ -880,14 +880,24 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
                     },
                 )
         elif latest_config.status == "active":
-            run.items.filter(state=DeploymentSetupItem.State.QUEUED).update(state=DeploymentSetupItem.State.APPLIED)
+            # A retry can activate a newer revision after the previous one
+            # rolled back or failed. Those items still belong to this run and
+            # must resume telemetry verification with the successful revision.
+            run.items.filter(
+                state__in=[
+                    DeploymentSetupItem.State.QUEUED,
+                    DeploymentSetupItem.State.FAILED,
+                    DeploymentSetupItem.State.ROLLED_BACK,
+                ],
+                device__isnull=False,
+            ).update(state=DeploymentSetupItem.State.APPLIED)
             run.state = DeploymentSetupRun.State.VERIFYING
             run.current_step = "verify"
             if not run.events.filter(event_type="configuration_active").exists():
                 append_setup_event(
                     run,
                     "configuration_active",
-                    "Connectors started and equipment communication was established.",
+                    "Connectors started; waiting for live equipment communication.",
                     evidence={
                         "request_id": str(latest_config.request_id),
                         "connector_results": latest_config.connector_results,
@@ -1000,13 +1010,7 @@ def deployment_progress(run: DeploymentSetupRun) -> list[dict]:
     level = status_order.get(config_status, -1)
     item_states = set(run.items.values_list("state", flat=True))
     telemetry_ready = DeploymentSetupItem.State.TELEMETRY_CONFIRMED in item_states
-    equipment_ready = bool(
-        item_states
-        & {
-            DeploymentSetupItem.State.APPLIED,
-            DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
-        }
-    )
+    equipment_ready = telemetry_ready
     failed = config_status in {"failed", "timed_out", "superseded", "rolled_back"}
 
     def state(completed):

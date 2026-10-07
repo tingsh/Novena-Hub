@@ -10,6 +10,7 @@ from django.utils import timezone
 from apps.devices.deployment_setup import (
     confidence_label,
     customer_safe_error,
+    deployment_progress,
     discovery_scan_state,
     gateway_readiness,
     get_or_create_setup_run,
@@ -235,6 +236,86 @@ class DeploymentSetupWorkflowTest(TestCase):
         self.assertEqual(item.state, "telemetry_confirmed")
         self.assertEqual(completed.state, "completed")
         self.assertTrue(device.dashboards.exists())
+
+    def test_successful_retry_recovers_rolled_back_item_and_finishes_with_telemetry(self):
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
+            name="Retried meter",
+            template=self.template,
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            last_telemetry_at=timezone.now(),
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=self.template,
+            state=DeploymentSetupItem.State.ROLLED_BACK,
+        )
+        GatewayConfig.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            setup_run=run,
+            config_json={"connectors": []},
+            request_id=uuid.uuid4(),
+            revision=1,
+            status="rolled_back",
+        )
+        GatewayConfig.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            setup_run=run,
+            config_json={"connectors": []},
+            request_id=uuid.uuid4(),
+            revision=2,
+            status="active",
+        )
+
+        first = sync_setup_run(run)
+        item.refresh_from_db()
+        self.assertEqual(first.state, "verifying")
+        self.assertEqual(item.state, "applied")
+
+        completed = sync_setup_run(run)
+        item.refresh_from_db()
+        self.assertEqual(completed.state, "completed")
+        self.assertEqual(item.state, "telemetry_confirmed")
+        self.assertTrue(all(step["status"] == "complete" for step in deployment_progress(completed)))
+
+    def test_applied_config_waits_for_telemetry_before_claiming_equipment_communication(self):
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
+            name="Quiet meter",
+            template=self.template,
+            device_type="power_meter",
+            protocol="modbus_tcp",
+        )
+        DeploymentSetupItem.objects.create(
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=self.template,
+            state=DeploymentSetupItem.State.APPLIED,
+        )
+        GatewayConfig.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            setup_run=run,
+            config_json={"connectors": []},
+            request_id=uuid.uuid4(),
+            status="active",
+        )
+
+        progress = {step["label"]: step["status"] for step in deployment_progress(run)}
+        self.assertEqual(progress["Connectors started"], "complete")
+        self.assertEqual(progress["Equipment communication established"], "pending")
 
     def test_support_bundle_excludes_raw_configuration_and_credentials(self):
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
