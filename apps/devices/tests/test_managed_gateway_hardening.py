@@ -295,8 +295,9 @@ class SignedConfigDeliveryHardeningTest(ManagedGatewayFixture):
         super().setUp()
         self.gateway.status = "online"
         self.gateway.mqtt_connected = True
+        self.gateway.remote_control_clock_ready = True
         self.gateway.last_seen = timezone.now()
-        self.gateway.save(update_fields=["status", "mqtt_connected", "last_seen"])
+        self.gateway.save(update_fields=["status", "mqtt_connected", "remote_control_clock_ready", "last_seen"])
 
     def _ack(self, config, status):
         return acknowledge_gateway_config(
@@ -414,6 +415,8 @@ class SignedConfigDeliveryHardeningTest(ManagedGatewayFixture):
 class PlanPollingHardeningTest(ManagedGatewayFixture):
     def setUp(self):
         super().setUp()
+        self.gateway.remote_control_clock_ready = True
+        self.gateway.save(update_fields=["remote_control_clock_ready"])
         self.template = DeviceTemplate.objects.create(
             name="Meter Template",
             device_type="power_meter",
