@@ -676,12 +676,13 @@ class CommissioningContextTest(TestCase):
             "devices": [
                 {
                     "interface": "10.0.0.2:502",
+                    "connection": "modbus_tcp",
                     "signature": "Matched",
                     "matched_template_id": self.template.id,
                     "matched_template_score": 90,
                     "matched_template_reasons": ["model"],
                 },
-                {"interface": "10.0.0.3:502", "signature": "Unknown"},
+                {"interface": "10.0.0.3:502", "connection": "modbus_tcp", "signature": "Unknown"},
             ]
         }
         self.gateway.save(update_fields=["status", "last_seen", "lifecycle_status", "discovery_data"])
