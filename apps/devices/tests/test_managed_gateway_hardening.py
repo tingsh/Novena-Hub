@@ -68,7 +68,7 @@ class ManagedGatewayFixture(TestCase):
         )
 
 
-@override_settings(GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
+@override_settings(GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", MQTT_PROVISIONING_REQUIRED=True)
 class GatewayReleaseHardeningTest(ManagedGatewayFixture):
     def _device(self):
         return Device.objects.create(
@@ -79,6 +79,36 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
             device_type="power_meter",
             protocol="modbus_tcp",
         )
+
+    @override_settings(MQTT_PROVISIONING_REQUIRED=False, DEBUG=True)
+    @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt")
+    def test_local_release_without_dynsec_completes(self, deprovision):
+        release = request_gateway_release(self.gateway)
+
+        dispatch_gateway_release(release.pk)
+
+        release.refresh_from_db()
+        self.gateway.refresh_from_db()
+        self.inventory.refresh_from_db()
+        self.assertEqual(release.status, "completed")
+        self.assertEqual(self.gateway.lifecycle_status, "released")
+        self.assertEqual(self.inventory.status, "released")
+        deprovision.assert_not_called()
+
+    @override_settings(MQTT_PROVISIONING_REQUIRED=False, DEBUG=False)
+    @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt")
+    def test_nonlocal_release_without_dynsec_stays_quarantined(self, deprovision):
+        release = request_gateway_release(self.gateway)
+
+        dispatch_gateway_release(release.pk)
+
+        release.refresh_from_db()
+        self.gateway.refresh_from_db()
+        self.inventory.refresh_from_db()
+        self.assertEqual(release.status, "retry")
+        self.assertEqual(self.gateway.lifecycle_status, "release_pending")
+        self.assertEqual(self.inventory.status, "claimed")
+        deprovision.assert_not_called()
 
     @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt", side_effect=RuntimeError("broker down"))
     def test_unknown_revocation_keeps_inventory_and_data_quarantined(self, _deprovision):

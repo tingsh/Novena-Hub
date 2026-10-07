@@ -187,9 +187,17 @@ def dispatch_gateway_release(release_id) -> GatewayReleaseRequest | None:
         release.save()
 
     try:
-        from .mqtt_provisioning import deprovision_gateway_mqtt
+        if getattr(settings, "MQTT_PROVISIONING_REQUIRED", False):
+            from .mqtt_provisioning import deprovision_gateway_mqtt
 
-        deprovision_gateway_mqtt(release.gateway)
+            deprovision_gateway_mqtt(release.gateway)
+        elif settings.DEBUG:
+            logger.info(
+                "Skipped MQTT dynamic-security revocation for %s in local development mode.",
+                release.gateway.serial_number,
+            )
+        else:
+            raise RuntimeError("Gateway release requires MQTT credential revocation outside local development.")
     except Exception as exc:
         _retry_release(release_id, exc)
         return GatewayReleaseRequest.objects.get(pk=release_id)

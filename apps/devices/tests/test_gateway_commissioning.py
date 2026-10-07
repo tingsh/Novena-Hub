@@ -451,7 +451,7 @@ class EdgeConfigGenerationTest(TestCase):
         self.assertEqual(slave["unitId"], 7)
 
 
-@override_settings(GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
+@override_settings(GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", MQTT_PROVISIONING_REQUIRED=True)
 class GatewayDeleteReleaseViewTest(TestCase):
     def setUp(self):
         from django.test import Client
