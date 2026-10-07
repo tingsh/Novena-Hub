@@ -341,9 +341,17 @@ def gateway_readiness(gateway: Gateway) -> dict:
             "message": (
                 "Gateway clock is synchronized."
                 if clock_ready
-                else "The Gateway is synchronizing its secure clock."
+                else (
+                    "Waiting for the Gateway runtime to report its clock status."
+                    if not gateway.firmware_version
+                    else "The Gateway is synchronizing its secure clock."
+                )
             ),
-            "action": "Keep the Gateway online. Setup unlocks automatically after time synchronization.",
+            "action": (
+                "Check that the Gateway service is publishing operational heartbeats."
+                if not gateway.firmware_version
+                else "Keep the Gateway online. Setup unlocks after time synchronization."
+            ),
             "blocking": True,
         },
         {

@@ -206,6 +206,34 @@ class GatewayClaimWorkflowTest(TestCase):
         self.assertFalse(gateway.remote_control_clock_ready)
         self.assertNotIn("guided_setup_v1", gateway.gateway_capabilities)
 
+    def test_connectivity_diagnostics_do_not_count_as_runtime_heartbeat(self):
+        from apps.telemetry.management.commands.mqtt_consumer import Command
+
+        gateway = Gateway.objects.create(
+            team=self.team,
+            site=self.site,
+            name="Diagnostic Gateway",
+            serial_number="NF-DIAGNOSTIC-001",
+            access_token="diagnostic-token",
+        )
+        consumer = Command()
+        consumer._handle_attributes(
+            {"serial_number": gateway.serial_number, "attributes": {"mqtt_connected": True, "broker_tcp_ok": True}},
+            gateway=gateway,
+        )
+        gateway.refresh_from_db()
+        self.assertIsNone(gateway.last_seen)
+        self.assertEqual(gateway.freshness.status, "offline")
+        self.assertTrue(gateway.mqtt_connected)
+
+        consumer._handle_attributes(
+            {"serial_number": gateway.serial_number, "attributes": {"status": "online", "firmware_version": "1.0"}},
+            gateway=gateway,
+        )
+        gateway.refresh_from_db()
+        self.assertIsNotNone(gateway.last_seen)
+        self.assertEqual(gateway.freshness.status, "live")
+
     def test_heartbeat_with_current_clock_preserves_signed_setup_readiness(self):
         from apps.telemetry.management.commands.mqtt_consumer import Command
 

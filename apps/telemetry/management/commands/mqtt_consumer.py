@@ -326,9 +326,13 @@ class Command(BaseCommand):
         attrs = payload.get("attributes", {})
         previously_clock_ready = gateway.remote_control_clock_ready
 
-        # Update gateway fields
-        update_fields = ["last_seen"]
-        gateway.last_seen = timezone.now()
+        # Connectivity probes and acknowledgements share this topic, but they
+        # are not operational heartbeats. Only an online runtime report proves
+        # the Gateway has started its attribute-sync worker.
+        update_fields = []
+        if attrs.get("status") == "online":
+            gateway.last_seen = timezone.now()
+            update_fields.append("last_seen")
 
         field_mapping = {
             "status": "status",

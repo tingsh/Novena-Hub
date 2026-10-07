@@ -29,10 +29,14 @@ Gateway claim/password:     use GATEWAY_CLAIM_CODE printed by the Hub host helpe
 Hub host MQTT example:      <ubuntu-desktop-lan-ip>:1883
 Pi wired test address:      10.0.0.10/24 (no wired gateway)
 Laptop 2 Modbus:            10.0.0.20:502
-Gateway branch:             main
+Gateway revision:           use the hardware-qualified Gateway branch and record its commit
 ```
 
 Teacher note: `localhost` means "this same machine." Hub can use `localhost` because Django, the MQTT consumer, and Mosquitto run on the Ubuntu desktop. The Pi must use the Ubuntu desktop's LAN IP, not `localhost`, because `localhost` on the Pi means the Pi itself.
+
+Use the factory onboarding URL with `NOV-AUDIT-FACTORY-HW`. A cold-room team
+claim with this factory serial mixes test scenarios and must be corrected before
+equipment discovery.
 
 ## Network Layout
 

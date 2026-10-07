@@ -331,6 +331,9 @@ Before inviting customers:
 6. Gateway connects to `mqtts://mqtt.novenaplatform.com:8883`.
 7. Gateway claim creates managed MQTT credentials.
 8. Serial-scoped MQTT accepts correct Gateway topics and rejects cross-Gateway/shared-topic misuse.
+   Verify that a claimed Gateway publishes an operational attribute heartbeat with
+   `status=online`, software version, and clock readiness. Connectivity diagnostics
+   alone must leave Guided Setup blocked with a clear missing-heartbeat reason.
 9. Guided Setup sends signed config and receives matching acknowledgement evidence.
 10. First telemetry reaches TimescaleDB and the correct customer dashboard.
 11. Alert, email, approved WhatsApp template, and maintenance ticket flow works end to end.
@@ -347,6 +350,8 @@ field device -> Novena Gateway -> mqtt.novenaplatform.com:8883 -> Mosquitto -> m
 ```
 
 Do not use `pilot_readiness_audit keepalive` during physical replay. Physical Gateways must prove heartbeat, discovery, telemetry, alerting, buffering, restart recovery, and configuration acknowledgement themselves.
+Stop the Gateway attribute heartbeat worker during a replay and confirm that the
+service reports failure and restarts, then resumes full heartbeats before setup advances.
 
 ## Current Release Gates
 

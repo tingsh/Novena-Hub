@@ -137,6 +137,13 @@ def gateway_freshness_state(gateway, now=None):
                 display=f"Gateway online - heartbeat {compact_timesince(last_seen, now)} ago",
                 age_seconds=age_seconds,
             )
+        if raw_status == "offline" and not gateway.firmware_version:
+            return FreshnessState(
+                status="offline",
+                label="Gateway offline",
+                display="Gateway offline - operational heartbeat missing",
+                age_seconds=age_seconds,
+            )
         return FreshnessState(
             status="offline",
             label="Gateway offline",
@@ -144,7 +151,9 @@ def gateway_freshness_state(gateway, now=None):
             age_seconds=age_seconds,
         )
 
-    return FreshnessState(status="offline", label="Gateway offline", display="Gateway offline - no heartbeat yet")
+    return FreshnessState(
+        status="offline", label="Gateway offline", display="Gateway offline - no operational heartbeat yet"
+    )
 
 
 def device_offline_cutoff(device, now=None):
