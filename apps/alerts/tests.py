@@ -47,6 +47,31 @@ def test_alert_rule_form_requires_recipients_when_email_enabled():
 
 
 @pytest.mark.django_db
+def test_alert_rule_form_can_disable_rule_without_recipient():
+    team = Team.objects.create(name="Disable Team", slug="disable-team")
+    site = Site.objects.create(team=team, name="Test Site")
+    device = Device.objects.create(team=team, site=site, name="Test Device")
+    form = AlertRuleForm(
+        team=team,
+        data={
+            "name": "Legacy alert",
+            "device": device.id,
+            "site": site.id,
+            "telemetry_key": "active_power",
+            "condition": "gt",
+            "threshold": "1200",
+            "severity": "warning",
+            "notify_email": "on",
+            "cooldown_minutes": "15",
+            "duration_seconds": "0",
+        },
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["is_active"] is False
+
+
+@pytest.mark.django_db
 def test_alert_rule_form_uses_operator_labels():
     team = Team.objects.create(name="Labels", slug="labels")
     form = AlertRuleForm(team=team)

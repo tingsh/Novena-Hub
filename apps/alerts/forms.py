@@ -68,6 +68,6 @@ class AlertRuleForm(forms.ModelForm):
         notify_email = cleaned_data.get("notify_email")
         notify_whatsapp = cleaned_data.get("notify_whatsapp")
         recipients = cleaned_data.get("recipients")
-        if (notify_email or notify_whatsapp) and not recipients:
+        if cleaned_data.get("is_active") and (notify_email or notify_whatsapp) and not recipients:
             raise ValidationError({"recipients": "Select at least one recipient when notifications are enabled."})
         return cleaned_data
