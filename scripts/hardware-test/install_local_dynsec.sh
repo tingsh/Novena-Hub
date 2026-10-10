@@ -53,6 +53,8 @@ if grep -Eq '^[[:space:]]*(listener|plugin|global_plugin|password_file|acl_file)
 fi
 backup=$(mktemp -d /var/backups/novena-mqtt-XXXXXXXX)
 systemctl stop mosquitto
+# A failed backup must not leave the previously working service stopped.
+trap 'systemctl start mosquitto' ERR
 cp -a /etc/mosquitto "$backup/etc-mosquitto"
 cp -a /var/lib/mosquitto "$backup/lib-mosquitto"
 mkdir -p /etc/apparmor.d/local
@@ -62,6 +64,9 @@ fi
 printf '%s\n' "$backup" > /var/backups/novena-mqtt-last-backup
 rollback() {
   echo "Installation failed; restoring broker files from $backup" >&2
+  systemctl stop mosquitto
+  # Copying a backup cannot remove a snippet introduced by this installation.
+  rm -f /etc/mosquitto/conf.d/novena-local-replay.conf
   cp -a "$backup/etc-mosquitto/." /etc/mosquitto/
   rm -rf /var/lib/mosquitto/novena-dynsec
   if [[ -e "$backup/apparmor-local" ]]; then

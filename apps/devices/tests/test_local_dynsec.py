@@ -1,6 +1,8 @@
 """Local configuration and fail-closed release regression tests (no live broker)."""
 
 import importlib.util
+import subprocess
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -19,6 +21,36 @@ spec.loader.exec_module(setup)
 
 
 class LocalStateValidationTest(SimpleTestCase):
+    def test_installer_rollback_restores_original_or_absent_listener(self):
+        installer = Path(__file__).resolve().parents[3] / "scripts/hardware-test/install_local_dynsec.sh"
+        rollback = installer.read_text().split("rollback() {", 1)[1].split("\n}", 1)[0]
+        for existing in (False, True):
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                backup = root / "backup"
+                saved = backup / "etc-mosquitto/conf.d"
+                current = root / "etc/mosquitto/conf.d"
+                state = root / "var/lib/mosquitto/novena-dynsec"
+                profile = root / "etc/apparmor.d/local"
+                for path in (saved, current, state, profile):
+                    path.mkdir(parents=True)
+                snippet = "novena-local-replay.conf"
+                if existing:
+                    (saved / snippet).write_text("original listener")
+                (current / snippet).write_text("failed new listener")
+                (current / "unrelated.conf").write_text("preserve")
+                (backup / "apparmor-local").write_text("original profile")
+                (profile / "mosquitto").write_text("new profile")
+                body = rollback.replace("/etc/", f"{root}/etc/").replace("/var/lib/", f"{root}/var/lib/")
+                script = 'set -eu\nbackup="$1"\nsystemctl() { :; }\napparmor_parser() { :; }\n' + body
+                subprocess.run(["bash", "-c", script, "rollback-test", str(backup)], check=True, capture_output=True)
+                self.assertEqual((current / snippet).exists(), existing)
+                if existing:
+                    self.assertEqual((current / snippet).read_text(), "original listener")
+                self.assertEqual((current / "unrelated.conf").read_text(), "preserve")
+                self.assertEqual((profile / "mosquitto").read_text(), "original profile")
+                self.assertFalse(state.exists())
+
     def state(self):
         return {
             "roles": [{"rolename": "gateway", "acls": []}],
