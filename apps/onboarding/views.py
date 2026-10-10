@@ -2,8 +2,7 @@ import ipaddress
 import json
 import re
 import uuid
-from datetime import timedelta
-from datetime import timezone as dt_timezone
+from datetime import UTC, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
@@ -243,8 +242,8 @@ def _has_active_discovery_scan(run):
         try:
             started_at = timezone.datetime.fromisoformat(str(started_at_raw).replace("Z", "+00:00"))
             if timezone.is_naive(started_at):
-                started_at = timezone.make_aware(started_at, dt_timezone.utc)
-            started_at = started_at.astimezone(dt_timezone.utc)
+                started_at = timezone.make_aware(started_at, UTC)
+            started_at = started_at.astimezone(UTC)
         except (TypeError, ValueError):
             return False
         return timezone.now() - started_at < timedelta(seconds=30)
@@ -893,9 +892,7 @@ def step_3_discover(request, team_slug):
             item.connection = connection
             item.selected_template = template
             item.state = (
-                DeploymentSetupItem.State.TEMPLATE_SELECTED
-                if template
-                else DeploymentSetupItem.State.DISCOVERED
+                DeploymentSetupItem.State.TEMPLATE_SELECTED if template else DeploymentSetupItem.State.DISCOVERED
             )
             item.save(
                 update_fields=[
@@ -1000,9 +997,7 @@ def step_3_discover(request, team_slug):
                             "Update the Gateway to validate private or AI draft templates.",
                         )
                         continue
-                    connection, candidate = _candidate_connection_from_post(
-                        request.POST, candidate, raw_index
-                    )
+                    connection, candidate = _candidate_connection_from_post(request.POST, candidate, raw_index)
                     candidate["customer_name"] = (
                         request.POST.get(f"name_{raw_index}", "").strip()
                         or candidate.get("customer_name")
@@ -1272,9 +1267,7 @@ def step_3_discover(request, team_slug):
                 "connection": protocol,
                 "interface": port_key,
                 **(
-                    {"host": connection.get("host"), "port": connection.get("port")}
-                    if protocol == "modbus_tcp"
-                    else {}
+                    {"host": connection.get("host"), "port": connection.get("port")} if protocol == "modbus_tcp" else {}
                 ),
                 "slave_id": connection.get("slave_id"),
             }

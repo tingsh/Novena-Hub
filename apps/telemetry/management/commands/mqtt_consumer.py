@@ -396,9 +396,7 @@ class Command(BaseCommand):
         if clock_skew is not None and clock_skew > MAX_SIGNED_COMMAND_CLOCK_SKEW_SECONDS:
             gateway.remote_control_clock_ready = False
             gateway.gateway_capabilities = [
-                capability
-                for capability in (gateway.gateway_capabilities or [])
-                if capability != "guided_setup_v1"
+                capability for capability in (gateway.gateway_capabilities or []) if capability != "guided_setup_v1"
             ]
             update_fields.extend(["remote_control_clock_ready", "gateway_capabilities"])
             if previously_clock_ready or attrs.get("remote_control_clock_ready"):

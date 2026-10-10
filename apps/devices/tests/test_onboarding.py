@@ -906,9 +906,7 @@ class SolutionProfileOnboardingTest(TestCase):
             protocol="modbus_tcp",
             category="energy",
             register_map={"active_power": {"address": 3060}},
-            alert_presets=[
-                {"key": "active_power", "condition": "gt", "threshold": 1200.0, "severity": "warning"}
-            ],
+            alert_presets=[{"key": "active_power", "condition": "gt", "threshold": 1200.0, "severity": "warning"}],
         )
         device = Device.objects.create(
             team=self.team,
@@ -936,9 +934,7 @@ class SolutionProfileOnboardingTest(TestCase):
             protocol="modbus_tcp",
             category="energy",
             register_map={"active_power": {"address": 3060}},
-            alert_presets=[
-                {"key": "active_power", "condition": "gt", "threshold": 1200, "severity": "warning"}
-            ],
+            alert_presets=[{"key": "active_power", "condition": "gt", "threshold": 1200, "severity": "warning"}],
         )
         device = Device.objects.create(team=self.team, site=site, name="Meter", template=template)
         self.assertEqual(AlertRule.objects.filter(device=device, is_active=True).count(), 1)
