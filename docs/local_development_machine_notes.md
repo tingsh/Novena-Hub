@@ -1,5 +1,9 @@
 # Local Development Machine Notes
 
+For current authenticated LAN testing, use [Local MQTT Dynamic Security](local_mqtt_dynamic_security.md).
+The anonymous listener below describes the September baseline, not credential-lifecycle acceptance.
+Provisioning is independent of TLS; Hub internal MQTT moves to loopback 1885 in the secured profile.
+
 These notes are mostly historical. They capture quirks observed on the old Windows Laptop 1 development machine during local Novena Hub and Raspberry Pi CM4 hardware testing. The current default development host is the Ubuntu desktop at `/home/shouheng/Projects/Novena-Platform/Novena-Hub`.
 
 

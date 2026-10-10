@@ -70,7 +70,10 @@ Expected browser endpoints:
 
 On Ubuntu, configure the local LAN listener in
 `/etc/mosquitto/conf.d/novena-local-replay.conf` and start the Mosquitto system
-service. The launcher reuses that service and checks for `0.0.0.0:1883`.
+service. The launcher reuses that service. When provisioning is enabled, it verifies Dynamic
+Security and anonymous rejection before restarting applications. Use
+`docs/local_mqtt_dynamic_security.md`: LAN 1883 authenticated, admin loopback 1884,
+Hub loopback 1885. The anonymous fallback is forbidden in this mode.
 Ubuntu AppArmor blocks Mosquitto from reading the old project-home configuration;
 see `docs/local_development_machine_notes.md` for setup. The project broker command
 below is only the fallback for machines without an active system broker.
