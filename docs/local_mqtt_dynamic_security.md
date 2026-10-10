@@ -246,3 +246,6 @@ credential-bearing files stay excluded from Git. CM4 evidence is retained privat
 under `/tmp/novena-dynsec-hw-a848zokd` and isolated runtime state under
 `/var/lib/novena-gateway/dynsec-test-20261010`. Remove the temporary traversal ACL
 using the cleanup command above after the test. Do not rerun the initial broker installer.
+
+Cleanup verified: the operator removed the temporary `shouheng` traversal ACL,
+and the factory Gateway service remained active.
