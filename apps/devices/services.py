@@ -537,9 +537,7 @@ def _commissioning_candidates(gateway):
     }
     latest_run = gateway.deployment_setup_runs.order_by("-created_at").first()
     draft_items = list(
-        latest_run.items.filter(device__isnull=True, removed_at__isnull=True).select_related(
-            "selected_template"
-        )
+        latest_run.items.filter(device__isnull=True, removed_at__isnull=True).select_related("selected_template")
         if latest_run
         else []
     )
@@ -593,16 +591,10 @@ def _commissioning_candidates(gateway):
                 "serial_port": draft_connection.get("serial_port") or interface,
             },
         )
-        ready_for_validation = bool(
-            matched_template and connection_ready and not skipped_for_now
-        )
+        ready_for_validation = bool(matched_template and connection_ready and not skipped_for_now)
         status = "ready" if ready_for_validation else "needs_template"
         row_status = (
-            "Ready to validate"
-            if ready_for_validation
-            else "Saved as draft"
-            if draft_saved
-            else "Needs template"
+            "Ready to validate" if ready_for_validation else "Saved as draft" if draft_saved else "Needs template"
         )
         template_requested = bool(draft_data.get("template_request_reference"))
         candidates.append(
@@ -665,9 +657,7 @@ def _commissioning_candidates(gateway):
         score = min(100, max(0, int(draft_data.get("matched_template_score") or 0)))
         template_requested = bool(draft_data.get("template_request_reference"))
         skipped_for_now = bool(draft_data.get("skipped_for_now"))
-        candidate_key = draft_item.candidate_key or equipment_candidate_key(
-            draft_data, draft_connection
-        )
+        candidate_key = draft_item.candidate_key or equipment_candidate_key(draft_data, draft_connection)
         candidates.append(
             {
                 "index": index,
@@ -696,9 +686,7 @@ def _commissioning_candidates(gateway):
                     "Novena verified"
                     if matched_template and matched_template.is_verified
                     else (
-                        "AI draft"
-                        if matched_template and matched_template.source == "ai_generated"
-                        else "Unvalidated"
+                        "AI draft" if matched_template and matched_template.source == "ai_generated" else "Unvalidated"
                     )
                 ),
                 "status": "missing",
@@ -756,9 +744,7 @@ def build_commissioning_context(team, gateway=None, session=None):
             setup_run = sync_setup_run(setup_run)
         readiness = gateway_readiness(gateway)
 
-    setup_items = list(
-        setup_run.items.select_related("device", "selected_template") if setup_run else []
-    )
+    setup_items = list(setup_run.items.select_related("device", "selected_template") if setup_run else [])
     represented_setup_item_ids = {
         candidate["setup_item_id"] for candidate in candidates if candidate.get("setup_item_id")
     }
@@ -766,12 +752,9 @@ def build_commissioning_context(team, gateway=None, session=None):
         item for item in setup_items if item.device_id or item.pk not in represented_setup_item_ids
     ]
     completed_item_states = {"validated", "queued", "applied", "telemetry_confirmed"}
-    completed_equipment_count = sum(
-        item.state in completed_item_states for item in equipment_setup_items
-    )
+    completed_equipment_count = sum(item.state in completed_item_states for item in equipment_setup_items)
     review_item_count = sum(
-        item.state not in completed_item_states and item.state != "validating"
-        for item in equipment_setup_items
+        item.state not in completed_item_states and item.state != "validating" for item in equipment_setup_items
     )
     candidate_review_count = sum(not candidate["skipped_for_now"] for candidate in candidates)
     equipment_count = len(candidates) + len(equipment_setup_items)

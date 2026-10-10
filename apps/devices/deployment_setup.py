@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
-from datetime import timedelta
-from datetime import timezone as datetime_timezone
+from datetime import UTC, timedelta
 
 from django.conf import settings
 from django.db import transaction
@@ -60,7 +59,7 @@ def _report_received_at(report: dict):
         if parsed is None:
             continue
         if timezone.is_naive(parsed):
-            parsed = timezone.make_aware(parsed, datetime_timezone.utc)
+            parsed = timezone.make_aware(parsed, UTC)
         return parsed
     return None
 
@@ -72,7 +71,7 @@ def _parse_discovery_timestamp(value):
     if parsed is None:
         return None
     if timezone.is_naive(parsed):
-        parsed = timezone.make_aware(parsed, datetime_timezone.utc)
+        parsed = timezone.make_aware(parsed, UTC)
     return parsed
 
 
@@ -530,7 +529,9 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
                     **base,
                     "key": "scanning",
                     "title": "Gateway is already scanning",
-                    "message": "The Gateway is still checking connected equipment. Results will appear here automatically.",
+                    "message": (
+                        "The Gateway is still checking connected equipment. Results will appear here automatically."
+                    ),
                 }
             return {
                 **base,
@@ -545,7 +546,9 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
                     **base,
                     "key": "scanning",
                     "title": "Gateway is already scanning",
-                    "message": "The Gateway is still checking connected equipment. Results will appear here automatically.",
+                    "message": (
+                        "The Gateway is still checking connected equipment. Results will appear here automatically."
+                    ),
                 }
             return {
                 **base,
@@ -606,9 +609,10 @@ def create_or_update_candidate_item(
         )
     if item is None:
         item = DeploymentSetupItem(run=run, team=run.team)
-    if candidate_key and DeploymentSetupItem.objects.filter(
-        run=run, candidate_key=candidate_key
-    ).exclude(pk=item.pk).exists():
+    if (
+        candidate_key
+        and DeploymentSetupItem.objects.filter(run=run, candidate_key=candidate_key).exclude(pk=item.pk).exists()
+    ):
         raise ValueError("Another saved equipment row already uses this connection.")
     item.discovery_index = index
     item.candidate_key = candidate_key

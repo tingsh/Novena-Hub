@@ -171,8 +171,8 @@ public_raw = private_key.public_key().public_bytes(
 public_b64 = base64.b64encode(public_raw).decode()
 
 updates = {
-    "MQTT_BROKER_HOST": "localhost",
-    "MQTT_BROKER_PORT": "1883",
+    "MQTT_BROKER_HOST": "127.0.0.1",
+    "MQTT_BROKER_PORT": "1885" if values.get("MQTT_PROVISIONING_REQUIRED", "false").lower() in ("true", "1", "yes", "on") else "1883",
     "PUBLIC_MQTT_BROKER_SCHEME": "mqtt",
     "PUBLIC_MQTT_BROKER_HOST": MQTT_HOST,
     "PUBLIC_MQTT_BROKER_PORT": MQTT_PORT,
@@ -206,7 +206,7 @@ INNER_PY
 
 echo
 echo "Gateway-facing replay values:"
-cat "$PUBLIC_KEY_FILE"
+echo "Private replay credentials are in $PUBLIC_KEY_FILE (not printed)."
 echo
 
 if [[ "$SKIP_START" != "1" ]]; then
@@ -224,20 +224,7 @@ if [[ "$SKIP_PREPARE" != "1" ]]; then
 fi
 
 echo
-if command -v ss >/dev/null 2>&1; then
-  echo "MQTT listener check for port 1883:"
-  ss -ltnp | grep ':1883' || true
-  if ss -ltn | grep -qE '(^|[[:space:]])0\.0\.0\.0:1883[[:space:]]'; then
-    echo "OK: MQTT is listening on 0.0.0.0:1883 for the Pi."
-  else
-    echo "WARN: MQTT is not shown on 0.0.0.0:1883. Check mosquitto/wsl-lan-test.conf or firewall before using the Pi."
-  fi
-else
-  echo "ss command not found; skipped MQTT listener check."
-fi
+"$PYTHON" scripts/hardware-test/check_local_mqtt.py
 
-echo
-echo "Ubuntu Hub host is prepared for hardware replay."
 echo "Hub: http://localhost:8000/"
-echo "Onboarding entry: http://localhost:8000/a/pilot-factory-energy/onboarding/"
-echo "Replay values: $PUBLIC_KEY_FILE"
+echo "Replay credentials remain private in $PUBLIC_KEY_FILE"

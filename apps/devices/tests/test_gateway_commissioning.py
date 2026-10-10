@@ -451,7 +451,9 @@ class EdgeConfigGenerationTest(TestCase):
         self.assertEqual(slave["unitId"], 7)
 
 
-@override_settings(GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", MQTT_PROVISIONING_REQUIRED=True)
+@override_settings(
+    GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", MQTT_PROVISIONING_REQUIRED=True
+)
 class GatewayDeleteReleaseViewTest(TestCase):
     def setUp(self):
         from django.test import Client
@@ -658,9 +660,7 @@ class CommissioningContextTest(TestCase):
         self.assertEqual(context["gateway_state"].status, "offline")
         self.assertIn("gateway_connected", context["completed_stages"])
         self.assertEqual(context["current_stage"], "templates_selected")
-        gateway_step = next(
-            item for item in context["checklist"] if item["key"] == "gateway_connected"
-        )
+        gateway_step = next(item for item in context["checklist"] if item["key"] == "gateway_connected")
         self.assertTrue(gateway_step["complete"])
         self.assertFalse(gateway_step["current"])
 

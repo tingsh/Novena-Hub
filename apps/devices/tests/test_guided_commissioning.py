@@ -160,7 +160,9 @@ class DeploymentSetupWorkflowTest(TestCase):
         self.assertNotIn("broker", cloud_check["action"].lower())
         self.assertNotIn("Modbus", customer_safe_error("connection refused"))
         self.assertIn("clock is out of sync", customer_safe_error("Diagnostic command was issued in the future"))
-        self.assertIn("clock is out of sync", customer_safe_error("Diagnostic command timestamp is outside its trusted window"))
+        self.assertIn(
+            "clock is out of sync", customer_safe_error("Diagnostic command timestamp is outside its trusted window")
+        )
 
     def test_successful_validation_then_telemetry_completes_run_and_dashboard(self):
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
@@ -807,13 +809,15 @@ class GuidedSetupViewTest(TestCase):
         )
         self.gateway.discovery_data = {
             "status": "complete",
-            "devices": [{
-                "interface": "10.0.0.20:502",
-                "connection": "modbus_tcp",
-                "host": "10.0.0.20",
-                "port": 502,
-                "signature": "Unknown device",
-            }],
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Unknown device",
+                }
+            ],
         }
         self.gateway.save(update_fields=["discovery_data"])
         self.client.post(
