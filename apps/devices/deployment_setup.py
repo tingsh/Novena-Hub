@@ -387,14 +387,14 @@ def gateway_readiness(gateway: Gateway) -> dict:
         },
         {
             "key": "interfaces",
-            "label": "Equipment interfaces",
+            "label": "Gateway uplink",
             "status": "pass" if gateway.active_interface else "warning",
             "message": (
-                "An equipment connection is available."
+                "The Gateway reports an active network uplink."
                 if gateway.active_interface
-                else "The Gateway has not detected an equipment connection."
+                else "The Gateway has not reported an active network uplink."
             ),
-            "action": "Reconnect the equipment interface, then rerun readiness checks.",
+            "action": "Check the Gateway uplink and rerun readiness checks.",
             "blocking": False,
         },
     ]
@@ -407,6 +407,7 @@ def gateway_readiness(gateway: Gateway) -> dict:
             "broker_tcp_ok": gateway.broker_tcp_ok,
             "tls_ok": gateway.tls_ok,
             "mqtt_connected": gateway.mqtt_connected,
+            "interface_diagnostics": gateway.interface_diagnostics,
             "buffered_event_count": gateway.buffered_event_count,
         },
     }

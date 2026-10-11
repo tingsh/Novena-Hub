@@ -149,6 +149,18 @@ class DeploymentSetupWorkflowTest(TestCase):
         self.assertEqual(confidence_label(44), "Needs setup")
         self.assertEqual(gateway_readiness(self.gateway)["status"], "ready")
 
+    def test_uplink_readiness_does_not_claim_equipment_link(self):
+        self.gateway.active_interface = "wlan0"
+        self.gateway.interface_diagnostics = {
+            "eth0": {"role": "field", "status": "field"},
+            "wlan0": {"role": "uplink", "status": "up"},
+        }
+        readiness = gateway_readiness(self.gateway)
+        uplink = next(item for item in readiness["checks"] if item["key"] == "interfaces")
+        self.assertEqual(uplink["label"], "Gateway uplink")
+        self.assertNotIn("equipment connection", uplink["message"])
+        self.assertEqual(readiness["technical_evidence"]["interface_diagnostics"]["eth0"]["role"], "field")
+
     def test_setup_failures_and_actions_do_not_require_broker_or_modbus_knowledge(self):
         self.gateway.mqtt_connected = False
         self.gateway.save(update_fields=["mqtt_connected"])

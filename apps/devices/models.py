@@ -118,6 +118,7 @@ class Gateway(BaseTeamModel):
     ethernet_status = models.CharField(max_length=20, blank=True, default="unknown")
     wifi_status = models.CharField(max_length=20, blank=True, default="unknown")
     fourg_status = models.CharField(max_length=20, blank=True, default="unknown")
+    interface_diagnostics = models.JSONField(default=dict, blank=True)
     signal_strength = models.IntegerField(null=True, blank=True)
     buffered_event_count = models.IntegerField(null=True, blank=True)
     last_replay_status = models.CharField(max_length=30, blank=True, default="")
