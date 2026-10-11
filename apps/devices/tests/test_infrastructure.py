@@ -47,8 +47,8 @@ class DeviceInfrastructureTest(TestCase):
         gateway.refresh_from_db()
         self.assertIn("Eastron-SDM630", str(gateway.discovery_data))
 
-    def test_alert_automation_presets(self):
-        """Phase 3: Verify automatic alert creation via template presets."""
+    def test_template_presets_do_not_create_rules(self):
+        """Equipment templates must not silently enable alert rules."""
         template = DeviceTemplate.objects.create(
             name="Smart Meter",
             device_type="power_meter",
@@ -57,14 +57,9 @@ class DeviceInfrastructureTest(TestCase):
             alert_presets=[{"key": "voltage", "condition": "gt", "threshold": 240.0, "severity": "critical"}],
         )
 
-        # Creating a device with this template should trigger the signal
         device = Device.objects.create(team=self.team, site=self.site, name="Meter 1", template=template)
 
-        # Check if AlertRule was created
-        rules = AlertRule.objects.filter(device=device)
-        self.assertEqual(rules.count(), 1)
-        self.assertEqual(rules.first().telemetry_key, "voltage")
-        self.assertEqual(rules.first().threshold, 240.0)
+        self.assertFalse(AlertRule.objects.filter(device=device).exists())
 
 
 class NotificationTest(TestCase):

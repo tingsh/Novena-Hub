@@ -1,10 +1,14 @@
+from urllib.parse import urlencode
+
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
+from apps.devices.models import Device
+from apps.devices.solution_profiles import recommended_alerts_for_device
 from apps.teams.decorators import require_permission
 from apps.teams.mixins import PermissionRequiredMixin
 
@@ -31,6 +35,44 @@ class AlertListView(PermissionRequiredMixin, ListView):
 # Alert Rule CRUD
 
 
+def _suggestions_for_device(device):
+    """Return editable alert ideas; reading a template never creates a rule."""
+    suggestions = []
+    seen = set()
+    for preset in recommended_alerts_for_device(device):
+        item = {
+            "name": f"{device.name} {preset.name}",
+            "telemetry_key": preset.key,
+            "condition": preset.condition,
+            "threshold": preset.threshold,
+            "severity": preset.severity,
+            "duration_seconds": preset.duration_seconds,
+        }
+        suggestions.append(item)
+        seen.add((item["telemetry_key"], item["condition"], float(item["threshold"])))
+    for preset in (device.template.alert_presets or []) if device.template else []:
+        if not isinstance(preset, dict):
+            continue
+        if not all(key in preset for key in ("key", "condition", "threshold")):
+            continue
+        item = {
+            "name": f"{device.name} {str(preset['key']).replace('_', ' ').title()}",
+            "telemetry_key": preset["key"],
+            "condition": preset["condition"],
+            "threshold": preset["threshold"],
+            "severity": preset.get("severity", "warning"),
+            "duration_seconds": preset.get("duration_seconds", 0),
+        }
+        try:
+            signature = (item["telemetry_key"], item["condition"], float(item["threshold"]))
+        except (TypeError, ValueError):
+            continue
+        if signature not in seen:
+            suggestions.append(item)
+            seen.add(signature)
+    return suggestions
+
+
 class AlertRuleListView(PermissionRequiredMixin, ListView):
     permission_required = "view_dashboard"
     model = AlertRule
@@ -43,6 +85,16 @@ class AlertRuleListView(PermissionRequiredMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "alert_rules"
+        suggestions = []
+        create_url = reverse("web_team:alerts:rule_create", args=[self.request.team.slug])
+        for device in Device.objects.filter(team=self.request.team).select_related("site", "template"):
+            for index, preset in enumerate(_suggestions_for_device(device)):
+                suggestions.append({
+                    "device": device,
+                    "preset": preset,
+                    "url": f"{create_url}?{urlencode({'device': device.pk, 'preset': index})}",
+                })
+        context["suggestions"] = suggestions
         return context
 
 
@@ -51,6 +103,33 @@ class AlertRuleCreateView(PermissionRequiredMixin, CreateView):
     model = AlertRule
     form_class = AlertRuleForm
     template_name = "alerts/rule_form.html"
+
+    def get_initial(self):
+        initial = super().get_initial()
+        device_id = self.request.GET.get("device")
+        preset_index = self.request.GET.get("preset")
+        if not device_id or preset_index is None:
+            return initial
+        try:
+            device = (
+                Device.objects.filter(team=self.request.team, pk=device_id)
+                .select_related("site", "template")
+                .first()
+            )
+        except (ValueError, TypeError):
+            return initial
+        if not device:
+            return initial
+        try:
+            index = int(preset_index)
+            if index < 0:
+                return initial
+            preset = _suggestions_for_device(device)[index]
+        except (ValueError, IndexError):
+            return initial
+        initial.update(preset)
+        initial.update({"device": device, "site": device.site, "is_active": False, "notify_email": False})
+        return initial
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()

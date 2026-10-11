@@ -10,7 +10,7 @@ from apps.alerts.forms import AlertRuleForm
 from apps.alerts.models import Alert, AlertRule
 from apps.alerts.services import check_alerts_for_payload
 from apps.alerts.tasks import dispatch_alert_whatsapp_task
-from apps.devices.models import Device, Site
+from apps.devices.models import Device, DeviceTemplate, Site
 from apps.events.models import EmailDelivery
 from apps.teams.models import Membership, Team
 from apps.teams.roles import ROLE_ADMIN
@@ -100,7 +100,7 @@ def test_alert_rule_display_translates_signal_and_condition_codes():
 
 
 @pytest.mark.django_db
-def test_onboarding_alert_rule_adds_current_user_as_email_recipient():
+def test_onboarding_does_not_create_alert_rules():
     client = Client()
     team = Team.objects.create(name="Test Team", slug="test-team")
     site = Site.objects.create(team=team, name="Test Site")
@@ -120,9 +120,47 @@ def test_onboarding_alert_rule_adds_current_user_as_email_recipient():
     )
 
     assert response.status_code == 302
-    rule = AlertRule.objects.get(device=device, telemetry_key="temp")
-    assert rule.notify_email is True
-    assert rule.recipients.filter(id=user.id).exists()
+    assert not AlertRule.objects.filter(device=device).exists()
+
+
+@pytest.mark.django_db
+def test_template_suggestion_prefills_separate_alert_form_without_creating_rule():
+    client = Client()
+    team = Team.objects.create(name="Factory", slug="factory")
+    site = Site.objects.create(team=team, name="Assembly", solution_profile="factory_energy")
+    template = DeviceTemplate.objects.create(
+        name="Power Meter", device_type="power_meter", protocol="modbus_tcp",
+        register_map={"active_power": {"address": 3060}},
+        alert_presets=[{"key": "active_power", "condition": "gt", "threshold": 1200}],
+    )
+    device = Device.objects.create(team=team, site=site, name="Meter", template=template)
+    user = CustomUser.objects.create_user(username="operator", email="operator@example.com", password="pwd")
+    Membership.objects.create(team=team, user=user, role=ROLE_ADMIN)
+    client.force_login(user)
+
+    rules_url = reverse("web_team:alerts:rule_list", args=[team.slug])
+    response = client.get(rules_url)
+    assert response.status_code == 200
+    assert b"Start from an equipment template" in response.content
+    suggestion = response.context["suggestions"][0]
+    assert suggestion["preset"]["duration_seconds"] == 60
+    assert len(response.context["suggestions"]) == 1
+    form_response = client.get(suggestion["url"])
+    assert form_response.status_code == 200
+    assert form_response.context["form"].initial["telemetry_key"] == "active_power"
+    assert not AlertRule.objects.filter(device=device).exists()
+
+    saved = client.post(
+        reverse("web_team:alerts:rule_create", args=[team.slug]),
+        {
+            "name": "Meter Power Spike", "device": device.pk, "site": site.pk,
+            "telemetry_key": "active_power", "condition": "gt", "threshold": "1200",
+            "severity": "warning", "duration_seconds": "60", "cooldown_minutes": "15",
+            "is_active": "on", "notify_email": "on", "recipients": [user.pk],
+        },
+    )
+    assert saved.status_code == 302
+    assert AlertRule.objects.filter(device=device, name="Meter Power Spike").count() == 1
 
 
 @pytest.mark.django_db

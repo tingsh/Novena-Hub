@@ -51,7 +51,7 @@ class DeviceInfrastructureTest(TestCase):
         gateway.refresh_from_db()
         self.assertIn("Eastron-SDM630", str(gateway.discovery_data))
 
-    def test_alert_automation_presets(self):
+    def test_template_presets_do_not_create_rules(self):
         template = DeviceTemplate.objects.create(
             name="Smart Meter",
             device_type="power_meter",
@@ -61,7 +61,7 @@ class DeviceInfrastructureTest(TestCase):
         )
         device = Device.objects.create(team=self.team, site=self.site, name="Meter 1", template=template)
         rules = AlertRule.objects.filter(device=device)
-        self.assertEqual(rules.count(), 1)
+        self.assertEqual(rules.count(), 0)
 
 
 class DeviceCommandTest(TestCase):

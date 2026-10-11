@@ -916,12 +916,6 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
                         "connector_results": latest_config.connector_results,
                     },
                 )
-            if not run.events.filter(event_type="alerts_ready_for_review").exists():
-                append_setup_event(
-                    run,
-                    "alerts_ready_for_review",
-                    "Recommended alerts are ready for customer review.",
-                )
             telemetry_deadline = latest_config.acknowledged_at or latest_config.pushed_at
             timeout_seconds = int(getattr(settings, "GUIDED_SETUP_FIRST_TELEMETRY_TIMEOUT_SECONDS", 180))
             if telemetry_deadline and timezone.now() >= telemetry_deadline + timedelta(seconds=timeout_seconds):
