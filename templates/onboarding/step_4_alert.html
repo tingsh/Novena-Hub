@@ -10,8 +10,8 @@
             <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                     <p class="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">{{ profile.name }}</p>
-                    <h2 class="mt-2 text-3xl font-black text-gray-900 dark:text-white">Verify deployment and review alerts</h2>
-                    <p class="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl">Novena is applying the validated equipment setup. Review the recommended alerts now; they are enabled only after you confirm.</p>
+                    <h2 class="mt-2 text-3xl font-black text-gray-900 dark:text-white">Verify equipment deployment</h2>
+                    <p class="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl">Novena is applying the validated equipment setup and waiting for the first live readings. You can create alert rules separately after onboarding.</p>
                 </div>
                 <div class="rounded-2xl bg-indigo-50 px-5 py-4 text-sm text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
                     <i class="fa {{ profile.icon }} mr-2"></i>
@@ -107,103 +107,14 @@
             {% endif %}
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-8">
-                <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5">
-                    <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Dashboard preview</p>
-                    <h3 class="mt-2 font-black text-base-content">First widgets</h3>
-                    <div class="mt-4 space-y-2">
-                        {% for key in profile.key_priority|slice:":5" %}
-                        <div class="flex items-center justify-between rounded-xl bg-base-200/60 px-3 py-2 text-sm">
-                            <span>{{ key|title }}</span>
-                            <i class="fa fa-chart-line text-base-content/35"></i>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-
-                <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5">
-                    <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Recommended alerts</p>
-                    <h3 class="mt-2 font-black text-base-content">Exceptions to watch</h3>
-                    <div class="mt-4 space-y-2">
-                        {% if recommended_alerts %}
-                            {% for alert in recommended_alerts %}
-                            <div class="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-                                <i class="fa fa-bell mr-2"></i>{{ alert.name }} · {{ alert.key }} {{ alert.condition }} {{ alert.threshold }}
-                            </div>
-                            {% endfor %}
-                        {% else %}
-                            <p class="text-sm text-base-content/50">No profile alert matches this template yet. You can add a manual alert below.</p>
-                        {% endif %}
-                    </div>
-                </div>
-
-                <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5">
-                    <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Value reports</p>
-                    <h3 class="mt-2 font-black text-base-content">Prepared exports</h3>
-                    <div class="mt-4 space-y-2">
-                        {% for report in profile.reports %}
-                        <div class="flex items-center rounded-xl bg-base-200/60 px-3 py-2 text-sm">
-                            <i class="fa fa-file-export mr-2 text-base-content/35"></i>{{ report }}
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}" class="btn btn-ghost">Back to equipment</a>
+                {% if setup_run.state == "completed" or setup_run.state == "completed_attention" %}
+                <a href="{% url 'web_team:onboarding:complete' request.team.slug %}" class="btn btn-primary">Go live</a>
+                {% else %}
+                <p class="text-sm text-base-content/55">This page updates while the Gateway confirms its settings and sends live data.</p>
+                {% endif %}
             </div>
-
-            <form method="post">
-                {% csrf_token %}
-                <div class="space-y-6">
-                    <details class="rounded-2xl border border-base-content/10 bg-base-100 p-5">
-                        <summary class="cursor-pointer text-sm font-bold text-base-content">Add one manual threshold instead</summary>
-                        <div class="mt-5 grid grid-cols-1 md:grid-cols-2 gap-5">
-                            <div>
-                        <label for="key" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Reading to monitor</label>
-                        <select name="key" id="key" class="block w-full px-4 py-3 rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-indigo-500 focus:border-indigo-500 transition">
-                            <option value="active_power" {% if rule.telemetry_key == 'active_power' %}selected{% endif %}>Active Power (kW)</option>
-                            <option value="temperature" {% if rule.telemetry_key == 'temperature' %}selected{% endif %}>Temperature (°C)</option>
-                            <option value="voltage" {% if rule.telemetry_key == 'voltage' %}selected{% endif %}>Line Voltage (V)</option>
-                            <option value="current" {% if rule.telemetry_key == 'current' %}selected{% endif %}>Amperage (A)</option>
-                        </select>
-                    </div>
- 
-                    <div>
-                        <label for="threshold" class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Notify me if value is GREATER THAN</label>
-                        <div class="relative">
-                            <input type="number" step="0.1" name="threshold" id="threshold" placeholder="0.00"
-                                value="{{ rule.threshold|default:'' }}"
-                                class="block w-full px-4 py-3 rounded-md border-gray-200 dark:border-gray-700 dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-indigo-500 focus:border-indigo-500 transition pr-12">
-                            <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none text-gray-400">
-                                <span class="unit-text">Value</span>
-                            </div>
-                        </div>
-                    </div>
-                        </div>
-                        <div class="mt-5">
-                            <button type="submit" name="accept_profile_presets" value="0" class="btn btn-outline btn-sm rounded-md">
-                                Save Manual Alert Only
-                            </button>
-                        </div>
-                    </details>
-
-                    <div class="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-100 dark:border-emerald-800 flex items-start">
-                        <i class="fa fa-circle-check text-emerald-600 dark:text-emerald-400 mt-1 mr-3 text-lg"></i>
-                        <p class="text-sm text-emerald-800 dark:text-emerald-300">
-                            We will notify <strong>{{ request.user.email }}</strong> for recommended alerts and create maintenance defaults where this profile needs them.
-                        </p>
-                    </div>
-
-                    <div class="pt-6 flex items-center justify-between space-x-6">
-                        <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-semibold transition flex items-center">
-                            <i class="fa fa-chevron-left mr-2 text-xs"></i>
-                            Back
-                        </a>
-                        <button type="submit" name="accept_profile_presets" value="1" class="flex-1 py-4 bg-indigo-600 text-white rounded-md font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 transition transform hover:-translate-y-0.5">
-                            Apply Recommendations
-                            <i class="fa fa-check-circle ml-2"></i>
-                        </button>
-                    </div>
-                </div>
-            </form>
         </div>
     </div>
 </div>

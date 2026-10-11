@@ -9,8 +9,7 @@ from django.urls import reverse
 
 from apps.alerts.models import AlertRule
 from apps.devices.models import Device, DeviceDatapointMap, DeviceTemplate, Gateway, GatewayConfig, Site
-from apps.devices.solution_profiles import apply_solution_profile_presets, rank_templates_for_profile
-from apps.maintenance.models import PreventiveSchedule
+from apps.devices.solution_profiles import rank_templates_for_profile, recommended_alerts_for_device
 from apps.teams.models import Membership, Team
 from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
@@ -805,100 +804,7 @@ class SolutionProfileOnboardingTest(TestCase):
         self.assertEqual(rank_templates_for_profile(templates, "facilities_hvac")[0], chiller)
         self.assertEqual(rank_templates_for_profile(templates, "general_iot")[0], generic)
 
-    def test_facilities_profile_creates_alert_and_runtime_maintenance_defaults(self):
-        site = Site.objects.create(team=self.team, name="Hotel Plant Room", solution_profile="facilities_hvac")
-        template = DeviceTemplate.objects.create(
-            name="Chiller Monitor",
-            device_type="chiller",
-            protocol="bacnet",
-            category="factory",
-            register_map={
-                "temperature": {"address": 1},
-                "active_power": {"address": 2},
-                "run_hours": {"address": 3},
-            },
-        )
-        device = Device.objects.create(
-            team=self.team,
-            site=site,
-            name="Chiller 1",
-            template=template,
-            device_type="chiller",
-            protocol="bacnet",
-        )
-
-        created = apply_solution_profile_presets(site, self.user)
-
-        self.assertEqual(created["alerts"], 3)
-        self.assertEqual(created["maintenance_schedules"], 1)
-        self.assertTrue(AlertRule.objects.filter(device=device, telemetry_key="temperature").exists())
-        self.assertTrue(
-            PreventiveSchedule.objects.filter(
-                device=device,
-                title="Runtime-based HVAC service",
-                usage_telemetry_key="run_hours",
-                usage_threshold=500,
-            ).exists()
-        )
-
-    def test_general_iot_profile_does_not_create_vertical_alerts_or_maintenance(self):
-        site = Site.objects.create(team=self.team, name="Mixed Lab", solution_profile="general_iot")
-        template = DeviceTemplate.objects.create(
-            name="Mixed Equipment",
-            device_type="other",
-            protocol="mqtt",
-            category="factory",
-            register_map={"status": {"address": 1}, "temperature": {"address": 2}},
-        )
-        Device.objects.create(
-            team=self.team,
-            site=site,
-            name="Mixed Asset",
-            template=template,
-            device_type="other",
-            protocol="mqtt",
-        )
-
-        created = apply_solution_profile_presets(site, self.user)
-
-        self.assertEqual(created["alerts"], 0)
-        self.assertEqual(created["maintenance_schedules"], 0)
-
-    def test_solution_profile_presets_are_idempotent(self):
-        site = Site.objects.create(
-            team=self.team,
-            name="Cold Room",
-            solution_profile="cold_chain",
-        )
-        template = DeviceTemplate.objects.create(
-            name="Cold Room Sensor",
-            device_type="temp_sensor",
-            protocol="modbus_rtu",
-            category="cold_chain",
-            register_map={
-                "temperature": {"address": 1},
-                "door_open": {"address": 2},
-                "compressor_status": {"address": 3},
-            },
-        )
-        Device.objects.create(
-            team=self.team,
-            site=site,
-            name="Room Sensor",
-            template=template,
-            device_type="temp_sensor",
-            protocol="modbus_rtu",
-        )
-
-        first = apply_solution_profile_presets(site, self.user)
-        second = apply_solution_profile_presets(site, self.user)
-
-        self.assertEqual(first["alerts"], 3)
-        self.assertGreaterEqual(first["automations"], 1)
-        self.assertEqual(second["alerts"], 0)
-        self.assertEqual(second["automations"], 0)
-
-    def test_guided_setup_waits_for_alert_review_before_enabling_template_presets(self):
+    def test_templates_only_suggest_alerts_after_equipment_is_created(self):
         site = Site.objects.create(team=self.team, name="Factory", solution_profile="factory_energy")
         template = DeviceTemplate.objects.create(
             name="Power Meter",
@@ -906,43 +812,12 @@ class SolutionProfileOnboardingTest(TestCase):
             protocol="modbus_tcp",
             category="energy",
             register_map={"active_power": {"address": 3060}},
-            alert_presets=[{"key": "active_power", "condition": "gt", "threshold": 1200.0, "severity": "warning"}],
+            alert_presets=[{"key": "active_power", "condition": "gt", "threshold": 1200}],
         )
-        device = Device.objects.create(
-            team=self.team,
-            site=site,
-            name="Meter",
-            template=template,
-            device_type="power_meter",
-            protocol="modbus_tcp",
-            metadata={"guided_setup_validation": "pending"},
-        )
-        self.assertFalse(AlertRule.objects.filter(device=device).exists())
-
-        created = apply_solution_profile_presets(site, self.user)
-
-        rules = AlertRule.objects.filter(device=device, telemetry_key="active_power")
-        self.assertEqual(created["alerts"], 1)
-        self.assertEqual(rules.count(), 1)
-        self.assertEqual(rules.get().duration_seconds, 60)
-
-    def test_profile_review_disables_legacy_duplicate_template_rule(self):
-        site = Site.objects.create(team=self.team, name="Factory", solution_profile="factory_energy")
-        template = DeviceTemplate.objects.create(
-            name="Power Meter",
-            device_type="power_meter",
-            protocol="modbus_tcp",
-            category="energy",
-            register_map={"active_power": {"address": 3060}},
-            alert_presets=[{"key": "active_power", "condition": "gt", "threshold": 1200, "severity": "warning"}],
-        )
-        device = Device.objects.create(team=self.team, site=site, name="Meter", template=template)
-        self.assertEqual(AlertRule.objects.filter(device=device, is_active=True).count(), 1)
-
-        apply_solution_profile_presets(site, self.user)
-        apply_solution_profile_presets(site, self.user)
-
-        active = AlertRule.objects.get(device=device, is_active=True)
-        self.assertEqual(active.name, "Meter Power Spike")
-        self.assertEqual(active.duration_seconds, 60)
-        self.assertEqual(AlertRule.objects.filter(device=device, is_active=False).count(), 1)
+        for metadata in ({}, {"guided_setup_validation": "pending"}):
+            device = Device.objects.create(
+                team=self.team, site=site, name="Meter", template=template,
+                device_type="power_meter", protocol="modbus_tcp", metadata=metadata,
+            )
+            self.assertFalse(AlertRule.objects.filter(device=device).exists())
+            self.assertTrue(recommended_alerts_for_device(device))

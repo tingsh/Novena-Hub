@@ -78,6 +78,11 @@
             <i class="fa fa-plus text-indigo-500"></i><h3 class="mt-4 font-black">Set up more equipment</h3><p class="mt-1 text-sm text-base-content/55">Start another Guided Setup run.</p>
         </a>
     </div>
+    <section class="rounded-2xl border border-base-content/10 bg-base-100 p-6 shadow-sm">
+        <h2 class="text-xl font-black">Set up alerts when you are ready</h2>
+        <p class="mt-2 text-sm text-base-content/60">Equipment templates can suggest thresholds, but no monitoring rule is created during Gateway setup. Review the live readings first, then choose and save each rule in Alerts.</p>
+        <a href="{% url 'web_team:alerts:rule_list' request.team.slug %}" class="btn btn-outline mt-4">Configure alert rules</a>
+    </section>
     {% if impact_profile %}
     <section class="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-6 dark:border-indigo-500/20 dark:bg-indigo-500/10">
         <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

@@ -12,7 +12,7 @@
             </a>
             <div>
                 <h1 class="text-3xl font-black text-base-content font-heading tracking-tight">{% if form.instance.pk %}Update{% else %}Build{% endif %} Rule</h1>
-                <p class="text-sm text-base-content/50 mt-1 font-light">Define the logic that triggers an automated alert.</p>
+                <p class="text-sm text-base-content/50 mt-1 font-light">Review the threshold and response settings. The rule is created only when you save it; enable it when you are ready to monitor.</p>
             </div>
         </div>
     </div>
@@ -271,7 +271,7 @@
         <div class="sticky bottom-0 bg-white dark:bg-gray-800 p-6 border-t border-gray-100 dark:border-gray-700 -mx-8 sm:-mx-8 mt-8 z-20 flex items-center justify-end space-x-4 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] rounded-b-3xl">
             <a href="{% url 'web_team:alerts:alert_list' request.team.slug %}" class="btn btn-ghost rounded-2xl font-black text-xs uppercase tracking-widest">Cancel</a>
             <button type="submit" class="btn btn-primary px-10 rounded-2xl font-black shadow-xl shadow-indigo-500/30 uppercase font-mono tracking-widest text-xs relative overflow-hidden group">
-                <span class="group-[.htmx-request]:opacity-0 transition-opacity">{% if form.instance.pk %}Update Rule{% else %}Activate Rule{% endif %}</span>
+                <span class="group-[.htmx-request]:opacity-0 transition-opacity">{% if form.instance.pk %}Update Rule{% else %}Save Rule{% endif %}</span>
                 <div class="absolute inset-0 items-center justify-center hidden group-[.htmx-request]:flex">
                     <i class="fa fa-spinner fa-spin"></i>
                 </div>

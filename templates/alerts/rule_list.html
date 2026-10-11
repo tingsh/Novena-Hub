@@ -1,8 +1,9 @@
 {% extends "web/app/app_base.html" %}
-{% load i18n %}
+{% load i18n team_permissions %}
 {% load static %}
 
 {% block app %}
+{% has_perm 'manage_alerts' as can_manage_alerts %}
 <div class="px-4 sm:px-6 lg:px-8 py-8 selection:bg-indigo-500/30">
     <!-- Header -->
     <div class="mb-10 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -10,10 +11,22 @@
             <h1 class="text-3xl font-black text-base-content font-heading tracking-tight">Alert Rules</h1>
             <p class="text-sm text-base-content/50 mt-1 font-light">Configure thresholds and automated notification workflows.</p>
         </div>
-        <a href="{% url 'web_team:alerts:rule_create' request.team.slug %}" class="btn btn-primary rounded-2xl font-black shadow-lg shadow-indigo-500/30">
+        {% if can_manage_alerts %}<a href="{% url 'web_team:alerts:rule_create' request.team.slug %}" class="btn btn-primary rounded-2xl font-black shadow-lg shadow-indigo-500/30">
             <i class="fa fa-plus mr-2"></i> NEW RULE
-        </a>
+        </a>{% endif %}
     </div>
+
+    {% if can_manage_alerts and suggestions %}
+    <section class="mb-8 rounded-3xl border border-base-content/10 bg-base-100 p-6">
+        <h2 class="text-lg font-black">Start from an equipment template</h2>
+        <p class="mt-1 text-sm text-base-content/55">These are editable suggestions. No rule is created until you review and save one.</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+            {% for suggestion in suggestions %}
+            <a href="{{ suggestion.url }}" class="btn btn-outline btn-sm">{{ suggestion.device.name }} · {{ suggestion.preset.telemetry_key }} {{ suggestion.preset.condition }} {{ suggestion.preset.threshold }}</a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
 
     <!-- Navigation Tabs -->
     <div class="tabs tabs-boxed mb-8 bg-gray-100 dark:bg-gray-900/60 inline-flex p-1.5 rounded-2xl border border-gray-250/20">
@@ -40,14 +53,14 @@
                 <div class="p-3 bg-base-200 rounded-2xl group-hover:bg-indigo-500 group-hover:text-white transition-all text-base-content/40">
                     <i class="fa fa-bell text-lg"></i>
                 </div>
-                <div class="flex space-x-1">
+                {% if can_manage_alerts %}<div class="flex space-x-1">
                     <a href="{% url 'web_team:alerts:rule_update' request.team.slug rule.pk %}" class="btn btn-ghost btn-xs text-base-content/30 hover:text-indigo-500">
                         <i class="fa fa-edit"></i>
                     </a>
                     <a href="{% url 'web_team:alerts:rule_delete' request.team.slug rule.pk %}" class="btn btn-ghost btn-xs text-base-content/30 hover:text-red-500">
                         <i class="fa fa-trash"></i>
                     </a>
-                </div>
+                </div>{% endif %}
             </div>
 
             <h3 class="text-lg font-black text-base-content leading-tight mb-2">{{ rule.name }}</h3>

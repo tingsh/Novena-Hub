@@ -462,7 +462,7 @@ Expected flow:
 9. Wait for the live validation result; deployment stays blocked until validation succeeds.
 10. Click Deploy validated configuration.
 11. Gateway acknowledges the signed config and starts polling Modbus.
-12. Hub moves to Verify deployment and review alerts.
+12. Hub moves to Verify equipment deployment. No alert rule is created during onboarding.
 ```
 
 The scan button creates a new scan ID and sends a signed, serial-scoped command to
@@ -515,17 +515,16 @@ v1/gateway/NOV-AUDIT-FACTORY-HW/config
 
 ## 5.1 Finish The Customer Onboarding Journey
 
-On **Verify deployment and review alerts**, wait for:
+On **Verify equipment deployment**, wait for:
 
 ```text
 Gateway settings: Applied
 Live data: Received
 ```
 
-The first packet can take one effective polling interval. Then click **Apply
-Recommendations**. If Hub says it is still waiting for the Gateway or first live
-data, leave the simulator and Gateway running, wait for the status panel to update,
-and click **Apply Recommendations** again.
+The first packet can take one effective polling interval. When verification is
+complete, click **Go live**. If Hub is still waiting for the Gateway or first live
+data, leave the simulator and Gateway running until the status panel updates.
 
 The Go live page must show:
 
@@ -539,6 +538,13 @@ Open the equipment dashboard and confirm changing `voltage`, `current`,
 `active_power`, `frequency`, and `energy` values. This verifies more than MQTT
 delivery: it proves broker consumption, Redis/Celery processing, database
 persistence, device identity matching, and customer UI readback.
+
+Alert setup is a separate customer action after go-live. Open **Configure alert
+rules** from the Go live page, choose the Power Spike suggestion in Alerts, and
+review the prefilled equipment, `active_power > 1200 W` threshold and 60-second
+duration. Select a notification recipient, enable the rule, and save it. Check
+that there was no rule before this save and exactly one active Power Spike rule
+afterward. Equipment templates supply suggestions; they do not create rules.
 
 ## 5.2 Trigger A Deterministic Power Incident
 

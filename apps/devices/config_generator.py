@@ -254,9 +254,6 @@ def human_config_preview(gateway):
             for device in devices
         ],
         "dashboard": "Automatic operations dashboard",
-        "recommended_alert_count": sum(
-            len(device.template.alert_presets or []) for device in devices if device.template
-        ),
     }
 
 

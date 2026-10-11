@@ -15,7 +15,6 @@ from django.urls import reverse
 from django.utils import timezone
 from waffle import flag_is_active
 
-from apps.alerts.models import AlertRule
 from apps.devices.models import (
     DeploymentSetupItem,
     DeploymentSetupRun,
@@ -28,12 +27,10 @@ from apps.devices.models import (
 )
 from apps.devices.services import build_commissioning_context, visible_templates_for_team
 from apps.devices.solution_profiles import (
-    apply_solution_profile_presets,
     get_profile,
     get_site_profile,
     profile_for_request,
     rank_templates_for_profile,
-    recommended_alerts_for_device,
 )
 from apps.teams.decorators import require_permission
 
@@ -1545,21 +1542,6 @@ def step_4_alert(request, team_slug):
     device = get_object_or_404(Device, id=device_id, team=request.team)
 
     profile = get_site_profile(device.site)
-    recommended_alerts = [
-        {
-            "name": preset.name,
-            "key": preset.key,
-            "condition": preset.condition,
-            "threshold": preset.threshold,
-            "severity": preset.severity,
-            "duration_seconds": preset.duration_seconds,
-            "create_maintenance_ticket": preset.create_maintenance_ticket,
-        }
-        for preset in recommended_alerts_for_device(device, profile.key)
-    ]
-
-    # Alert rules are often multiple, but the wizard still supports one manual fallback.
-    existing_rule = AlertRule.objects.filter(device=device).first()
     from apps.devices.config_generator import human_config_preview
     from apps.devices.deployment_setup import deployment_progress, sync_setup_run
 
@@ -1570,66 +1552,19 @@ def step_4_alert(request, team_slug):
         setup_run = sync_setup_run(setup_run)
 
     if request.method == "POST":
-        alert_choice = ""
-        if request.POST.get("accept_profile_presets", "1") == "1":
-            apply_solution_profile_presets(device.site, request.user)
-            alert_choice = "recommended"
-        else:
-            key = request.POST.get("key", "active_power")
-            threshold = request.POST.get("threshold")
-            if threshold:
-                if existing_rule:
-                    existing_rule.telemetry_key = key
-                    existing_rule.threshold = float(threshold)
-                    existing_rule.name = f"{device.name} High {key.replace('_', ' ').title()}"
-                    existing_rule.save()
-                    if existing_rule.notify_email and not existing_rule.recipients.exists():
-                        existing_rule.recipients.add(request.user)
-                else:
-                    rule = AlertRule.objects.create(
-                        team=request.team,
-                        device=device,
-                        name=f"{device.name} High {key.replace('_', ' ').title()}",
-                        telemetry_key=key,
-                        condition="gt",
-                        threshold=float(threshold),
-                        severity="critical",
-                    )
-                    rule.recipients.add(request.user)
-                alert_choice = "manual"
-        if alert_choice and setup_run:
-            from apps.devices.deployment_setup import append_setup_event
-
-            if not setup_run.events.filter(event_type="alerts_reviewed").exists():
-                append_setup_event(
-                    setup_run,
-                    "alerts_reviewed",
-                    "Recommended alert settings were reviewed.",
-                    actor=request.user,
-                    evidence={"choice": alert_choice},
-                )
-            setup_run = sync_setup_run(setup_run)
-            if setup_run.state == DeploymentSetupRun.State.VERIFYING:
-                setup_run = sync_setup_run(setup_run)
-            if setup_run.state not in {
-                DeploymentSetupRun.State.COMPLETED,
-                DeploymentSetupRun.State.COMPLETED_ATTENTION,
-            }:
-                messages.info(
-                    request,
-                    "Alert choices are saved. Novena is still waiting for the Gateway and first live data.",
-                )
-                return redirect("web_team:onboarding:step_4_alert", team_slug=team_slug)
-        if alert_choice:
+        if setup_run and setup_run.state in {
+            DeploymentSetupRun.State.COMPLETED,
+            DeploymentSetupRun.State.COMPLETED_ATTENTION,
+        }:
             return redirect("web_team:onboarding:complete", team_slug=team_slug)
+        messages.info(request, "Novena is still verifying the Gateway and first live data.")
+        return redirect("web_team:onboarding:step_4_alert", team_slug=team_slug)
 
     context = {
         "steps": ONBOARDING_STEPS,
         "current_step": 4,
         "device": device,
-        "rule": existing_rule,
         "profile": profile,
-        "recommended_alerts": recommended_alerts,
         "setup_run": setup_run,
         "deployment_progress": deployment_progress(setup_run) if setup_run else [],
         "config_preview": human_config_preview(device.gateway),
