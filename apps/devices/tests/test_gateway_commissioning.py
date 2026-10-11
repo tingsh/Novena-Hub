@@ -182,14 +182,23 @@ class GatewayClaimWorkflowTest(TestCase):
         from apps.telemetry.management.commands.mqtt_consumer import Command
 
         gateway = Gateway.objects.create(
-            team=self.team, site=self.site, name="Network Gateway",
-            serial_number="NF-NETWORK-001", access_token="network-token",
+            team=self.team,
+            site=self.site,
+            name="Network Gateway",
+            serial_number="NF-NETWORK-001",
+            access_token="network-token",
         )
         diagnostics = {"eth0": {"role": "field", "probe_ok": None}, "wlan0": {"role": "uplink", "probe_ok": True}}
         Command()._handle_attributes(
-            {"serial_number": gateway.serial_number, "attributes": {
-                "status": "online", "active_interface": "wlan0", "interface_diagnostics": diagnostics,
-            }}, gateway=gateway,
+            {
+                "serial_number": gateway.serial_number,
+                "attributes": {
+                    "status": "online",
+                    "active_interface": "wlan0",
+                    "interface_diagnostics": diagnostics,
+                },
+            },
+            gateway=gateway,
         )
         gateway.refresh_from_db()
         self.assertEqual(gateway.active_interface, "wlan0")
