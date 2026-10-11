@@ -68,7 +68,9 @@ class ManagedGatewayFixture(TestCase):
         )
 
 
-@override_settings(GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", MQTT_PROVISIONING_REQUIRED=True)
+@override_settings(
+    GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", MQTT_PROVISIONING_REQUIRED=True
+)
 class GatewayReleaseHardeningTest(ManagedGatewayFixture):
     def _device(self):
         return Device.objects.create(

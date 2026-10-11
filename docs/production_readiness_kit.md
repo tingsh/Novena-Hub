@@ -241,6 +241,10 @@ Current Hub behavior:
 
 - Hub uses Dynamic Security admin credentials on internal port `1884`.
 - Hub creates per-Gateway operational clients and per-Gateway bootstrap clients during claim/provisioning.
+- Provisioning retries replace the operational client's managed role list with the
+  shared `gateway` role and its serial-scoped role. Do not attach custom roles to
+  managed Gateway clients; retries deliberately remove unrelated grants. This
+  avoids Mosquitto 2.0 rejecting duplicate `addClientRole` assignments.
 - Each Gateway should publish only to serial-scoped topics such as `v1/gateway/{serial}/telemetry`.
 - `MQTT_ACCEPT_LEGACY_SHARED_INBOUND=False` must stay false for production customer traffic.
 

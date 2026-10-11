@@ -1,5 +1,16 @@
 # Novena Hardware Replay Guide - Round 2
 
+For credential lifecycle acceptance, first follow [Ubuntu Dynamic Security setup](local_mqtt_dynamic_security.md).
+Use its dedicated test serial to preserve factory history. The authenticated profile
+uses LAN MQTT 1883, loopback admin 1884 and loopback Hub MQTT 1885, with TLS off.
+Anonymous local testing does not prove provisioning or revocation.
+
+Credential acceptance passed on the installed Ubuntu broker and physical CM4 on
+2026-10-11: provisioned reconnect, fail-closed release, explicit old-credential
+rejection and fresh-credential reclaim. The dedicated runtime was stopped and
+released; the original factory claim remains online. See the linked MQTT runbook
+for test IDs, automated results and temporary permission cleanup.
+
 This guide walks through the second-round live hardware/software integration test.
 
 ```text
@@ -25,7 +36,7 @@ Hub URL:                    http://localhost:8000/
 Onboarding entry:          http://localhost:8000/a/pilot-factory-energy/onboarding/
 Hub login:                  pilot.audit@novena.local / PilotReady123!
 Gateway serial:             NOV-AUDIT-FACTORY-HW
-Gateway claim/password:     use GATEWAY_CLAIM_CODE printed by the Hub host helper
+Gateway claim/password:     private replay file from the Hub helper (never print in logs)
 Hub host MQTT example:      <ubuntu-desktop-lan-ip>:1883
 Pi wired test address:      10.0.0.10/24 (no wired gateway)
 Laptop 2 Modbus:            10.0.0.20:502
@@ -44,7 +55,7 @@ equipment discovery.
 Ubuntu Hub host
   Role:      Novena Hub + Mosquitto MQTT broker
   LAN IP:    use the Ubuntu desktop LAN address
-  MQTT:      0.0.0.0:1883
+  MQTT:      private LAN IP:1883 (authenticated profile)
 
 Pi CM4 Gateway
   Role:      Novena Gateway
@@ -77,34 +88,29 @@ is the final authority.
 
 ```bash
 cd /home/shouheng/Projects/Novena-Platform/Novena-Hub
-bash scripts/hardware-test/prepare_laptop1_hub.sh --mqtt-host <ubuntu-desktop-lan-ip>
+bash scripts/hardware-test/prepare_laptop1_hub.sh --mqtt-host <ubuntu-desktop-lan-ip> --skip-prepare
 ```
 
 What this does:
 
-- Sets Hub's internal MQTT connection to `localhost:1883`.
+- Preserves Hub's internal MQTT connection on `127.0.0.1:1885` when provisioning is enabled (`1883` for the intentionally disabled legacy profile).
 - Sets the Gateway-facing MQTT address to `<ubuntu-desktop-lan-ip>:1883`.
 - Generates or reuses the Guided Setup signing key.
-- Prints the Gateway-facing public key values.
+- Writes the claim code and Gateway-facing public key values to a private file without printing secrets.
 - Starts local Hub services and runs the local health check.
-- Prepares the pilot audit user and the replay Gateway inventory.
+- Preserves existing pilot inventory with `--skip-prepare`. Omit that option only for initial fixture preparation; it can reset the fixture's claim state.
 
 Expected success signals:
 
 ```text
 Gateway-facing replay values:
-GATEWAY_SERIAL=NOV-AUDIT-FACTORY-HW
-GATEWAY_CLAIM_CODE=<claim-derived-from-this-Hub-environment>
-GATEWAY_CONFIG_KEY_ID=local-replay-2026-08
-GATEWAY_CONFIG_PUBLIC_KEY_B64=<base64-public-key>
-
-OK: MQTT is listening on 0.0.0.0:1883 for the Pi.
-Ubuntu Hub host is prepared for hardware replay.
+Private replay credentials are in /tmp/novena-replay-gateway.env (not printed).
+Dynamic Security responded; LAN listener rejects anonymous clients; internal MQTT available.
 ```
 
-Keep all four values. The claim code can change when `GATEWAY_CLAIM_SECRET`
-changes, so the helper output is authoritative; do not rely on an older copied
-claim code. You will paste the claim and signing-key values into Step 3.3.
+Keep the mode-0600 replay file private. Its claim code follows the current
+`GATEWAY_CLAIM_SECRET`; do not rely on an older copied claim code. Transfer the
+file privately to the Pi for Step 3.3, rather than copying secrets into shell history.
 
 ## 1.3 Verify Ubuntu Hub Host Services
 
@@ -113,13 +119,13 @@ bash .agents/skills/novena-local-dev/scripts/health-check.sh
 ss -ltnp | grep ':1883'
 ```
 
-Expected: each service prints an `[ok]` line, and Mosquitto is bound to all
-interfaces:
+Expected: each service prints an `[ok]` line, and Mosquitto is bound to the private
+LAN address:
 
 ```text
 [ok] mqtt-consumer-wsl running as pid ...
 [ok] Django responds at http://127.0.0.1:8000/
-LISTEN ... 0.0.0.0:1883 ... mosquitto
+LISTEN ... <ubuntu-desktop-lan-ip>:1883 ... mosquitto
 ```
 
 If MQTT shows only `127.0.0.1:1883`, the Pi will not be able to reach the broker.
@@ -129,13 +135,14 @@ If MQTT shows only `127.0.0.1:1883`, the Pi will not be able to reach the broker
 In a second Ubuntu Hub host terminal, keep this running:
 
 ```bash
-mosquitto_sub -h 127.0.0.1 -p 1883 \
-  -t 'v1/gateway/NOV-AUDIT-FACTORY-HW/#' -v
+mosquitto_sub -h 127.0.0.1 -p 1885 \
+  -t 'v1/gateway/NOV-AUDIT-FACTORY-HW/telemetry' -v
 ```
 
-This proves which serial-scoped attributes, commands, configuration,
-acknowledgements, logs, and telemetry actually cross the broker. It is evidence,
-not a replacement for verifying persistence and UI behavior in Hub.
+This shows serial-scoped telemetry crossing the broker. Avoid printing the
+`bootstrap/activate` and `provision` topics: they contain credentials. Verify
+activation acknowledgements through Hub lifecycle state and confirm persistence
+and UI behavior separately.
 
 # Step 2 - Laptop 2: Run The Modbus Simulator
 
@@ -271,17 +278,17 @@ Laptop 2 Modbus reachable
 
 ## 3.3 Render And Install The Local Gateway Config
 
-Use the public key values printed by the Ubuntu Hub host in Step 1.2.
+Privately transfer the mode-0600 replay file from Step 1.2 to the Pi first.
 
 ```bash
 HUB_HOST_IP='<ubuntu-desktop-lan-ip>'
-GATEWAY_CLAIM_CODE='PASTE_GATEWAY_CLAIM_CODE_FROM_HUB_HOST'
-GATEWAY_CONFIG_KEY_ID='PASTE_GATEWAY_CONFIG_KEY_ID_FROM_HUB_HOST'
-GATEWAY_CONFIG_PUBLIC_KEY_B64='PASTE_GATEWAY_CONFIG_PUBLIC_KEY_B64_FROM_HUB_HOST'
+source /path/to/private-novena-replay-gateway.env
+umask 077
+printf '%s' "$GATEWAY_CLAIM_CODE" > /tmp/novena-replay-claim-code
 
 sudo python3 install/hardware-test/render_local_replay_config.py \
   --mqtt-host "$HUB_HOST_IP" \
-  --mqtt-password "$GATEWAY_CLAIM_CODE" \
+  --mqtt-password-file /tmp/novena-replay-claim-code \
   --public-key-id "$GATEWAY_CONFIG_KEY_ID" \
   --public-key-b64 "$GATEWAY_CONFIG_PUBLIC_KEY_B64" \
   --modbus-host 10.0.0.20
@@ -419,7 +426,7 @@ Operating hours: 24/7
 Address:          optional
 ```
 
-Then pair the Gateway using the claim code printed by the helper:
+Then pair the Gateway using the claim code from the private helper file:
 
 ```text
 Gateway name: Factory Energy Gateway
@@ -605,7 +612,7 @@ a reconnect message by itself is transport evidence, not end-to-end persistence.
 Capture these during the test:
 
 ```text
-[ ] Ubuntu Hub host helper output showing public key and MQTT 0.0.0.0:1883.
+[ ] Ubuntu Hub host helper output showing public key and authenticated MQTT on the trusted LAN IP:1883.
 [ ] Ubuntu Hub host health check output.
 [ ] Laptop 2 simulator console with changing readings.
 [ ] Pi wired interface showing 10.0.0.10/24 and both TCP checks passing.
@@ -646,7 +653,7 @@ ss -ltnp | grep ':1883'
 Good:
 
 ```text
-LISTEN ... 0.0.0.0:1883 ... mosquitto
+LISTEN ... 192.168.0.16:1883 ... mosquitto
 ```
 
 Fix: configure the Ubuntu system broker LAN listener in `/etc/mosquitto/conf.d/novena-local-replay.conf` as described in `docs/local_development_machine_notes.md`, restart it with `sudo systemctl restart mosquitto`, and rerun the Hub host helper. Confirm the Ubuntu firewall allows inbound TCP `1883` if active. The system service avoids Ubuntu AppArmor denying the old project-home configuration.
@@ -666,7 +673,7 @@ ip -4 address
 ```
 
 Fix: rerun the Hub host helper with the correct `--mqtt-host`, then rerun the Pi
-config renderer with the same corrected IP. If Ubuntu shows `0.0.0.0:1883` but
+config renderer with the same corrected IP. If Ubuntu shows the correct LAN IP on `1883` but
 the Pi TCP check still fails, check LAN routing and the Ubuntu firewall.
 
 ## Modbus Simulator Not Reachable
@@ -772,12 +779,12 @@ stale ownership until this deliberate claim step succeeds.
 
 ## Local MQTT Provisioning Shows Failed
 
-The local replay listener on `1883` intentionally allows anonymous local-LAN traffic
-and does not run the production Dynamic Security admin listener on `1884`.
-Therefore operational-credential provisioning can show as unavailable in this
-local test while serial-scoped MQTT and signed Guided Setup still work. Record this
-as a scope limitation; do not count this replay as production ACL/TLS credential
-validation.
+The authenticated local profile requires Dynamic Security provisioning. Check the
+loopback admin listener on `1884`, the running Hub/worker settings, and the
+activation retry status using [the local MQTT runbook](local_mqtt_dynamic_security.md).
+Do not turn provisioning off to clear a secured release failure. Intentionally
+disabled provisioning remains available for debug-only tests, but cannot prove
+credential revocation. TLS is independent and remains a production transport gate.
 
 # Scope Notes
 

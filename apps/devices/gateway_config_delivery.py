@@ -27,8 +27,7 @@ class GatewayConfigUnsupported(ValueError):
 
 def gateway_supports_guided_setup(gateway) -> bool:
     return bool(
-        gateway.remote_control_clock_ready
-        and GUIDED_SETUP_CAPABILITY in set(gateway.gateway_capabilities or [])
+        gateway.remote_control_clock_ready and GUIDED_SETUP_CAPABILITY in set(gateway.gateway_capabilities or [])
     )
 
 

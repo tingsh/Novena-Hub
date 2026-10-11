@@ -211,14 +211,18 @@ def provision_gateway_mqtt(gateway, password):
     }
     _publish_dynsec_command(create_role_cmd, allow_exists=True)
 
-    # Step 3: Assign the per-gateway role to the client
-    add_role_cmd = {
-        "command": "addClientRole",
+    # Step 3: Set the managed roles idempotently. Mosquitto 2.0 can return
+    # "Internal error" when addClientRole repeats an existing assignment.
+    # Replacing the managed role list also avoids retaining unintended grants.
+    set_roles_cmd = {
+        "command": "modifyClient",
         "username": sn,
-        "rolename": role_name,
-        "priority": -1,
+        "roles": [
+            {"rolename": "gateway", "priority": -1},
+            {"rolename": role_name, "priority": -1},
+        ],
     }
-    _publish_dynsec_command(add_role_cmd, allow_exists=True)
+    _publish_dynsec_command(set_roles_cmd)
 
     # Step 4: Create a bootstrap client scoped to only first-time activation.
     # The physical gateway uses this identity after operational auth failures.

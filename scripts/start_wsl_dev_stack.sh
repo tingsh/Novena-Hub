@@ -51,16 +51,18 @@ start_service() {
   echo "$name pid $(cat "$ROOT/.dev-pids/$name.pid")"
 }
 
+# Validate before stopping working services. Never fall back to anonymous MQTT
+# when provisioning is enabled.
+"/home/shouheng/.venvs/novena/bin/python" scripts/hardware-test/check_local_mqtt.py
+PROVISIONING=$("/home/shouheng/.venvs/novena/bin/python" -c 'import os; os.environ.setdefault("DJANGO_SETTINGS_MODULE", "novena_hub.settings"); from django.conf import settings; print(int(settings.MQTT_PROVISIONING_REQUIRED))')
+if [[ "$PROVISIONING" == 1 ]] && ! systemctl is-active --quiet mosquitto; then
+  echo "Provisioning requires the configured system Mosquitto service." >&2
+  exit 1
+fi
 stop_stale_services
 if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet mosquitto; then
-  # Ubuntu AppArmor allows /etc/mosquitto/conf.d, but not project-home configs.
-  if ! ss -ltn | grep -qE '(^|[[:space:]])0\.0\.0\.0:1883[[:space:]]'; then
-    echo "System Mosquitto is running but lacks the LAN listener on 0.0.0.0:1883." >&2
-    echo "Configure /etc/mosquitto/conf.d/novena-local-replay.conf as documented in docs/local_development_machine_notes.md." >&2
-    exit 1
-  fi
   rm -f "$ROOT/.dev-pids/mosquitto-wsl.pid"
-  echo "Using system Mosquitto on 0.0.0.0:1883"
+  echo "Using system Mosquitto"
 else
   start_service "mosquitto-wsl" /usr/sbin/mosquitto -c "$ROOT/mosquitto/wsl-lan-test.conf" -v
 fi

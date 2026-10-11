@@ -58,7 +58,7 @@ check_pid vite-wsl
 
 check_tcp PostgreSQL localhost 5432
 check_tcp Redis localhost 6379
-check_tcp Mosquitto localhost 1883
+"$PYTHON" scripts/hardware-test/check_local_mqtt.py
 check_http Django http://127.0.0.1:8000/
 check_http Vite http://127.0.0.1:5173/
 
