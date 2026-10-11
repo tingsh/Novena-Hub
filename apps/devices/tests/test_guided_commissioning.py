@@ -158,8 +158,17 @@ class DeploymentSetupWorkflowTest(TestCase):
         readiness = gateway_readiness(self.gateway)
         uplink = next(item for item in readiness["checks"] if item["key"] == "interfaces")
         self.assertEqual(uplink["label"], "Gateway uplink")
+        self.assertEqual(uplink["status"], "pass")
         self.assertNotIn("equipment connection", uplink["message"])
         self.assertEqual(readiness["technical_evidence"]["interface_diagnostics"]["eth0"]["role"], "field")
+
+    def test_legacy_interface_default_does_not_claim_a_healthy_uplink(self):
+        self.gateway.active_interface = "eth0"
+        self.gateway.interface_diagnostics = {}
+        readiness = gateway_readiness(self.gateway)
+        uplink = next(item for item in readiness["checks"] if item["key"] == "interfaces")
+        self.assertEqual(uplink["status"], "warning")
+        self.assertIn("role-aware uplink diagnostics", uplink["message"])
 
     def test_setup_failures_and_actions_do_not_require_broker_or_modbus_knowledge(self):
         self.gateway.mqtt_connected = False
