@@ -1,5 +1,11 @@
 # Novena Production Readiness Kit
 
+Gateway network roles and automatic route failover require site qualification.
+Declare field and uplink interfaces in Gateway configuration, use reachable
+site health targets, and verify NetworkManager profiles and both uplink
+layouts on hardware before enabling automatic failover for a customer. The
+factory CM4 replay alone does not close this gate.
+
 Last reviewed: 2026-08-17
 
 This guide documents the repo-backed production assets and checks for Novena Hub. Use it together with `docs/production_deployment_plan.md`.

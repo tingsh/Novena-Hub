@@ -297,6 +297,9 @@ def gateway_readiness(gateway: Gateway) -> dict:
     freshness = gateway.freshness
     clock_ready = bool(gateway.remote_control_clock_ready)
     capability_ready = clock_ready and "guided_setup_v1" in set(gateway.gateway_capabilities or [])
+    interface_diagnostics = gateway.interface_diagnostics or {}
+    selected_uplink = interface_diagnostics.get(gateway.active_interface, {})
+    uplink_ready = selected_uplink.get("role") == "uplink" and selected_uplink.get("status") == "up"
     checks = [
         {
             "key": "gateway_online",
@@ -387,14 +390,18 @@ def gateway_readiness(gateway: Gateway) -> dict:
         },
         {
             "key": "interfaces",
-            "label": "Equipment interfaces",
-            "status": "pass" if gateway.active_interface else "warning",
+            "label": "Gateway uplink",
+            "status": "pass" if uplink_ready else "warning",
             "message": (
-                "An equipment connection is available."
-                if gateway.active_interface
-                else "The Gateway has not detected an equipment connection."
+                "The Gateway reports an active network uplink."
+                if uplink_ready
+                else (
+                    "The Gateway has not reported role-aware uplink diagnostics."
+                    if not interface_diagnostics
+                    else "The Gateway has not reported a healthy network uplink."
+                )
             ),
-            "action": "Reconnect the equipment interface, then rerun readiness checks.",
+            "action": "Check the Gateway uplink and software version, then rerun readiness checks.",
             "blocking": False,
         },
     ]
@@ -407,6 +414,7 @@ def gateway_readiness(gateway: Gateway) -> dict:
             "broker_tcp_ok": gateway.broker_tcp_ok,
             "tls_ok": gateway.tls_ok,
             "mqtt_connected": gateway.mqtt_connected,
+            "interface_diagnostics": gateway.interface_diagnostics,
             "buffered_event_count": gateway.buffered_event_count,
         },
     }

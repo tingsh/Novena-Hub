@@ -236,6 +236,14 @@ The Wi-Fi interface keeps the default route to the Ubuntu Hub host. The direct E
 to Laptop 2 uses a separate subnet with **no gateway**. First confirm the wired
 interface name; it is normally `eth0` on the CM4:
 
+The rendered factory Gateway config declares `eth0` as `field` and `wlan0` as
+`uplink`. The watchdog must report Ethernet as `field`, skip public probes on
+it, and leave its route metric alone. Confirm `ip -4 route` has no Ethernet
+default route and inspect `interface_diagnostics` in the operational heartbeat.
+For a site where Ethernet supplies internet, declare `eth0` as `uplink`, ensure
+it has a default route, and qualify it in a separate failover replay. See the
+Gateway's `docs/network_watchdog.md` for role and health-target guidance.
+
 ```bash
 ip -brief link
 ip -brief address
@@ -327,6 +335,12 @@ sudo ip address replace 10.0.0.10/24 dev "$PI_WIRED_IF"
 ```
 
 Repeat both `/dev/tcp` checks from Step 3.2 after the reboot.
+
+For watchdog qualification, record `ip -4 route`, active NetworkManager
+profile UUIDs (`nmcli -g GENERAL.CON-UUID device show wlan0` and, if managed,
+`eth0`), full Gateway heartbeats, and Modbus samples before and after a
+controlled Wi-Fi interruption. A private Ethernet link must remain available
+to `10.0.0.20:502`; do not add a default gateway to this field network.
 
 ## 3.5 Validate Gateway Before Starting The Test
 

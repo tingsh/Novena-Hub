@@ -359,6 +359,7 @@ class Command(BaseCommand):
             "ethernet_status": "ethernet_status",
             "wifi_status": "wifi_status",
             "fourg_status": "fourg_status",
+            "interface_diagnostics": "interface_diagnostics",
             "signal_strength": "signal_strength",
             "buffered_event_count": "buffered_event_count",
             "last_replay_status": "last_replay_status",
