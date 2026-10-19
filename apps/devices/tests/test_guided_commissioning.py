@@ -1128,6 +1128,50 @@ class GuidedSetupViewTest(TestCase):
         self.assertTrue(by_interface["10.0.0.22:1502"]["is_new"])
         self.assertEqual(DeploymentSetupItem.objects.count(), 1)
 
+    def test_removed_draft_does_not_reappear_as_discovered_equipment(self):
+        self._enable_guided_setup()
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Unknown Modbus Device",
+                }
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        self.client.post(
+            self.url,
+            {
+                "save_candidate_draft": "0",
+                "candidate_key_0": "modbus_tcp|10.0.0.20|502",
+                "name_0": "Unknown Modbus Device",
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "1",
+            },
+        )
+        self.client.post(
+            self.url,
+            {
+                "remove_candidate_draft": "0",
+                "candidate_key_0": "modbus_tcp|10.0.0.20|502",
+            },
+        )
+
+        item = DeploymentSetupItem.objects.get(run__gateway=self.gateway)
+        self.assertIsNotNone(item.removed_at)
+        page = self.client.get(self.url)
+        self.assertEqual(page.context["commissioning"]["equipment_count"], 1)
+        self.assertEqual(page.context["commissioning"]["equipment_setup_items"], [])
+        self.assertContains(page, 'id="candidate-row-0"')
+        self.assertNotContains(page, 'data-equipment-row="configured"')
+        poll = self.client.get(reverse("web_team:onboarding:discovery_poll", args=[self.team.slug]))
+        self.assertNotContains(poll, 'data-equipment-row="configured"')
+
     def test_missing_endpoint_keeps_draft_but_cannot_be_selected_for_validation(self):
         self._enable_guided_setup()
         self.gateway.discovery_data = {

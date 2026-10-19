@@ -744,7 +744,11 @@ def build_commissioning_context(team, gateway=None, session=None):
             setup_run = sync_setup_run(setup_run)
         readiness = gateway_readiness(gateway)
 
-    setup_items = list(setup_run.items.select_related("device", "selected_template") if setup_run else [])
+    setup_items = list(
+        setup_run.items.filter(removed_at__isnull=True).select_related("device", "selected_template")
+        if setup_run
+        else []
+    )
     represented_setup_item_ids = {
         candidate["setup_item_id"] for candidate in candidates if candidate.get("setup_item_id")
     }
