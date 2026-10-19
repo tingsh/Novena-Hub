@@ -5,32 +5,28 @@
      hx-trigger="every 3s"
      hx-sync="this:replace"
      hx-swap="outerHTML">
-    {% include "onboarding/partials/commissioning_checklist.html" %}
+    <section class="rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm" aria-label="Gateway setup progress">
+        <p class="text-xs font-bold uppercase tracking-wide text-base-content/60">Gateway setup</p>
+        <ol class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">
+            <li class="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300"><i class="fa fa-check-circle" aria-hidden="true"></i><span class="font-semibold">Claim saved</span></li>
+            <li class="flex items-center gap-2 rounded-md border px-3 py-2 {% if commissioning.gateway_state.status == 'live' %}border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300{% else %}border-base-content/10 bg-base-200/30 text-base-content/60{% endif %}"><i class="fa {% if commissioning.gateway_state.status == 'live' %}fa-check-circle{% else %}fa-clock{% endif %}" aria-hidden="true"></i><span class="font-semibold">Gateway connected</span></li>
+            <li class="flex items-center gap-2 rounded-md border px-3 py-2 {% if readiness.status == 'ready' %}border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300{% else %}border-base-content/10 bg-base-200/30 text-base-content/60{% endif %}"><i class="fa {% if readiness.status == 'ready' %}fa-check-circle{% else %}fa-clock{% endif %}" aria-hidden="true"></i><span class="font-semibold">Ready for equipment</span></li>
+        </ol>
+    </section>
 
-    <div class="my-5 rounded-lg border px-5 py-4 text-sm {% if awaiting_first_heartbeat %}border-primary/20 bg-primary/5{% elif readiness.status == 'ready' %}border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300{% else %}border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300{% endif %}"
+    <div class="my-5 rounded-lg border px-5 py-4 text-sm {% if guidance.tone == 'waiting' %}border-primary/20 bg-primary/5{% elif guidance.tone == 'ready' %}border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300{% else %}border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300{% endif %}"
          role="status" aria-live="polite" aria-atomic="true">
-        {% if awaiting_first_heartbeat %}
-            <p class="font-bold">Gateway claimed. Connecting securely…</p>
-            <p class="mt-1">Novena is checking the Gateway automatically. Readiness checks will update as its first report arrives.</p>
-            {% if connection_delayed %}
-                <p class="mt-2 font-medium">This is taking longer than expected. Check power and network, or retry the secure connection below.</p>
-            {% endif %}
-        {% elif readiness.status == 'ready' %}
-            <p class="font-bold">Gateway ready</p>
-            <p class="mt-1">Essential connection checks passed. Review any remaining notes, then continue to equipment.</p>
-        {% else %}
-            <p class="font-bold">Gateway needs attention</p>
-            <p class="mt-1">Review the checks below. This page will keep updating automatically.</p>
-        {% endif %}
+        <p class="font-bold">{{ guidance.title }}</p>
+        <p class="mt-1">{{ guidance.message }}</p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 items-start gap-5">
-        <section class="lg:col-span-2 rounded-lg border border-base-content/10 bg-base-100 p-6 shadow-sm">
-            <div class="flex items-start justify-between gap-4">
+    <div class="space-y-5">
+        <section class="rounded-lg border border-base-content/10 bg-base-100 p-6 shadow-sm">
+            <div class="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
                 <div>
                     <p class="text-xs font-bold uppercase tracking-wide text-base-content/45">Gateway</p>
-                    <h2 class="mt-1 text-2xl font-bold text-base-content">{{ gateway.name }}</h2>
-                    <p class="mt-1 text-sm text-base-content/55 font-mono">{{ gateway.serial_number }}</p>
+                    <h2 class="mt-1 break-words text-2xl font-bold text-base-content">{{ gateway.name }}</h2>
+                    <p class="mt-1 break-all text-sm text-base-content/55 font-mono">{{ gateway.serial_number }}</p>
                 </div>
                 {% if commissioning.gateway_state %}
                 <span class="rounded-md px-3 py-1 text-xs font-bold {% if commissioning.gateway_state.status == 'live' %}bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-300{% else %}bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300{% endif %}">
@@ -39,38 +35,30 @@
                 {% endif %}
             </div>
 
-            <div class="mt-6 rounded-lg border border-base-content/10 bg-base-200/30 p-5">
-                {% if awaiting_first_heartbeat %}
-                    <div class="flex items-start gap-3">
-                        <span class="loading loading-spinner loading-sm mt-0.5 text-primary" aria-hidden="true"></span>
-                        <div>
-                            <p class="text-sm font-bold">Waiting for the Gateway to connect</p>
-                            <p class="mt-1 text-xs text-base-content/55">Keep the Gateway powered on and connected. Novena will continue checking.</p>
-                            {% if connection_delayed %}
-                                <form method="post" action="{% url 'web_team:devices:gateway_retry_activation' request.team.slug gateway.pk %}" class="mt-3">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn btn-outline btn-xs rounded-md">Retry secure connection</button>
-                                </form>
-                            {% endif %}
-                        </div>
+            {% if guidance.steps %}
+                <div class="mt-6 rounded-lg border border-base-content/10 bg-base-200/30 p-5">
+                    <h3 class="text-sm font-bold text-base-content">What to do now</h3>
+                    <ol class="mt-3 list-decimal space-y-2 pl-5 text-sm text-base-content/75">
+                        {% for step in guidance.steps %}<li>{{ step }}</li>{% endfor %}
+                    </ol>
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        {% if guidance.show_retry %}
+                            <form method="post" action="{% url 'web_team:devices:gateway_retry_activation' request.team.slug gateway.pk %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="return_to_setup" value="1">
+                                <button type="submit" class="btn btn-primary btn-sm rounded-md">Retry connection</button>
+                            </form>
+                        {% endif %}
+                        <button type="button" class="btn btn-outline btn-sm rounded-md" onclick="document.getElementById('contact-support-modal').showModal()">Contact Novena support</button>
                     </div>
-                {% elif commissioning.gateway_state.status == 'live' %}
-                    <div class="flex items-center gap-3">
-                        <div class="flex h-10 w-10 items-center justify-center rounded-md bg-green-100 text-green-700 dark:bg-green-500/10 dark:text-green-300"><i class="fa fa-check"></i></div>
-                        <div>
-                            <p class="text-sm font-bold">Gateway is online</p>
-                            <p class="text-xs text-base-content/55">{{ commissioning.gateway_state.display|default:"Heartbeat received" }}</p>
-                        </div>
-                    </div>
-                {% else %}
-                    <p class="text-sm font-bold">Gateway connection needs attention</p>
-                    <p class="mt-1 text-xs text-base-content/55">Check power and network, then retry the secure connection.</p>
-                    <form method="post" action="{% url 'web_team:devices:gateway_retry_activation' request.team.slug gateway.pk %}" class="mt-3">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-outline btn-xs rounded-md">Retry secure connection</button>
-                    </form>
-                {% endif %}
-            </div>
+                    <p class="mt-3 text-xs text-base-content/50">Gateway serial: {{ gateway.serial_number }}. Your claim and setup progress are saved.</p>
+                </div>
+            {% else %}
+                <div class="mt-6 flex items-center gap-3 rounded-lg border border-base-content/10 bg-base-200/30 p-5">
+                    {% if guidance.tone == 'waiting' %}<span class="loading loading-spinner loading-sm text-primary" aria-hidden="true"></span>{% else %}<i class="fa fa-check-circle text-green-600" aria-hidden="true"></i>{% endif %}
+                    <p class="text-sm font-medium">{% if guidance.tone == 'waiting' %}Checking automatically every few seconds{% else %}Connection checks complete{% endif %}</p>
+                </div>
+            {% endif %}
 
             <div class="mt-6 flex items-center justify-between border-t border-base-content/10 pt-5">
                 <a href="{% url 'web_team:onboarding:step_2_gateway' request.team.slug %}" class="btn btn-ghost btn-sm rounded-md"><i class="fa fa-chevron-left mr-2 text-xs"></i>Back</a>
@@ -82,17 +70,17 @@
             </div>
         </section>
 
-        <aside class="rounded-lg border border-base-content/10 bg-base-100 p-5 shadow-sm">
-            <h3 class="text-sm font-bold text-base-content">Gateway readiness</h3>
-            <div class="mt-4 space-y-3">
+        <section id="gateway-checks" class="rounded-lg border border-base-content/10 bg-base-100 p-5 shadow-sm" aria-labelledby="gateway-checks-title">
+            <h3 id="gateway-checks-title" class="text-sm font-bold text-base-content">Connection checks</h3>
+            <p class="mt-1 text-xs text-base-content/55">Updates automatically as the Gateway reports.</p>
+            <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {% for check in display_checks %}
                 <div class="rounded-lg border p-3 {% if check.status == 'pass' %}border-green-200 bg-green-50/70 dark:border-green-500/30 dark:bg-green-500/10{% elif check.status == 'fail' %}border-red-200 bg-red-50/70 dark:border-red-500/30 dark:bg-red-500/10{% elif check.status == 'warning' %}border-amber-200 bg-amber-50/70 dark:border-amber-500/30 dark:bg-amber-500/10{% else %}border-base-content/10 bg-base-200/30{% endif %}">
                     <div class="flex items-start gap-2">
                         <i class="fa {% if check.status == 'pass' %}fa-check-circle text-green-600{% elif check.status == 'fail' %}fa-circle-xmark text-red-600{% elif check.status == 'warning' %}fa-triangle-exclamation text-amber-600{% else %}fa-clock text-base-content/40{% endif %} mt-0.5" aria-hidden="true"></i>
                         <div>
-                            <p class="text-xs font-bold">{{ check.label }}</p>
+                            <p class="text-xs font-bold">{{ check.label }}{% if check.status == 'warning' and readiness.status == 'ready' %} <span class="font-medium text-base-content/50">· Optional</span>{% endif %}</p>
                             <p class="mt-1 text-xs text-base-content/60">{{ check.message }}</p>
-                            {% if check.action and check.status != 'pass' %}<p class="mt-1 text-xs font-medium">{{ check.action }}</p>{% endif %}
                         </div>
                     </div>
                 </div>
@@ -108,6 +96,6 @@
                     {% if readiness.technical_evidence.clock_synchronized != None %}<div class="flex justify-between"><dt>Clock</dt><dd>{{ readiness.technical_evidence.clock_synchronized|yesno:"Synchronized,Not synchronized" }}</dd></div>{% endif %}
                 </dl>
             </details>
-        </aside>
+        </section>
     </div>
 </div>

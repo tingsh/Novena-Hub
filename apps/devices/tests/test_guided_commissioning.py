@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.devices.deployment_setup import (
+    append_setup_event,
     confidence_label,
     customer_safe_error,
     deployment_progress,
@@ -28,6 +29,7 @@ from apps.devices.models import (
     DeviceTemplate,
     EquipmentTemplateRequest,
     Gateway,
+    GatewayActivation,
     GatewayConfig,
     GatewayConfigOutbox,
     RemoteCommand,
@@ -459,6 +461,8 @@ class GuidedSetupViewTest(TestCase):
 
         waiting = self.client.get(reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug]))
         self.assertContains(waiting, "Gateway claimed. Connecting securely")
+        self.assertContains(waiting, "Claim saved")
+        self.assertNotContains(waiting, "Equipment scan running")
         self.assertContains(waiting, 'hx-select="#gateway-live"')
         self.assertContains(waiting, 'hx-target="#gateway-live"')
         self.assertContains(waiting, "Waiting for the Gateway to report this check.", count=7)
@@ -479,13 +483,112 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         run.refresh_from_db()
         self.assertEqual(run.readiness["status"], "ready")
-        self.assertContains(response, "Gateway ready")
-        self.assertContains(response, "Gateway is online")
+        self.assertContains(response, "Gateway ready for equipment")
+        self.assertContains(response, "Gateway online")
         self.assertContains(response, "Gateway software")
         self.assertContains(response, "Continue to Equipment")
         discover_url = reverse("web_team:onboarding:step_3_discover", args=[self.team.slug])
         self.assertContains(response, f'href="{discover_url}"')
         self.assertContains(response, 'hx-select="#gateway-live"')
+
+    def test_gateway_wait_guides_site_network_failure_without_retrying_credentials(self):
+        self.gateway.mqtt_connected = False
+        self.gateway.internet_reachable = False
+        self.gateway.remote_control_clock_ready = True
+        self.gateway.save(update_fields=["mqtt_connected", "internet_reachable", "remote_control_clock_ready"])
+
+        response = self.client.get(reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug]))
+
+        self.assertContains(response, "Check your site&#x27;s internet connection")
+        self.assertContains(response, "Ask your site IT team")
+        self.assertContains(response, "Contact Novena support")
+        self.assertContains(response, 'aria-disabled="true"')
+        self.assertNotContains(response, "Retry connection")
+
+    def test_gateway_wait_shows_support_path_for_security_failure(self):
+        self.gateway.mqtt_connected = True
+        self.gateway.tls_ok = False
+        self.gateway.remote_control_clock_ready = True
+        self.gateway.save(update_fields=["mqtt_connected", "tls_ok", "remote_control_clock_ready"])
+
+        response = self.client.get(reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug]))
+
+        self.assertContains(response, "Secure connection needs attention")
+        self.assertContains(response, "Contact Novena support")
+        self.assertNotContains(response, "ask a technician to check its security certificate")
+
+    def test_unreported_security_is_optional_note_not_verified(self):
+        self.gateway.mqtt_connected = True
+        self.gateway.remote_control_clock_ready = True
+        self.gateway.tls_ok = None
+        self.gateway.save(update_fields=["mqtt_connected", "remote_control_clock_ready", "tls_ok"])
+
+        response = self.client.get(reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug]))
+
+        self.assertContains(response, "Connection security")
+        self.assertContains(response, "The Gateway has not reported its connection security yet.")
+        self.assertContains(response, "Optional notes below will not stop setup")
+        self.assertNotContains(response, "Secure connection verified.")
+
+    def test_gateway_wait_gives_clock_time_to_settle_then_offers_help(self):
+        self.gateway.mqtt_connected = True
+        self.gateway.tls_ok = True
+        self.gateway.remote_control_clock_ready = False
+        self.gateway.save(update_fields=["mqtt_connected", "tls_ok", "remote_control_clock_ready"])
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+
+        wait_url = reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug])
+        response = self.client.get(wait_url)
+        self.assertContains(response, "Finishing secure setup")
+        self.assertContains(response, "This updates automatically")
+        self.assertNotContains(response, "border-red-200")
+
+        type(run).objects.filter(pk=run.pk).update(created_at=timezone.now() - timedelta(minutes=4))
+        response = self.client.get(wait_url)
+        self.assertContains(response, "Gateway time needs attention")
+        self.assertContains(response, "Contact Novena support")
+
+    def test_wait_page_uses_current_freshness_even_with_cached_successful_preflight(self):
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        run.readiness = {"status": "ready", "checks": []}
+        run.save(update_fields=["readiness", "updated_at"])
+        append_setup_event(run, "gateway_preflight_completed", "Preflight completed.")
+        self.gateway.last_seen = timezone.now() - timedelta(minutes=10)
+        self.gateway.save(update_fields=["last_seen"])
+
+        response = self.client.get(reverse("web_team:onboarding:gateway_status_poll", args=[self.team.slug]))
+
+        self.assertContains(response, "Gateway connection interrupted")
+        self.assertContains(response, 'aria-disabled="true"')
+        self.assertContains(response, "Waiting for a fresh Gateway report.", count=6)
+        self.assertContains(response, "border-red-200", count=1)
+        run.refresh_from_db()
+        self.assertEqual(run.readiness["status"], "ready")
+
+    @patch("apps.devices.activation.reissue_activation_for_gateway")
+    def test_delayed_first_check_in_retries_existing_activation_and_returns_to_setup(self, reissue):
+        self.gateway.status = "offline"
+        self.gateway.last_seen = None
+        self.gateway.save(update_fields=["status", "last_seen"])
+        activation = GatewayActivation.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            status="delivered",
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+        GatewayActivation.objects.filter(pk=activation.pk).update(created_at=timezone.now() - timedelta(minutes=3))
+
+        wait_url = reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug])
+        response = self.client.get(wait_url)
+        self.assertContains(response, "We are still waiting for your Gateway")
+        self.assertContains(response, "Retry connection")
+        self.assertContains(response, 'name="return_to_setup" value="1"')
+
+        retry_url = reverse("web_team:devices:gateway_retry_activation", args=[self.team.slug, self.gateway.pk])
+        result = self.client.post(retry_url, {"return_to_setup": "1"})
+        self.assertRedirects(result, wait_url, fetch_redirect_response=False)
+        reissue.assert_called_once()
+        self.assertIs(reissue.call_args.kwargs["force"], False)
 
     def _scan_run(self, scan_id="scan-current"):
         run = get_or_create_setup_run(
@@ -1721,8 +1824,8 @@ class GuidedSetupViewTest(TestCase):
         response = self.client.get(reverse("web_team:onboarding:gateway_status_poll", args=[self.team.slug]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Gateway connection needs attention")
-        self.assertNotContains(response, "Gateway is online")
+        self.assertContains(response, "Gateway connection interrupted")
+        self.assertNotContains(response, "Gateway ready for equipment")
 
     def test_legacy_gateway_can_use_saved_discovery_with_verified_template(self):
         template = DeviceTemplate.objects.create(

@@ -578,8 +578,8 @@ def _gateway_wait_context(request, gateway):
     if should_refresh_readiness:
         run.readiness = readiness
         run.save(update_fields=["readiness", "updated_at"])
-    else:
-        readiness = run.readiness
+    # Keep a completed preflight result in the setup run, but always show
+    # current connection evidence to the customer on this live wait page.
     if (
         gateway.status == "online"
         and gateway_supports_guided_setup(gateway)
@@ -614,9 +614,21 @@ def _gateway_wait_context(request, gateway):
     # A newly claimed Gateway has not had time to activate or send its first
     # operational heartbeat. Missing evidence is pending, not seven faults.
     activation = gateway.activations.order_by("-created_at").first()
-    awaiting_first_heartbeat = gateway.freshness.status != "live" and (
+    freshness = gateway.freshness
+    awaiting_first_heartbeat = freshness.status != "live" and (
         gateway.last_seen is None
         or (activation is not None and gateway.last_seen < activation.created_at)
+    )
+    wait_started_at = activation.created_at if activation else run.created_at
+    wait_seconds = (timezone.now() - wait_started_at).total_seconds()
+    connection_delayed = awaiting_first_heartbeat and wait_seconds >= 90
+    blocking_failures = {
+        check["key"] for check in readiness["checks"] if check["blocking"] and check["status"] == "fail"
+    }
+    clock_settling = (
+        freshness.status == "live"
+        and blocking_failures == {"clock"}
+        and wait_seconds < 180
     )
     display_checks = readiness["checks"]
     if awaiting_first_heartbeat:
@@ -629,10 +641,46 @@ def _gateway_wait_context(request, gateway):
             }
             for check in display_checks
         ]
-    connection_delayed = bool(
-        awaiting_first_heartbeat
+    elif freshness.status != "live":
+        # Downstream results are last-known evidence when check-ins stop.
+        # Show one connection issue, then wait for fresh reports.
+        display_checks = [
+            check
+            if check["key"] == "gateway_online"
+            else {
+                **check,
+                "status": "pending",
+                "message": "Waiting for a fresh Gateway report.",
+                "action": "",
+            }
+            for check in display_checks
+        ]
+    elif clock_settling:
+        display_checks = [
+            {
+                **check,
+                "status": "pending",
+                "message": "Finishing secure setup. This updates automatically.",
+                "action": "",
+            }
+            if check["key"] in {"clock", "guided_setup"} and check["status"] != "pass"
+            else check
+            for check in display_checks
+        ]
+    can_retry_activation = bool(
+        connection_delayed
         and activation
-        and (timezone.now() - activation.created_at).total_seconds() >= 90
+        and activation.status in {"provisioning", "pending", "delivered", "retried", "retry", "failed"}
+        and activation.expires_at > timezone.now()
+    )
+    guidance = _gateway_wait_guidance(
+        gateway,
+        readiness,
+        freshness.status,
+        awaiting_first_heartbeat=awaiting_first_heartbeat,
+        connection_delayed=connection_delayed,
+        clock_settling=clock_settling,
+        can_retry_activation=can_retry_activation,
     )
 
     return {
@@ -644,9 +692,112 @@ def _gateway_wait_context(request, gateway):
         "setup_run": run,
         "readiness": readiness,
         "display_checks": display_checks,
-        "awaiting_first_heartbeat": awaiting_first_heartbeat,
-        "connection_delayed": connection_delayed,
+        "guidance": guidance,
     }
+
+
+def _gateway_wait_guidance(
+    gateway,
+    readiness,
+    freshness_status,
+    *,
+    awaiting_first_heartbeat,
+    connection_delayed,
+    clock_settling,
+    can_retry_activation,
+):
+    """Choose one customer action from the strongest available evidence."""
+    if awaiting_first_heartbeat:
+        if connection_delayed:
+            return {
+                "tone": "attention",
+                "title": "We are still waiting for your Gateway",
+                "message": "Your claim is saved. We have not received its first check-in yet.",
+                "steps": [
+                    "Check that the Gateway is powered on.",
+                    "Check that its Ethernet or Wi-Fi connection reaches your site network.",
+                    "If it remains here, ask your site IT team to check internet access, "
+                    "or contact Novena support with the serial number below.",
+                ],
+                "show_retry": can_retry_activation,
+            }
+        return {
+            "tone": "waiting",
+            "title": "Gateway claimed. Connecting securely…",
+            "message": (
+                "Keep this page open. The Gateway will check in automatically; "
+                "you do not need to enter the claim code again."
+            ),
+            "steps": [],
+            "show_retry": False,
+        }
+    if clock_settling:
+        return {
+            "tone": "waiting",
+            "title": "Gateway connected. Finishing secure setup…",
+            "message": "The Gateway is synchronizing its clock. This page will update automatically.",
+            "steps": [],
+            "show_retry": False,
+        }
+    if readiness["status"] == "ready":
+        warnings = any(check["status"] == "warning" for check in readiness["checks"])
+        return {
+            "tone": "ready",
+            "title": "Gateway ready for equipment",
+            "message": (
+                "You can continue. Optional notes below will not stop setup."
+                if warnings
+                else "Connection checks passed. Continue to connect your equipment."
+            ),
+            "steps": [],
+            "show_retry": False,
+        }
+    if freshness_status != "live":
+        title = "Gateway connection interrupted"
+        message = "The Gateway checked in before, but its latest check-in is delayed. Your setup is saved."
+        steps = [
+            "Check that the Gateway is powered on and connected to your site network.",
+            "If your internet connection was interrupted, wait for it to recover. "
+            "This page checks again automatically.",
+            "If it stays disconnected, contact Novena support with the serial number below.",
+        ]
+    elif gateway.internet_reachable is False:
+        title = "Check your site's internet connection"
+        message = "The Gateway is online locally, but reports that it cannot reach the internet."
+        steps = [
+            "Ask your site IT team to check internet access for the Gateway.",
+            "This page will update when the connection recovers.",
+        ]
+    elif gateway.dns_ok is False:
+        title = "Check your site's network settings"
+        message = "The Gateway reports that it cannot look up the Novena service address."
+        steps = [
+            "Ask your site IT team to check DNS for the Gateway.",
+            "This page will update when the connection recovers.",
+        ]
+    elif gateway.tls_ok is False:
+        title = "Secure connection needs attention"
+        message = "The Gateway is online, but its security check did not pass."
+        steps = ["Contact Novena support with the serial number below. We will check the secure connection with you."]
+    elif gateway.broker_tcp_ok is False or not gateway.mqtt_connected:
+        title = "Gateway cannot reach Novena yet"
+        message = "The Gateway is running, but its connection to Novena has not completed."
+        steps = [
+            "Ask your site IT team to check that the Gateway can reach the Novena service from this network.",
+            "If the network looks healthy, contact Novena support with the serial number below.",
+        ]
+    elif not gateway.remote_control_clock_ready:
+        title = "Gateway time needs attention"
+        message = "The Gateway is online, but secure setup is waiting for its clock to synchronize."
+        steps = [
+            "Keep it connected to the internet.",
+            "If this does not clear, contact Novena support with the serial number below.",
+        ]
+    else:
+        title = "Gateway needs a setup check"
+        message = "One connection check still needs attention. Your setup is saved."
+        steps = ["Review the highlighted check, then contact Novena support if it does not clear."]
+    return {"tone": "attention", "title": title, "message": message, "steps": steps, "show_retry": False}
 
 
 @require_permission("manage_devices")

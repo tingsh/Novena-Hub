@@ -470,12 +470,18 @@ def gateway_retry_activation(request, team_slug, pk):
     from .activation import reissue_activation_for_gateway
 
     gateway = Gateway.objects.get(pk=pk, team=request.team)
+    return_to_setup = (
+        request.POST.get("return_to_setup") == "1"
+        and request.session.get("onboarding_gateway_id") == gateway.pk
+    )
     try:
-        reissue_activation_for_gateway(gateway, force=True)
+        reissue_activation_for_gateway(gateway, force=not return_to_setup)
     except ValueError as exc:
         messages.error(request, str(exc))
     else:
         messages.info(request, "Novena is securely retrying Gateway activation.")
+    if return_to_setup:
+        return HttpResponseRedirect(reverse_lazy("web_team:onboarding:step_2b_wait", args=[team_slug]))
     return HttpResponseRedirect(reverse_lazy("web_team:devices:gateway_detail", args=[team_slug, pk]))
 
 

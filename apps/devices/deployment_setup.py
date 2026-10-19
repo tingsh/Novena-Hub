@@ -324,15 +324,18 @@ def gateway_readiness(gateway: Gateway) -> dict:
         {
             "key": "tls",
             "label": "Connection security",
-            "status": "pass" if gateway.tls_ok is not False else "fail",
+            "status": "pass" if gateway.tls_ok is True else "fail" if gateway.tls_ok is False else "warning",
             "message": (
                 "Secure connection verified."
-                if gateway.tls_ok is not False
+                if gateway.tls_ok is True
                 else "The secure connection could not be verified."
+                if gateway.tls_ok is False
+                else "The Gateway has not reported its connection security yet."
             ),
             "action": (
-                "Check the Gateway date and time. If the problem continues, "
-                "ask a technician to check its security certificate."
+                "Keep the Gateway online and contact Novena support if this remains unconfirmed."
+                if gateway.tls_ok is None
+                else "Contact Novena support to check the Gateway time and secure connection."
             ),
             "blocking": True,
         },
