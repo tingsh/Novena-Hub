@@ -652,9 +652,9 @@ class GuidedSetupViewTest(TestCase):
         self._enable_guided_setup()
 
         page = self.client.get(self.url)
-        self.assertContains(page, "Advanced settings")
         self.assertContains(page, "Equipment missing from the scan?")
         self.assertContains(page, "Check a known Modbus TCP address")
+        self.assertNotContains(page, 'id="manual-device"')
         self.assertNotContains(page, "simulator port")
         self.assertContains(page, 'name="target_port"')
 
@@ -1721,23 +1721,30 @@ class GuidedSetupViewTest(TestCase):
         synced = sync_setup_run(run)
         self.assertEqual(synced.state, synced.State.CONFIGURING)
 
-    def test_page_exposes_manual_fallback_without_raw_json(self):
+    def test_page_keeps_template_builder_only_in_discovered_equipment_row(self):
         self._enable_guided_setup()
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Unknown Modbus Device",
+                }
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Set up equipment missing from the scan")
         self.assertContains(response, "Equipment missing from the scan?")
         self.assertContains(response, "The Gateway has not confirmed a field connection")
-        self.assertLess(
-            response.content.index(b'id="advanced-discovery-settings"'),
-            response.content.index(b'id="manual-device"'),
-        )
-        self.assertLess(
-            response.content.index(b'id="manual-device"'),
-            response.content.index(b'id="deployment-preview"'),
-        )
-        self.assertContains(response, "Set up known equipment manually")
+        self.assertContains(response, 'id="candidate-row-0"')
+        self.assertContains(response, 'id="custom-template-0"')
+        self.assertNotContains(response, 'id="manual-device"')
+        self.assertNotContains(response, "Set up known equipment manually")
         self.assertNotContains(response, "connection_config")
         self.assertNotContains(response, "raw connector JSON")
 

@@ -21,16 +21,6 @@
         {% include "onboarding/partials/discovery_region.html" %}
     </section>
 
-    <details id="manual-device" class="rounded-2xl border border-base-content/10 bg-base-100 shadow-sm">
-        <summary class="cursor-pointer list-none p-6">
-            <span class="block font-black text-base-content">Set up equipment missing from the scan</span>
-            <span class="mt-1 block text-sm text-base-content/55">For an installer who knows the connection and Modbus register map. A live read must pass before deployment.</span>
-        </summary>
-        <div class="border-t border-base-content/10 p-5">
-            {% include "onboarding/partials/custom_template_form.html" with active_candidate=None %}
-        </div>
-    </details>
-
     {% include "onboarding/partials/discovery_deployment_preview.html" %}
 
     <div class="flex items-center justify-between">
