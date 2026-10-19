@@ -547,6 +547,12 @@ def step_2b_wait(request, team_slug):
         return redirect("web_team:onboarding:step_2_gateway", team_slug=team_slug)
     gateway = get_object_or_404(Gateway, id=gateway_id, team=request.team)
 
+    return render(request, "onboarding/step_2b_wait.html", _gateway_wait_context(request, gateway))
+
+
+def _gateway_wait_context(request, gateway):
+    """Build the same readiness state for the first page and each live refresh."""
+
     if gateway.status == "online" and gateway.lifecycle_status == "claimed":
         gateway.lifecycle_status = "online"
         gateway.save(update_fields=["lifecycle_status"])
@@ -605,7 +611,31 @@ def step_2b_wait(request, team_slug):
                 evidence={"error": str(exc)},
             )
 
-    context = {
+    # A newly claimed Gateway has not had time to activate or send its first
+    # operational heartbeat. Missing evidence is pending, not seven faults.
+    activation = gateway.activations.order_by("-created_at").first()
+    awaiting_first_heartbeat = gateway.freshness.status != "live" and (
+        gateway.last_seen is None
+        or (activation is not None and gateway.last_seen < activation.created_at)
+    )
+    display_checks = readiness["checks"]
+    if awaiting_first_heartbeat:
+        display_checks = [
+            {
+                **check,
+                "status": "pending",
+                "message": "Waiting for the Gateway to report this check.",
+                "action": "",
+            }
+            for check in display_checks
+        ]
+    connection_delayed = bool(
+        awaiting_first_heartbeat
+        and activation
+        and (timezone.now() - activation.created_at).total_seconds() >= 90
+    )
+
+    return {
         "steps": ONBOARDING_STEPS,
         "current_step": 2,
         "gateway": gateway,
@@ -613,29 +643,24 @@ def step_2b_wait(request, team_slug):
         "commissioning": build_commissioning_context(request.team, gateway=gateway, session=request.session),
         "setup_run": run,
         "readiness": readiness,
+        "display_checks": display_checks,
+        "awaiting_first_heartbeat": awaiting_first_heartbeat,
+        "connection_delayed": connection_delayed,
     }
-    return render(request, "onboarding/step_2b_wait.html", context)
 
 
-@require_permission("view_devices")
+@require_permission("manage_devices")
 def gateway_status_poll(request, team_slug):
-    """HTMX endpoint: returns a small HTML fragment with current gateway status."""
+    """Refresh the full Gateway progress, readiness, and Continue control."""
     gateway_id = request.session.get("onboarding_gateway_id")
     if not gateway_id:
-        return render(request, "onboarding/partials/gateway_status_badge.html", {"status": "unknown"})
-    gateway = Gateway.objects.filter(id=gateway_id, team=request.team).first()
-    # Resolve the badge from heartbeat freshness, not only the last persisted
-    # status. This prevents the setup screen from saying "online" during the
-    # interval before the background timeout task marks a stale gateway offline.
-    status = "online" if gateway and gateway.freshness.status == "live" else ("offline" if gateway else "unknown")
+        gateway_url = reverse("web_team:onboarding:step_2_gateway", args=[team_slug])
+        return HttpResponse(status=204, headers={"HX-Redirect": gateway_url})
+    gateway = get_object_or_404(Gateway, id=gateway_id, team=request.team)
     return render(
         request,
-        "onboarding/partials/gateway_status_badge.html",
-        {
-            "status": status,
-            "gateway": gateway,
-            "commissioning": build_commissioning_context(request.team, gateway=gateway, session=request.session),
-        },
+        "onboarding/partials/gateway_live.html",
+        _gateway_wait_context(request, gateway),
     )
 
 

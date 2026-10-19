@@ -457,6 +457,14 @@ class GuidedSetupViewTest(TestCase):
         run.save(update_fields=["readiness", "updated_at"])
         self.assertEqual(run.readiness["status"], "blocked")
 
+        waiting = self.client.get(reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug]))
+        self.assertContains(waiting, "Gateway claimed. Connecting securely")
+        self.assertContains(waiting, 'hx-select="#gateway-live"')
+        self.assertContains(waiting, 'hx-target="#gateway-live"')
+        self.assertContains(waiting, "Waiting for the Gateway to report this check.", count=7)
+        self.assertNotContains(waiting, "border-red-200")
+        self.assertContains(waiting, 'aria-disabled="true"')
+
         self.gateway.status = "online"
         self.gateway.mqtt_connected = True
         self.gateway.tls_ok = True
@@ -466,14 +474,18 @@ class GuidedSetupViewTest(TestCase):
             update_fields=["status", "mqtt_connected", "tls_ok", "remote_control_clock_ready", "last_seen"]
         )
 
-        response = self.client.get(reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug]))
+        response = self.client.get(reverse("web_team:onboarding:gateway_status_poll", args=[self.team.slug]))
 
         self.assertEqual(response.status_code, 200)
         run.refresh_from_db()
         self.assertEqual(run.readiness["status"], "ready")
+        self.assertContains(response, "Gateway ready")
+        self.assertContains(response, "Gateway is online")
+        self.assertContains(response, "Gateway software")
         self.assertContains(response, "Continue to Equipment")
-        self.assertContains(response, 'hx-disinherit="hx-target hx-select"')
-        self.assertContains(response, 'hx-target="this"')
+        discover_url = reverse("web_team:onboarding:step_3_discover", args=[self.team.slug])
+        self.assertContains(response, f'href="{discover_url}"')
+        self.assertContains(response, 'hx-select="#gateway-live"')
 
     def _scan_run(self, scan_id="scan-current"):
         run = get_or_create_setup_run(
@@ -1709,7 +1721,7 @@ class GuidedSetupViewTest(TestCase):
         response = self.client.get(reverse("web_team:onboarding:gateway_status_poll", args=[self.team.slug]))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Waiting for the Gateway to connect")
+        self.assertContains(response, "Gateway connection needs attention")
         self.assertNotContains(response, "Gateway is online")
 
     def test_legacy_gateway_can_use_saved_discovery_with_verified_template(self):
