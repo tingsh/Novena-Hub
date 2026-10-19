@@ -1,4 +1,6 @@
-<div class="border-t border-base-content/10 first:border-t-0" data-equipment-row="configured" x-data="{ open: false }">
+<div class="border-t border-base-content/10 first:border-t-0" data-equipment-row="configured"
+     x-data="{ open: false, templateId: '{% if item.selected_template %}{{ item.selected_template.pk }}{% endif %}', templateName: '{{ item.selected_template.name|escapejs }}', searchOpen: false }"
+     @template-picked="templateId = $event.detail.id; templateName = $event.detail.name; searchOpen = false">
     <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 lg:grid-cols-[minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center">
         <div class="min-w-0">
             <p class="truncate text-sm font-bold text-base-content">{% if item.device.name %}{{ item.device.name }}{% elif item.candidate_data.signature %}{{ item.candidate_data.signature }}{% else %}Equipment{% endif %}</p>
@@ -9,7 +11,9 @@
             <p class="mt-0.5 text-[11px] uppercase tracking-wide text-base-content/40">{% if item.device %}{{ item.device.protocol|default:"Equipment" }}{% else %}{{ item.candidate_data.connection|default:"Equipment" }}{% endif %}</p>
         </div>
         <div class="col-start-1 lg:col-auto">
-            {% if item.state == "validated" or item.state == "telemetry_confirmed" or item.state == "queued" or item.state == "applied" %}
+            {% if not item.selected_template %}
+            <span class="badge badge-warning badge-outline badge-sm whitespace-nowrap">Needs template</span>
+            {% elif item.state == "validated" or item.state == "telemetry_confirmed" or item.state == "queued" or item.state == "applied" %}
             <span class="badge badge-success badge-sm whitespace-nowrap">Validated ✓</span>
             {% elif item.state == "validating" %}
             <span class="badge badge-info badge-outline badge-sm whitespace-nowrap"><i class="fa fa-spinner fa-spin mr-1"></i>Validating</span>
@@ -25,7 +29,7 @@
         </div>
         <button type="button" class="btn btn-ghost btn-xs col-start-2 row-start-1 lg:col-auto lg:row-auto"
                 @click="open = !open" :aria-expanded="open.toString()">
-            <span x-text="open ? 'Close' : 'View'">View</span>
+            <span x-text="open ? 'Close' : 'Review'">Review</span>
             <i class="fa fa-chevron-down ml-1 text-[10px] transition-transform" :class="open && 'rotate-180'" aria-hidden="true"></i>
         </button>
         {% if item.state == "validated" or item.state == "telemetry_confirmed" or item.state == "queued" or item.state == "applied" %}
@@ -47,8 +51,10 @@
     </div>
     <div x-show="open" x-cloak class="border-t border-base-content/10 bg-base-200/25 px-4 py-4">
         {% if item.validation_result.message %}<p class="text-sm text-base-content/70">{{ item.validation_result.message }}</p>{% endif %}
-        {% if item.validation_result.error %}<p class="text-sm text-error">{{ item.validation_result.error }}</p>{% endif %}
-        {% if not item.validation_result.message and not item.validation_result.error %}<p class="text-sm text-base-content/55">{{ item.get_state_display }}.</p>{% endif %}
+        {% if item.validation_result.technical_error == "The Gateway could not connect to this equipment" %}
+        <p class="text-sm text-warning">The Gateway could not connect to {{ item.connection.host }}:{{ item.connection.port }} during the live check. Check the equipment power, field network, IP address and Modbus port, then retry.</p>
+        {% elif item.validation_result.error %}<p class="text-sm text-error">{{ item.validation_result.error }}</p>{% endif %}
+        {% if not item.validation_result.message and not item.validation_result.error %}<p class="text-sm text-base-content/55">{% if item.selected_template %}{{ item.get_state_display }}.{% else %}No template selected. Search for the exact model below.{% endif %}</p>{% endif %}
         {% if item.validation_result.signals %}
         <div class="mt-3 flex flex-wrap gap-2">
             {% for signal in item.validation_result.signals %}
@@ -60,6 +66,58 @@
         {% endif %}
         {% if item.device and item.device.template.mapping_strategy == "site_defined" %}
         <a class="btn btn-outline btn-xs mt-3" href="{% url 'web_team:devices:device_datapoint_mapping' request.team.slug item.device.pk %}">Review signal mapping</a>
+        {% endif %}
+        {% if item.device and not item.device.last_telemetry_at and item.state != "validating" and item.state != "queued" and item.state != "applied" and item.state != "telemetry_confirmed" %}
+        <form method="post" class="mt-4 border-t border-base-content/10 pt-4">
+            {% csrf_token %}
+            <input type="hidden" name="item_id" value="{{ item.pk }}">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label class="form-control">
+                    <span class="label-text mb-1 text-xs font-bold">Equipment name</span>
+                    <input type="text" name="equipment_name" value="{{ item.device.name }}" class="input input-bordered input-sm w-full rounded-lg">
+                </label>
+                <div class="form-control" id="template-search-context-item-{{ item.pk }}" @click.outside="searchOpen = false" @keydown.escape.window="searchOpen = false">
+                    <span class="label-text mb-1 text-xs font-bold">Equipment template</span>
+                    <input type="hidden" name="template_id" :value="templateId">
+                    <input type="hidden" name="context" value="guided_setup">
+                    <input type="hidden" name="candidate_index" value="{{ item.pk }}">
+                    <input type="hidden" name="protocol" value="{{ item.device.protocol }}">
+                    <div x-show="templateId" class="mb-2 flex items-center justify-between gap-3 rounded-lg border border-success/25 bg-success/5 px-3 py-2">
+                        <span class="truncate text-sm font-bold" x-text="templateName"></span>
+                        <button type="submit" name="action" value="clear_setup_template" class="btn btn-ghost btn-xs">Remove template</button>
+                    </div>
+                    <input x-ref="templateSearch" type="search" name="q" autocomplete="off" placeholder="Search manufacturer or model"
+                           class="input input-bordered input-sm w-full rounded-lg"
+                           hx-get="{% url 'web_team:devices:template_library_search' request.team.slug %}"
+                           hx-trigger="focus, keyup changed delay:300ms"
+                           hx-target="#template-results-item-{{ item.pk }}" hx-select="unset" hx-swap="innerHTML"
+                           hx-include="#template-search-context-item-{{ item.pk }}" hx-sync="this:replace"
+                           @focus="searchOpen = true">
+                    <div id="template-results-item-{{ item.pk }}" x-show="searchOpen" x-cloak
+                         class="mt-2 max-h-56 overflow-y-auto rounded-lg border border-base-content/10 bg-base-100 shadow-lg">
+                        <p class="p-3 text-xs text-base-content/45">Search for the exact equipment model.</p>
+                    </div>
+                    <p class="mt-1 text-[11px] text-base-content/50">Only templates for this connection type appear here. Choose the exact model; a matching protocol alone is not enough.</p>
+                </div>
+                {% if item.device.protocol == "modbus_tcp" %}
+                <details class="rounded-lg border border-base-content/10 bg-base-100 sm:col-span-2">
+                    <summary class="cursor-pointer px-3 py-2 text-xs font-bold text-base-content/60">Connection settings</summary>
+                    <div class="grid grid-cols-1 gap-3 border-t border-base-content/10 p-3 sm:grid-cols-3">
+                        <label class="form-control sm:col-span-2"><span class="label-text mb-1 text-xs font-bold">Equipment IP address</span>
+                            <input type="text" name="host_setup" value="{{ item.connection.host }}" class="input input-bordered input-sm w-full rounded-lg"></label>
+                        <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Network port</span>
+                            <input type="number" min="1" max="65535" name="port_setup" value="{{ item.connection.port }}" class="input input-bordered input-sm w-full rounded-lg"></label>
+                        <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Equipment unit ID</span>
+                            <input type="number" min="1" max="247" name="slave_id_setup" value="{{ item.connection.slave_id }}" class="input input-bordered input-sm w-full rounded-lg"></label>
+                    </div>
+                </details>
+                {% endif %}
+            </div>
+            <div class="mt-4 flex flex-wrap justify-end gap-2">
+                <button type="submit" name="action" value="save_setup_item" class="btn btn-outline btn-sm rounded-lg">Save changes</button>
+                <button type="submit" name="action" value="retry_setup_item" :disabled="!templateId" class="btn btn-primary btn-sm rounded-lg">Save and retry live check</button>
+            </div>
+        </form>
         {% endif %}
     </div>
 </div>

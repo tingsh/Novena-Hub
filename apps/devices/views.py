@@ -1491,6 +1491,7 @@ def template_library_search(request, team_slug):
     )
     if guided_setup and protocol:
         templates = templates.filter(protocol=protocol)
+    template_count = templates.count()
     template_name = (
         "onboarding/partials/template_search_results.html"
         if guided_setup
@@ -1499,7 +1500,12 @@ def template_library_search(request, team_slug):
     return render(
         request,
         template_name,
-        {"templates": templates[:10], "candidate_index": candidate_index, "query": query},
+        {
+            "templates": templates[:10],
+            "template_count": template_count,
+            "candidate_index": candidate_index,
+            "query": query,
+        },
     )
 
 

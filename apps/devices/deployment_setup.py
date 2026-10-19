@@ -273,6 +273,42 @@ def get_or_create_setup_run(*, team, gateway: Gateway, initiated_by=None) -> Dep
         .order_by("-created_at")
         .first()
     )
+    # A failed read-only equipment check is still part of onboarding. Earlier
+    # versions marked its run terminal before any configuration was deployed.
+    # Resume that run so the customer's saved row remains editable.
+    previous = (
+        DeploymentSetupRun.objects.select_for_update()
+        .filter(team=team, gateway=gateway, state=DeploymentSetupRun.State.FAILED)
+        .exclude(pk=active.pk if active else None)
+        .order_by("-created_at")
+        .first()
+    )
+    recoverable = (
+        previous
+        and not previous.configurations.exists()
+        and previous.items.filter(state=DeploymentSetupItem.State.NEEDS_ATTENTION).exists()
+    )
+    empty_new_run = (
+        active
+        and not active.items.exists()
+        and not active.configurations.exists()
+        and active.events.count() == 1
+        and active.events.filter(event_type="setup_started").exists()
+    )
+    if recoverable and (not active or empty_new_run):
+        if empty_new_run:
+            active.state = DeploymentSetupRun.State.CANCELLED
+            active.save(update_fields=["state", "updated_at"])
+            append_setup_event(
+                active,
+                "empty_run_replaced",
+                "An empty setup run was replaced by the earlier equipment review.",
+            )
+        previous.state = DeploymentSetupRun.State.CONFIGURING
+        previous.current_step = "equipment"
+        previous.completed_at = None
+        previous.save(update_fields=["state", "current_step", "completed_at", "updated_at"])
+        return previous
     if active:
         return active
     run = DeploymentSetupRun.objects.create(
@@ -987,7 +1023,7 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
         run.state = DeploymentSetupRun.State.COMPLETED_ATTENTION
         run.current_step = "go_live"
         run.completed_at = timezone.now()
-    elif states and all(
+    elif latest_config and states and all(
         state
         in {
             DeploymentSetupItem.State.NEEDS_ATTENTION,

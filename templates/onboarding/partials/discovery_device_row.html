@@ -87,6 +87,7 @@
                  @click.outside="searchOpen = false"
                  @keydown.escape.window="searchOpen = false">
                 <span class="label-text mb-1 text-xs font-bold">Equipment template</span>
+                <p class="mb-2 text-[11px] text-base-content/50">Choose the exact manufacturer and model. Only templates for this connection type appear here.</p>
                 <input type="hidden" name="template_{{ candidate.action_ref }}" :value="templateId">
                 <input type="hidden" name="context" value="guided_setup">
                 <input type="hidden" name="candidate_index" value="{{ candidate.action_ref }}">
@@ -98,7 +99,7 @@
                     </span>
                     <button type="button" class="btn btn-ghost btn-xs" aria-label="Clear selected template"
                             @click="templateId = ''; templateName = ''; templateTrust = ''; searchOpen = true; dirty = true">
-                        Change
+                        Remove template
                     </button>
                 </div>
                 <div class="relative">

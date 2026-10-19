@@ -535,7 +535,12 @@ def _commissioning_candidates(gateway):
     registered_ports = {
         str(device.port): device.name for device in gateway.devices.exclude(port__isnull=True).exclude(port="")
     }
-    latest_run = gateway.deployment_setup_runs.order_by("-created_at").first()
+    from .deployment_setup import TERMINAL_RUN_STATES
+
+    latest_run = (
+        gateway.deployment_setup_runs.exclude(state__in=TERMINAL_RUN_STATES).order_by("-created_at").first()
+        or gateway.deployment_setup_runs.order_by("-created_at").first()
+    )
     draft_items = list(
         latest_run.items.filter(device__isnull=True, removed_at__isnull=True).select_related("selected_template")
         if latest_run
@@ -736,10 +741,16 @@ def build_commissioning_context(team, gateway=None, session=None):
     setup_run = None
     readiness = None
     if gateway:
-        from .deployment_setup import gateway_readiness, sync_setup_run
+        from .deployment_setup import TERMINAL_RUN_STATES, gateway_readiness, sync_setup_run
         from .models import DeploymentSetupRun
 
-        setup_run = DeploymentSetupRun.objects.filter(team=team, gateway=gateway).order_by("-created_at").first()
+        setup_run = (
+            DeploymentSetupRun.objects.filter(team=team, gateway=gateway)
+            .exclude(state__in=TERMINAL_RUN_STATES)
+            .order_by("-created_at")
+            .first()
+            or DeploymentSetupRun.objects.filter(team=team, gateway=gateway).order_by("-created_at").first()
+        )
         if setup_run:
             setup_run = sync_setup_run(setup_run)
         readiness = gateway_readiness(gateway)
@@ -777,7 +788,9 @@ def build_commissioning_context(team, gateway=None, session=None):
         completed.append("device_scan_running")
     if devices or candidates:
         completed.append("devices_discovered")
-    if devices or any(candidate["matched_template"] for candidate in candidates):
+    if any(item.selected_template_id for item in equipment_setup_items) or any(
+        candidate["matched_template"] for candidate in candidates
+    ):
         completed.append("templates_selected")
     if latest_config and latest_config.status in {"accepted", "active"}:
         completed.append("config_pushed")

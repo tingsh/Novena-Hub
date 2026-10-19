@@ -1,4 +1,7 @@
 {% if candidate_index %}
+    <p class="border-b border-base-content/10 px-3 py-2 text-[11px] text-base-content/55">
+        {{ template_count }} compatible template{{ template_count|pluralize }}{% if template_count > 10 %} · showing the first 10; type to narrow the list{% endif %}. Choose the exact manufacturer and model.
+    </p>
     {% for template in templates %}
     <button type="button"
             class="flex w-full items-start justify-between gap-3 border-b border-base-content/10 p-3 text-left last:border-b-0 hover:bg-base-200/60"
@@ -16,7 +19,7 @@
     {% empty %}
     <div class="p-4 text-center">
         <p class="text-sm font-semibold text-base-content/65">No matching template found</p>
-        <p class="mt-1 text-xs text-base-content/45">Save this equipment as a draft, then request a Novena template or create a private custom template below.</p>
+        <p class="mt-1 text-xs text-base-content/45">This model is not in the current library. Request a Novena template or create a private custom template in this equipment row.</p>
     </div>
     {% endfor %}
 {% else %}

@@ -25,6 +25,7 @@ from apps.devices.gateway_config_delivery import (
 )
 from apps.devices.models import (
     DeploymentSetupItem,
+    DeploymentSetupRun,
     Device,
     DeviceTemplate,
     EquipmentTemplateRequest,
@@ -1008,6 +1009,130 @@ class GuidedSetupViewTest(TestCase):
         self.assertTrue(Device.objects.filter(gateway=self.gateway, name="Simulator").exists())
         validation.assert_called_once()
 
+    def test_failed_validation_can_clear_template_choose_another_and_retry(self):
+        self._enable_guided_setup()
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [{
+                "interface": "10.0.0.20:502", "connection": "modbus_tcp",
+                "host": "10.0.0.20", "port": 502, "slave_id": 1,
+                "signature": "Unknown Modbus Device",
+            }],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        first_template = DeviceTemplate.objects.create(
+            name="First meter", device_type="power_meter", protocol="modbus_tcp",
+            register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
+            is_verified=True,
+        )
+        replacement = DeviceTemplate.objects.create(
+            name="Replacement meter", device_type="power_meter", protocol="modbus_tcp",
+            register_map={"voltage": {"address": 2, "functionCode": 3, "type": "uint16"}},
+            is_verified=True,
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="Cold room meter",
+            template=first_template, device_type="power_meter", protocol="modbus_tcp",
+            port="10.0.0.20:502", connection_config={"host": "10.0.0.20", "port": 502, "slave_id": 1},
+            metadata={"guided_setup_validation": "failed"},
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=first_template,
+            state=DeploymentSetupItem.State.NEEDS_ATTENTION,
+            candidate_key="modbus_tcp|10.0.0.20|502",
+            candidate_data={"connection": "modbus_tcp", "interface": "10.0.0.20:502"},
+            connection={"host": "10.0.0.20", "port": 502, "slave_id": 1},
+            validation_result={"technical_error": "The Gateway could not connect to this equipment"},
+        )
+
+        failed_page = self.client.get(self.url)
+        self.assertContains(failed_page, "Remove template")
+        self.assertContains(failed_page, "could not connect to 10.0.0.20:502")
+        self.assertContains(failed_page, "Save and retry live check")
+        run.refresh_from_db()
+        self.assertNotEqual(run.state, run.State.FAILED)
+
+        # Old versions marked this predeployment validation failure terminal.
+        run.state = run.State.FAILED
+        run.save(update_fields=["state", "updated_at"])
+        empty_run = DeploymentSetupRun.objects.create(
+            team=self.team, site=self.site, gateway=self.gateway,
+            state=DeploymentSetupRun.State.GATEWAY_CHECK, current_step="gateway",
+        )
+        append_setup_event(empty_run, "setup_started", "Guided Setup started.")
+
+        cleared = self.client.post(self.url, {
+            "action": "clear_setup_template", "item_id": item.pk, "equipment_name": "Cold room meter",
+            "template_id": str(first_template.pk), "host_setup": "10.0.0.20", "port_setup": "502",
+            "slave_id_setup": "1",
+        })
+        self.assertEqual(cleared.status_code, 302)
+        empty_run.refresh_from_db()
+        self.assertEqual(empty_run.state, DeploymentSetupRun.State.CANCELLED)
+        run.refresh_from_db()
+        self.assertEqual(run.state, DeploymentSetupRun.State.CONFIGURING)
+        item.refresh_from_db()
+        self.assertIsNone(item.selected_template)
+        self.assertIsNone(item.device)
+        self.assertFalse(Device.objects.filter(pk=device.pk).exists())
+        self.assertEqual(item.state, DeploymentSetupItem.State.DISCOVERED)
+        self.assertNotIn(
+            "templates_selected", build_commissioning_context(self.team, gateway=self.gateway)["completed_stages"]
+        )
+        returned_to_review = self.client.get(self.url)
+        self.assertContains(returned_to_review, 'data-equipment-row="candidate"')
+        self.assertContains(returned_to_review, "Request a Novena template")
+        self.assertContains(returned_to_review, "Create a custom template")
+
+        with patch("apps.devices.deployment_setup.start_validation") as validation:
+            retry = self.client.post(self.url, {
+                "save_and_validate": "0", "candidate_key_0": item.candidate_key,
+                "name_0": "Cold room meter", "template_0": str(replacement.pk),
+                "host_0": "10.0.0.20", "port_0": "502", "slave_id_0": "1",
+            })
+        self.assertEqual(retry.status_code, 302)
+        item.refresh_from_db()
+        self.assertEqual(item.device.template, replacement)
+        validation.assert_called_once()
+        self.assertEqual(validation.call_args.kwargs["template"], replacement)
+
+    def test_setup_item_rejects_incompatible_template(self):
+        self._enable_guided_setup()
+        tcp_template = DeviceTemplate.objects.create(
+            name="TCP meter", device_type="power_meter", protocol="modbus_tcp", register_map={},
+        )
+        rtu_template = DeviceTemplate.objects.create(
+            name="RTU meter", device_type="power_meter", protocol="modbus_rtu", register_map={},
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="Meter", template=tcp_template,
+            device_type="power_meter", protocol="modbus_tcp", port="10.0.0.20:502",
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=tcp_template,
+            state=DeploymentSetupItem.State.NEEDS_ATTENTION,
+            connection={"host": "10.0.0.20", "port": 502, "slave_id": 1},
+        )
+
+        response = self.client.post(self.url, {
+            "action": "save_setup_item", "item_id": item.pk, "template_id": str(rtu_template.pk),
+        })
+
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertEqual(item.selected_template, tcp_template)
+
+        with patch("apps.devices.deployment_setup.start_validation") as validation:
+            retry = self.client.post(self.url, {
+                "action": "retry_setup_item", "item_id": item.pk, "equipment_name": "Meter",
+                "template_id": str(tcp_template.pk), "host_setup": "10.0.0.20",
+                "port_setup": "502", "slave_id_setup": "1",
+            })
+        self.assertEqual(retry.status_code, 302)
+        validation.assert_called_once()
+
     def test_one_validated_device_unlocks_deployment_while_other_rows_remain_pending(self):
         template = DeviceTemplate.objects.create(
             name="Validated meter template",
@@ -1290,6 +1415,7 @@ class GuidedSetupViewTest(TestCase):
         )
         self.assertContains(available, template.name)
         self.assertContains(available, "template-picked")
+        self.assertContains(available, "1 compatible template")
         self.assertNotContains(available, incompatible_template.name)
 
         search = self.client.get(

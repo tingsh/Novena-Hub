@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
+from django.db import transaction
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -876,6 +877,114 @@ def step_3_discover(request, team_slug):
 
     if request.method == "POST":
         action = request.POST.get("action", "validate_selected")
+        if action in {"save_setup_item", "retry_setup_item", "clear_setup_template"}:
+            item = get_object_or_404(
+                run.items.select_related("device", "selected_template"),
+                pk=request.POST.get("item_id"),
+                removed_at__isnull=True,
+                device__isnull=False,
+            )
+            editable_states = {
+                DeploymentSetupItem.State.DISCOVERED,
+                DeploymentSetupItem.State.TEMPLATE_SELECTED,
+                DeploymentSetupItem.State.NEEDS_ATTENTION,
+                DeploymentSetupItem.State.FAILED,
+                DeploymentSetupItem.State.VALIDATED,
+            }
+            if item.state not in editable_states or item.device.last_telemetry_at:
+                messages.error(
+                    request, "This equipment is already being validated or deployed. Refresh its status first."
+                )
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+
+            template_id = "" if action == "clear_setup_template" else request.POST.get("template_id", "").strip()
+            template = visible_templates_for_team(request.team).filter(pk=template_id).first() if template_id else None
+            if template_id and not template:
+                messages.error(request, "Choose a template available to your organisation.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            if template and template.protocol != item.device.protocol:
+                messages.error(request, "Choose a template that matches this equipment connection type.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            if action == "retry_setup_item" and not template:
+                messages.error(request, "Choose an equipment template before retrying the live check.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            if action == "retry_setup_item" and not guided_capable:
+                messages.warning(request, "The Gateway is not ready for a secure live check. Keep it online and retry.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+
+            candidate = {
+                **(item.candidate_data or {}),
+                "connection": item.device.protocol,
+                "host": item.connection.get("host", ""),
+                "port": item.connection.get("port", 502),
+                "slave_id": item.connection.get("slave_id", 1),
+            }
+            try:
+                connection, candidate = _candidate_connection_from_post(request.POST, candidate, "setup", strict=True)
+            except (TypeError, ValueError) as exc:
+                messages.error(request, str(exc))
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            name = request.POST.get("equipment_name", "").strip() or item.device.name
+            candidate["customer_name"] = name
+            candidate["customer_draft_saved"] = True
+            provisional_device = item.device
+            previous_device_id = provisional_device.pk
+            with transaction.atomic():
+                item.candidate_data = candidate
+                item.connection = connection
+                item.selected_template = template
+                item.datapoints = []
+                item.validation_result = {}
+                item.validation_command = None
+                item.state = (
+                    DeploymentSetupItem.State.TEMPLATE_SELECTED if template else DeploymentSetupItem.State.DISCOVERED
+                )
+                if template:
+                    provisional_device.name = name
+                    provisional_device.template = template
+                    provisional_device.device_type = template.device_type
+                    provisional_device.port = candidate.get("interface") or provisional_device.port
+                    provisional_device.connection_config = connection
+                    provisional_device.discovery_meta = candidate
+                    metadata = dict(provisional_device.metadata or {})
+                    metadata["guided_setup_validation"] = "pending"
+                    provisional_device.metadata = metadata
+                    provisional_device.save()
+                else:
+                    # This Device was only prepared for a predeployment live check.
+                    # Keep the customer draft, then return it to the full Review flow.
+                    item.device = None
+                item.save()
+                if not template:
+                    provisional_device.delete()
+                append_setup_event(
+                    run,
+                    "setup_item_edited",
+                    "Customer updated an equipment template or connection before deployment.",
+                    item=item,
+                    actor=request.user,
+                    evidence={
+                        "template_id": template.pk if template else None,
+                        "retry": action == "retry_setup_item",
+                        "previous_device_id": previous_device_id,
+                    },
+                )
+            if action == "retry_setup_item":
+                try:
+                    start_validation(item=item, template=template, requested_by=request.user)
+                except ValueError as exc:
+                    messages.error(request, str(exc))
+                else:
+                    messages.info(request, "Checking live readings again. Results will appear here automatically.")
+            else:
+                messages.success(
+                    request,
+                    "Template removed. Choose the exact equipment model when ready."
+                    if not template
+                    else "Equipment changes saved. Run the live check when ready.",
+                )
+            return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+
         for candidate_action in (
             "save_candidate_draft",
             "save_and_validate",
@@ -1702,6 +1811,7 @@ def step_3_discover(request, team_slug):
 def discovery_poll(request, team_slug):
     """HTMX endpoint: refresh scan status and equipment rows together."""
     from apps.devices.config_generator import human_config_preview
+    from apps.devices.deployment_setup import TERMINAL_RUN_STATES
     from apps.devices.gateway_config_delivery import gateway_supports_guided_setup
 
     gateway_id = request.session.get("onboarding_gateway_id")
@@ -1711,9 +1821,11 @@ def discovery_poll(request, team_slug):
     discovered_devices = (gateway.discovery_data or {}).get("devices", []) if gateway else []
     profile = get_site_profile(gateway.site) if gateway else profile_for_request(request)
     templates = rank_templates_for_profile(visible_templates_for_team(request.team), profile)
+    runs = DeploymentSetupRun.objects.filter(team=request.team, gateway=gateway) if gateway else None
     setup_run = (
-        DeploymentSetupRun.objects.filter(team=request.team, gateway=gateway).order_by("-created_at").first()
-        if gateway
+        runs.exclude(state__in=TERMINAL_RUN_STATES).order_by("-created_at").first()
+        or runs.order_by("-created_at").first()
+        if runs is not None
         else None
     )
     if setup_run:
@@ -1775,10 +1887,12 @@ def step_4_alert(request, team_slug):
 
     profile = get_site_profile(device.site)
     from apps.devices.config_generator import human_config_preview
-    from apps.devices.deployment_setup import deployment_progress, sync_setup_run
+    from apps.devices.deployment_setup import TERMINAL_RUN_STATES, deployment_progress, sync_setup_run
 
+    runs = DeploymentSetupRun.objects.filter(team=request.team, gateway=device.gateway)
     setup_run = (
-        DeploymentSetupRun.objects.filter(team=request.team, gateway=device.gateway).order_by("-created_at").first()
+        runs.exclude(state__in=TERMINAL_RUN_STATES).order_by("-created_at").first()
+        or runs.order_by("-created_at").first()
     )
     if setup_run:
         setup_run = sync_setup_run(setup_run)
