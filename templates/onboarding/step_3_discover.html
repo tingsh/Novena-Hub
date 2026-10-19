@@ -32,20 +32,24 @@
         {% include "onboarding/partials/discovery_region.html" %}
     </section>
 
-    {% include "onboarding/partials/discovery_deployment_preview.html" %}
-
     <details id="manual-device" {% if template_workflow %}open{% endif %} class="rounded-2xl border border-base-content/10 bg-base-100 shadow-sm">
         <summary class="cursor-pointer list-none p-6">
             <div class="flex items-center justify-between gap-4">
                 <div>
-                    <h2 class="font-black text-base-content">I can’t find my equipment</h2>
-                    <p class="mt-1 text-sm text-base-content/55">Guided Modbus setup: create a private template from the equipment manual or ask Novena to prepare one.</p>
+                    <h2 class="font-black text-base-content">Equipment listed, but no matching template?</h2>
+                    <p class="mt-1 text-sm text-base-content/55">A listed Modbus connection may still need its exact model and register map confirmed. Find a template, prepare one from documentation, or ask Novena for help.</p>
                 </div>
                 <i class="fa fa-chevron-down text-base-content/40"></i>
             </div>
         </summary>
         <div class="border-t border-base-content/10 p-6 grid grid-cols-1 gap-6 xl:grid-cols-2">
-            <form id="custom-template" method="post" class="rounded-xl border {% if template_workflow == 'custom' %}border-primary/40 ring-2 ring-primary/10{% else %}border-base-content/10{% endif %} p-5 space-y-5"
+            <p class="text-sm text-base-content/60 xl:col-span-2">If equipment does not appear in the scan at all, use <a href="#advanced-discovery-settings" hx-boost="false" class="font-semibold text-primary hover:underline" onclick="const help = document.getElementById('advanced-discovery-settings'); if (help) help.open = true">equipment connection help</a> above. Template options apply once you know which equipment and Modbus signals to read.</p>
+            <details id="custom-template-options" {% if template_workflow == 'custom' %}open{% endif %} class="order-2 self-start rounded-xl border {% if template_workflow == 'custom' %}border-primary/40 ring-2 ring-primary/10{% else %}border-base-content/10{% endif %}">
+                <summary class="cursor-pointer list-none p-5">
+                    <span class="block text-sm font-bold text-base-content">Advanced: create a private template</span>
+                    <span class="mt-1 block text-xs text-base-content/55">For a controls engineer with the equipment’s connection details and Modbus register map.</span>
+                </summary>
+            <form id="custom-template" method="post" class="space-y-5 border-t border-base-content/10 p-5"
                   x-data="{ protocol: '{% if active_candidate.connection == 'modbus_rtu' %}modbus_rtu{% else %}modbus_tcp{% endif %}', advanced: false }">
                 {% csrf_token %}
                 <input type="hidden" name="action" value="manual">
@@ -54,7 +58,7 @@
                 <div>
                     <p class="text-xs font-black uppercase tracking-widest text-indigo-600">Advanced</p>
                     <h3 class="mt-1 text-lg font-black">Create a custom template</h3>
-                    <p class="mt-1 text-sm text-base-content/55">For controls engineers who know the equipment’s Modbus signal map. The template stays private to your organisation until you choose to share it.</p>
+                    <p class="mt-1 text-sm text-base-content/55">Enter the known field connection and signals from the manual. This also works when a scan cannot list the equipment; a live read must pass before deployment.</p>
                 </div>
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <input class="input input-bordered rounded-lg" required name="manual_name" value="{{ active_candidate.signature|default:'' }}" placeholder="Equipment name">
@@ -152,13 +156,14 @@
                 </p>
                 {% endif %}
             </form>
+            </details>
 
-            <div class="space-y-6">
-                <div>
+            <div class="order-1 flex flex-col gap-6">
+                <div class="order-2">
                     {% include "devices/partials/ai_template_builder.html" %}
                     <p class="mt-2 text-xs text-base-content/45">AI output is always a draft. Novena will not deploy it until you select it and a live read validates every chosen signal.</p>
                 </div>
-                <div class="rounded-xl border border-base-content/10 p-5">
+                <div class="order-1 rounded-xl border border-base-content/10 p-5">
                     <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Search another template</p>
                     <p class="mt-2 text-sm text-base-content/60">Search by manufacturer, model, category, or protocol. Novena-verified templates are ranked first.</p>
                     <form class="mt-4" hx-get="{% url 'web_team:devices:template_library_search' request.team.slug %}" hx-target="#guided-template-results" hx-trigger="submit, keyup changed delay:350ms from:#guided-template-query">
@@ -170,7 +175,7 @@
                     </form>
                     <div id="guided-template-results" class="mt-3 space-y-2"></div>
                 </div>
-                <form id="template-request" method="post" enctype="multipart/form-data" class="rounded-xl border {% if template_workflow == 'request' %}border-primary/40 ring-2 ring-primary/10{% else %}border-base-content/10{% endif %} p-5 space-y-4">
+                <form id="template-request" method="post" enctype="multipart/form-data" class="order-3 rounded-xl border {% if template_workflow == 'request' %}border-primary/40 ring-2 ring-primary/10{% else %}border-base-content/10{% endif %} p-5 space-y-4">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="request_template">
                     {% if active_candidate %}<input type="hidden" name="draft_index" value="{{ active_candidate.action_ref }}">{% endif %}
@@ -193,6 +198,8 @@
             </div>
         </div>
     </details>
+
+    {% include "onboarding/partials/discovery_deployment_preview.html" %}
 
     <div class="flex items-center justify-between">
         <a href="{% url 'web_team:onboarding:step_2b_wait' request.team.slug %}" hx-boost="false" class="btn btn-ghost btn-sm rounded-lg"><i class="fa fa-chevron-left mr-2"></i>Back</a>

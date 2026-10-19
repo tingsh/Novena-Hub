@@ -653,8 +653,8 @@ class GuidedSetupViewTest(TestCase):
 
         page = self.client.get(self.url)
         self.assertContains(page, "Advanced settings")
-        self.assertContains(page, "Check equipment using a known network address")
-        self.assertContains(page, "Most customers do not need this")
+        self.assertContains(page, "Equipment missing from the scan?")
+        self.assertContains(page, "Check a known Modbus TCP address")
         self.assertNotContains(page, "simulator port")
         self.assertContains(page, 'name="target_port"')
 
@@ -1248,6 +1248,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertIn("workflow=custom", redirect_to_builder.url)
         builder = self.client.get(redirect_to_builder.url)
         self.assertContains(builder, 'id="manual-device" open')
+        self.assertContains(builder, 'id="custom-template-options" open')
         self.assertContains(builder, 'id="custom-template"')
         self.assertContains(builder, 'name="manual_name" value="Main incomer meter"')
         self.assertContains(builder, 'name="manual_host" value="10.0.0.20"')
@@ -1675,11 +1676,22 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(synced.state, synced.State.CONFIGURING)
 
     def test_page_exposes_manual_fallback_without_raw_json(self):
+        self._enable_guided_setup()
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "I can’t find my equipment")
-        self.assertContains(response, "Guided Modbus setup")
+        self.assertContains(response, "Equipment listed, but no matching template?")
+        self.assertContains(response, "Equipment missing from the scan?")
+        self.assertContains(response, "The Gateway has not confirmed a field connection")
+        self.assertLess(
+            response.content.index(b'id="advanced-discovery-settings"'),
+            response.content.index(b'id="manual-device"'),
+        )
+        self.assertLess(
+            response.content.index(b'id="manual-device"'),
+            response.content.index(b'id="deployment-preview"'),
+        )
+        self.assertContains(response, "Set up known equipment manually")
         self.assertNotContains(response, "connection_config")
         self.assertNotContains(response, "raw connector JSON")
 

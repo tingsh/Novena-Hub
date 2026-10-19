@@ -59,7 +59,7 @@
                 <span data-scan-loading-label class="hidden"><i class="fa fa-spinner fa-spin mr-2"></i>Starting scan…</span>
             </button>
         </form>
-        <a href="#manual-device" class="btn btn-outline rounded-lg">Equipment not listed?</a>
+        {% if guided_setup_available %}<a href="#advanced-discovery-settings" hx-boost="false" class="btn btn-outline rounded-lg" onclick="document.getElementById('advanced-discovery-settings').open = true">Equipment missing from scan?</a>{% endif %}
         {% endif %}
     </div>
 </div>
