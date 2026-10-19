@@ -1471,8 +1471,12 @@ def htmx_device_create(request, team_slug):
 def template_library_search(request, team_slug):
     query = request.GET.get("q", "").strip()[:100]
     candidate_index = request.GET.get("candidate_index", "")
+    guided_setup = request.GET.get("context") == "guided_setup"
     if not re.fullmatch(r"(?:\d+|saved-\d+)", candidate_index):
         candidate_index = ""
+    protocol = request.GET.get("protocol", "")
+    if protocol not in dict(DeviceTemplate.PROTOCOL_CHOICES):
+        protocol = ""
     templates = (
         visible_templates_for_team(request.team)
         .filter(
@@ -1485,9 +1489,11 @@ def template_library_search(request, team_slug):
         )
         .order_by("-is_verified", "created_by_team_id", "name")
     )
+    if guided_setup and protocol:
+        templates = templates.filter(protocol=protocol)
     template_name = (
         "onboarding/partials/template_search_results.html"
-        if request.GET.get("context") == "guided_setup"
+        if guided_setup
         else "devices/partials/template_search_results.html"
     )
     return render(

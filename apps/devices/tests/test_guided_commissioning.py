@@ -1256,6 +1256,13 @@ class GuidedSetupViewTest(TestCase):
             register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
             is_verified=True,
         )
+        incompatible_template = DeviceTemplate.objects.create(
+            name="Novena RTU Sensor",
+            device_type="sensor",
+            protocol="modbus_rtu",
+            register_map={},
+            is_verified=True,
+        )
         self.gateway.discovery_data = {
             "status": "complete",
             "devices": [
@@ -1270,6 +1277,20 @@ class GuidedSetupViewTest(TestCase):
         }
         self.gateway.save(update_fields=["discovery_data"])
         search_url = reverse("web_team:devices:template_library_search", args=[self.team.slug])
+
+        review = self.client.get(self.url)
+        self.assertContains(review, 'hx-trigger="focus, keyup changed delay:300ms"')
+        self.assertContains(review, 'hx-select="unset"')
+        self.assertContains(review, 'hx-swap="innerHTML"')
+        self.assertContains(review, 'name="protocol" value="modbus_tcp"')
+
+        available = self.client.get(
+            search_url,
+            {"context": "guided_setup", "candidate_index": "0", "protocol": "modbus_tcp", "q": ""},
+        )
+        self.assertContains(available, template.name)
+        self.assertContains(available, "template-picked")
+        self.assertNotContains(available, incompatible_template.name)
 
         search = self.client.get(
             search_url,

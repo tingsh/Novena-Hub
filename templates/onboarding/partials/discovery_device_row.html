@@ -90,6 +90,7 @@
                 <input type="hidden" name="template_{{ candidate.action_ref }}" :value="templateId">
                 <input type="hidden" name="context" value="guided_setup">
                 <input type="hidden" name="candidate_index" value="{{ candidate.action_ref }}">
+                <input type="hidden" name="protocol" value="{{ candidate.connection }}">
                 <div x-show="templateId" class="mb-2 flex items-center justify-between gap-3 rounded-lg border border-success/25 bg-success/5 px-3 py-2">
                     <span class="min-w-0">
                         <span class="block truncate text-sm font-bold" x-text="templateName"></span>
@@ -105,8 +106,10 @@
                            placeholder="Search manufacturer or model"
                            class="input input-bordered input-sm w-full rounded-lg pr-9"
                            hx-get="{% url 'web_team:devices:template_library_search' request.team.slug %}"
-                           hx-trigger="focus once, keyup changed delay:300ms"
+                           hx-trigger="focus, keyup changed delay:300ms"
                            hx-target="#template-results-{{ candidate.action_ref }}"
+                           hx-select="unset"
+                           hx-swap="innerHTML"
                            hx-include="#template-search-context-{{ candidate.action_ref }}"
                            hx-sync="this:replace"
                            @focus="searchOpen = true">
