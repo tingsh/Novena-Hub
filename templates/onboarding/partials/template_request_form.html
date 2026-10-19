@@ -1,0 +1,20 @@
+                <form id="template-request-{{ active_candidate.action_ref }}" method="post" enctype="multipart/form-data" class="order-3 rounded-xl border {% if template_workflow == 'request' %}border-primary/40 ring-2 ring-primary/10{% else %}border-base-content/10{% endif %} p-5 space-y-4">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="request_template">
+                    {% if active_candidate %}<input type="hidden" name="draft_index" value="{{ active_candidate.action_ref }}">{% endif %}
+                    {% if active_candidate %}<input type="hidden" name="draft_candidate_key" value="{{ active_candidate.candidate_key }}">{% endif %}
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-widest text-indigo-600">Request a Novena template</p>
+                        <p class="mt-1 text-sm text-base-content/55">Send the equipment identity and documentation to support. Discovery evidence is attached automatically.</p>
+                    </div>
+                    <input class="input input-bordered w-full rounded-lg" required name="request_manufacturer" value="{{ active_candidate.template_request_manufacturer|default:'' }}" placeholder="Manufacturer">
+                    <input class="input input-bordered w-full rounded-lg" required name="request_model" value="{{ active_candidate.template_request_model|default:'' }}" placeholder="Model number">
+                    <select class="select select-bordered w-full rounded-lg" name="request_protocol">
+                        <option value="modbus_tcp" {% if active_candidate.connection != 'modbus_rtu' %}selected{% endif %}>Modbus TCP</option>
+                        <option value="modbus_rtu" {% if active_candidate.connection == 'modbus_rtu' %}selected{% endif %}>Modbus RTU</option>
+                    </select>
+                    <input class="input input-bordered w-full rounded-lg" type="url" name="request_documentation_url" placeholder="Equipment manual URL (optional)">
+                    <input class="file-input file-input-bordered w-full rounded-lg" type="file" accept="application/pdf,.pdf" name="documentation_file">
+                    <p class="text-xs text-base-content/45">Optional PDF, maximum 10 MB.</p>
+                    <button class="btn btn-outline w-full rounded-lg" type="submit">Request template</button>
+                </form>

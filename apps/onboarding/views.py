@@ -1121,12 +1121,12 @@ def step_3_discover(request, team_slug):
             if draft_action == "start_custom_template":
                 return redirect(
                     f"{reverse('web_team:onboarding:step_3_discover', args=[team_slug])}"
-                    f"?candidate=saved-{item.pk}&workflow=custom#custom-template"
+                    f"?candidate={raw_draft_index}&workflow=custom#custom-template-panel-{raw_draft_index}"
                 )
             if draft_action == "request_candidate_template":
                 return redirect(
                     f"{reverse('web_team:onboarding:step_3_discover', args=[team_slug])}"
-                    f"?candidate=saved-{item.pk}&workflow=request#template-request"
+                    f"?candidate={raw_draft_index}&workflow=request#template-request-panel-{raw_draft_index}"
                 )
             if draft_action == "skip_candidate":
                 messages.success(request, "Equipment skipped for now. Your saved details will be here when you return.")
@@ -1512,6 +1512,21 @@ def step_3_discover(request, team_slug):
             )
 
         if action == "request_template":
+            raw_draft_index = request.POST.get("draft_index", "").strip()
+            try:
+                requested_candidate, draft_index, draft_item = (
+                    _candidate_for_ref(
+                        discovered_devices,
+                        run,
+                        raw_draft_index,
+                        request.POST.get("draft_candidate_key", ""),
+                    )
+                    if raw_draft_index
+                    else ({}, None, None)
+                )
+            except (IndexError, TypeError, ValueError) as exc:
+                messages.error(request, f"Review this equipment again before requesting a template: {exc}")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             documentation_file = request.FILES.get("documentation_file")
             if documentation_file and (
                 not documentation_file.name.lower().endswith(".pdf")
@@ -1545,21 +1560,20 @@ def step_3_discover(request, team_slug):
                 documentation_file=documentation_file,
                 discovery_evidence=gateway.discovery_data,
             )
-            raw_draft_index = request.POST.get("draft_index", "").strip()
-            try:
-                _candidate, _draft_index, draft_item = (
-                    _candidate_for_ref(
-                        discovered_devices,
-                        run,
-                        raw_draft_index,
-                        request.POST.get("draft_candidate_key", ""),
+            if raw_draft_index:
+                try:
+                    requested_candidate = dict(requested_candidate)
+                    requested_candidate["customer_draft_saved"] = True
+                    draft_item = create_or_update_candidate_item(
+                        run=run,
+                        index=draft_index,
+                        candidate=requested_candidate,
+                        existing_item=draft_item,
                     )
-                    if raw_draft_index
-                    else ({}, None, None)
-                )
-            except (IndexError, TypeError, ValueError):
-                draft_item = None
-            if draft_item:
+                except ValueError as exc:
+                    equipment_request.delete()
+                    messages.error(request, f"This template request could not be linked to the equipment: {exc}")
+                    return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
                 candidate_data = dict(draft_item.candidate_data or {})
                 candidate_data.update(
                     {
@@ -1581,6 +1595,11 @@ def step_3_discover(request, team_slug):
                 request,
                 f"Template request submitted. Support reference: {equipment_request.support_reference}",
             )
+            if raw_draft_index:
+                return redirect(
+                    f"{reverse('web_team:onboarding:step_3_discover', args=[team_slug])}"
+                    f"?candidate={raw_draft_index}&workflow=request#template-request-panel-{raw_draft_index}"
+                )
             return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
         if action == "deploy":
@@ -1651,6 +1670,10 @@ def step_3_discover(request, team_slug):
             candidate
             for candidate in commissioning["device_candidates"]
             if candidate["action_ref"] == active_candidate_ref
+            or (
+                active_candidate_ref.startswith("saved-")
+                and str(candidate.get("setup_item_id")) == active_candidate_ref.removeprefix("saved-")
+            )
         ),
         None,
     )

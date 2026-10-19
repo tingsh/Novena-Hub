@@ -12,11 +12,7 @@
     {% include "onboarding/partials/discovery_scan_state.html" %}
 </div>
 <div id="discovery-list">
-    <form method="post">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="review_equipment">
-        {% include "onboarding/partials/discovery_devices.html" %}
-    </form>
+    {% include "onboarding/partials/discovery_devices.html" %}
     {% if scan_state.key != "scanning" and guided_setup_available %}
     <div class="border-t border-base-content/10 bg-base-200/20 p-5">
         <details id="advanced-discovery-settings" hx-preserve class="rounded-xl border border-base-content/10 bg-base-100">
@@ -48,7 +44,7 @@
                     <button class="btn btn-outline btn-sm rounded-lg" type="submit">Check address</button>
                 </form>
                 <p class="mt-3 text-xs text-base-content/45">Modbus TCP normally uses port 502. Only the address and port you enter will be checked.</p>
-                <p class="mt-3 text-xs text-base-content/55">Have the connection details and Modbus register map, but the scan still finds nothing? <a href="#manual-device" hx-boost="false" class="font-semibold text-primary hover:underline" onclick="document.getElementById('manual-device').open = true; document.getElementById('custom-template-options').open = true">Set up known equipment manually</a>. A live read must pass before deployment.</p>
+                <p class="mt-3 text-xs text-base-content/55">Have the connection details and Modbus register map, but the scan still finds nothing? <a href="#manual-device" hx-boost="false" class="font-semibold text-primary hover:underline" onclick="document.getElementById('manual-device').open = true">Set up known equipment manually</a>. A live read must pass before deployment.</p>
             </div>
         </details>
     </div>

@@ -1252,14 +1252,21 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(redirect_to_builder.status_code, 302)
         self.assertIn("workflow=custom", redirect_to_builder.url)
         builder = self.client.get(redirect_to_builder.url)
-        self.assertContains(builder, 'id="manual-device" open')
-        self.assertContains(builder, 'id="custom-template-options" open')
-        self.assertContains(builder, 'id="custom-template"')
+        self.assertContains(builder, "templateFlow: 'custom'")
+        self.assertContains(builder, 'id="custom-template-panel-0"')
+        self.assertContains(builder, 'id="custom-template-0"')
+        self.assertNotContains(builder, "Equipment listed, but no matching template?")
         self.assertContains(builder, 'name="manual_name" value="Main incomer meter"')
         self.assertContains(builder, 'name="manual_host" value="10.0.0.20"')
         self.assertContains(builder, 'name="manual_port" value="1502"')
         self.assertContains(builder, 'name="manual_slave_id" value="7"')
         self.assertContains(builder, "Create private template and review signals")
+        saved_item = DeploymentSetupItem.objects.get(run__gateway=self.gateway, discovery_index=0)
+        resumed_builder = self.client.get(
+            self.url,
+            {"candidate": f"saved-{saved_item.pk}", "workflow": "custom"},
+        )
+        self.assertContains(resumed_builder, "templateFlow: 'custom'")
 
         created = self.client.post(
             self.url,
@@ -1317,24 +1324,12 @@ class GuidedSetupViewTest(TestCase):
             ],
         }
         self.gateway.save(update_fields=["discovery_data"])
-        self.client.post(
-            self.url,
-            {
-                "action": "validate_selected",
-                "request_candidate_template": "0",
-                "name_0": "Packaging meter",
-                "template_0": "",
-                "host_0": "10.0.0.20",
-                "port_0": "502",
-                "slave_id_0": "1",
-            },
-        )
-
         response = self.client.post(
             self.url,
             {
                 "action": "request_template",
                 "draft_index": "0",
+                "draft_candidate_key": "modbus_tcp|10.0.0.20|502",
                 "request_manufacturer": "Eaton",
                 "request_model": "Power Xpert 2000",
                 "request_protocol": "modbus_tcp",
@@ -1687,7 +1682,7 @@ class GuidedSetupViewTest(TestCase):
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Equipment listed, but no matching template?")
+        self.assertContains(response, "Set up equipment missing from the scan")
         self.assertContains(response, "Equipment missing from the scan?")
         self.assertContains(response, "The Gateway has not confirmed a field connection")
         self.assertLess(
