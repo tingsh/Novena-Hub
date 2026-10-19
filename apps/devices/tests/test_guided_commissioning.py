@@ -715,6 +715,13 @@ class GuidedSetupViewTest(TestCase):
         idle = self.client.get(self.url)
         self.assertContains(idle, "Ready to scan")
         self.assertContains(idle, "Scan for equipment")
+        self.assertContains(idle, 'aria-label="Equipment setup progress"')
+        self.assertContains(idle, "Equipment listed")
+        self.assertContains(idle, "Template selected")
+        self.assertContains(idle, "Live readings verified")
+        self.assertNotContains(idle, "Guided Setup progress")
+        self.assertContains(idle, 'hx-trigger="equipmentScanStarted from:body"')
+        self.assertContains(idle, "htmx.trigger(document.body, 'equipmentScanStarted')")
         self.assertContains(idle, "field-side wired Ethernet")
         self.assertContains(idle, "Modbus RTU")
         self.assertContains(idle, 'hx-disinherit="hx-target hx-select"')
@@ -1371,9 +1378,11 @@ class GuidedSetupViewTest(TestCase):
 
         validating = self.client.get(poll_url)
 
-        self.assertContains(validating, 'hx-trigger="every 2s"')
+        self.assertContains(validating, 'hx-trigger="equipmentScanStarted from:body, every 2s"')
         self.assertContains(validating, "Validating")
         self.assertContains(validating, 'id="deployment-preview" hx-swap-oob="true"')
+        self.assertContains(validating, 'aria-label="Equipment setup progress"')
+        self.assertContains(validating, "Checking live readings now")
 
         item.state = DeploymentSetupItem.State.VALIDATED
         item.validation_result = {"status": "success", "message": "Selected signals were read successfully."}
@@ -1383,7 +1392,8 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(complete, "1 of 1 validated")
         self.assertContains(complete, 'aria-label="Validation complete"')
         self.assertContains(complete, "Deploy and continue")
-        self.assertContains(complete, 'hx-trigger="none"')
+        self.assertContains(complete, "Live readings passed for at least one equipment item")
+        self.assertContains(complete, 'hx-trigger="equipmentScanStarted from:body"')
 
     def test_recent_scan_start_keeps_customer_visible_scanning_state(self):
         self._enable_guided_setup()

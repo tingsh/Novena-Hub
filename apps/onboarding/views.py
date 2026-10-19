@@ -815,6 +815,33 @@ def gateway_status_poll(request, team_slug):
     )
 
 
+def _equipment_progress(run, commissioning, scan_state, can_deploy):
+    """Summarize only the milestones a customer can complete on the Equipment step."""
+    listed = bool(commissioning["equipment_count"])
+    template_selected = bool(
+        can_deploy
+        or run.items.filter(selected_template__isnull=False, removed_at__isnull=True).exists()
+    )
+    if can_deploy:
+        message = "Live readings passed for at least one equipment item. Deploy it now or review more equipment."
+    elif commissioning["validation_equipment_count"]:
+        message = "Checking live readings now. Results will appear automatically."
+    elif not listed and scan_state["key"] == "scanning":
+        message = "Finding connected equipment. Results will appear automatically."
+    elif not listed:
+        message = "Scan for equipment or add it manually to begin."
+    elif not template_selected:
+        message = "Review an equipment row and select its matching template."
+    else:
+        message = "Run a read-only live check before deploying equipment."
+    return {
+        "listed": listed,
+        "template_selected": template_selected,
+        "verified": can_deploy,
+        "message": message,
+    }
+
+
 @require_permission("manage_devices")
 def step_3_discover(request, team_slug):
     """Automatic-first equipment setup with guided manual fallback."""
@@ -1614,6 +1641,7 @@ def step_3_discover(request, team_slug):
         device__isnull=False,
     ).exists()
     commissioning = build_commissioning_context(request.team, gateway=gateway, session=request.session)
+    equipment_progress = _equipment_progress(run, commissioning, scan_state, can_deploy)
     template_workflow = request.GET.get("workflow", "")
     if template_workflow not in {"custom", "request"}:
         template_workflow = ""
@@ -1640,6 +1668,7 @@ def step_3_discover(request, team_slug):
         "scan_state": scan_state,
         "can_deploy": can_deploy,
         "commissioning": commissioning,
+        "equipment_progress": equipment_progress,
         "template_workflow": template_workflow if active_candidate else "",
         "active_candidate": active_candidate,
     }
@@ -1683,6 +1712,7 @@ def discovery_poll(request, team_slug):
             device__isnull=False,
         ).exists()
     )
+    commissioning = build_commissioning_context(request.team, gateway=gateway, session=request.session)
     return render(
         request,
         "onboarding/partials/discovery_region.html",
@@ -1698,7 +1728,10 @@ def discovery_poll(request, team_slug):
             "include_scan_oob": True,
             "can_deploy": can_deploy,
             "config_preview": human_config_preview(gateway) if gateway else {},
-            "commissioning": build_commissioning_context(request.team, gateway=gateway, session=request.session),
+            "commissioning": commissioning,
+            "equipment_progress": _equipment_progress(setup_run, commissioning, scan_state, can_deploy)
+            if setup_run
+            else None,
         },
     )
 

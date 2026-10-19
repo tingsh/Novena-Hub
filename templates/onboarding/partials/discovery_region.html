@@ -7,6 +7,7 @@
      hx-target="this"
      hx-swap="outerHTML"
      hx-trigger="{% if scan_state.key == 'scanning' %}every 2s{% else %}none{% endif %}">
+    {% include "onboarding/partials/equipment_progress.html" %}
     {% include "onboarding/partials/discovery_scan_state.html" %}
 </div>
 {% endif %}
@@ -17,7 +18,7 @@
      hx-get="{% url 'web_team:onboarding:discovery_poll' request.team.slug %}"
      hx-disinherit="hx-target hx-select"
      hx-target="this"
-     hx-trigger="{% if scan_state.key == 'scanning' or commissioning.validation_equipment_count %}every 2s{% else %}none{% endif %}"
+     hx-trigger="equipmentScanStarted from:body{% if scan_state.key == 'scanning' or commissioning.validation_equipment_count %}, every 2s{% endif %}"
      hx-swap="outerHTML">
     <form method="post">
         {% csrf_token %}

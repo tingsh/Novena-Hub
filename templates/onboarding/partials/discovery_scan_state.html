@@ -48,7 +48,8 @@
               hx-target="#scan-state-panel"
               hx-select="#scan-state-panel"
               hx-swap="outerHTML"
-              hx-sync="#scan-state-panel:replace">
+              hx-sync="#scan-state-panel:replace"
+              hx-on::after-request="htmx.trigger(document.body, 'equipmentScanStarted')">
             {% csrf_token %}<input type="hidden" name="action" value="start_discovery">
             <button type="submit"
                     class="btn btn-primary rounded-lg"

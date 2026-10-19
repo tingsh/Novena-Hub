@@ -3,7 +3,6 @@
 {% block app %}
 <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-5">
     {% include "onboarding/partials/progress_bar.html" with current_step=current_step steps=steps %}
-    {% include "onboarding/partials/commissioning_checklist.html" %}
 
     <section class="rounded-2xl border border-base-content/10 bg-base-100 shadow-sm overflow-hidden">
         <div class="p-6 border-b border-base-content/10 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -26,6 +25,7 @@
              hx-target="this"
              hx-swap="outerHTML"
              hx-trigger="{% if scan_state.key == 'scanning' %}every 2s{% else %}none{% endif %}">
+            {% include "onboarding/partials/equipment_progress.html" %}
             {% include "onboarding/partials/discovery_scan_state.html" %}
         </div>
 
