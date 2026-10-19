@@ -18,7 +18,7 @@ Complete repeatable, evidence-backed CM4 hardware replays for factory energy, co
 5. Verify production telemetry history access stays plan-aware while physical telemetry deletion remains governed by the global 90-day TimescaleDB retention policy.
 6. Run production readiness against the real deployment environment, public TLS endpoints, broker and notification providers.
 7. Qualify a 3–5 customer technical canary before the planned 20-customer cohort.
-8. Qualify and populate the exact-model equipment template catalog for target customer hardware. The Round 2 pilot account has four existing templates plus four team-scoped Modbus TCP demo starters for the picker walkthrough. Demo starters have no register maps and require site-specific mapping; register maps must be checked against vendor documentation and representative hardware before presenting broad compatibility to customers.
+8. Qualify and populate the exact-model equipment template catalog for target customer hardware. The Round 2 pilot account has four existing templates, four team-scoped Modbus TCP demo starters for the picker walkthrough, and one private cold-room TCP simulator template for Laptop 2. Demo starters have no register maps and require site-specific mapping; the simulator map is test-only. Vendor register maps require documentation and representative hardware checks before broad customer compatibility claims.
 
 ## Hardware/Software End-to-End Test Tracking
 
@@ -39,6 +39,8 @@ Detailed observations, fixes, commit references and test order: [2026-10-08 fact
 - Production operations: `docs/production_deployment_plan.md`, `docs/production_readiness_kit.md`, `docs/production_backup_restore.md` and feature-specific operator guides.
 
 ## Recent Activity Log
+
+- 2026-10-19: Added and seeded the local pilot's private `Test simulator · Novena Cold Room NCS-100 (TCP)` template after finding that Laptop 2's `--scenario cold` speaks Modbus TCP while the existing verified cold-room sensor pack speaks Modbus RTU. The new test-only map reads simulator temperature and humidity holding registers 3000/3002 plus door and compressor coils 10/11; it is unverified and carries no alert presets. A focused test checks every mapped address and function code against the simulator source without requiring the optional Laptop 2 `pymodbus` package in Hub. The live Equipment picker shows six TCP choices including this template. The customer's currently selected Omron demo starter was left unchanged; it must be replaced with the cold-room simulator template for this replay.
 
 - 2026-10-19: Added a repeatable `seed_pilot_demo_templates --team pilot-cold-room` command and ran it against the local Round 2 pilot. It added four team-scoped, unverified, map-free Modbus TCP starters labeled Demo starter for Schneider PM5110, Delta MS300, Omron CP1L/CP1H and Siemens S7-1200. Existing selected PM-100 equipment and its live validation state were untouched. The in-app browser's Equipment template picker now shows five compatible choices, with clear Starter badges. The command is idempotent and leaves other teams' libraries unchanged; two focused tests passed. These entries are only for the customer UX walkthrough, and live signal mapping plus vendor/hardware qualification remain release work.
 
