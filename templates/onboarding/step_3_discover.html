@@ -18,17 +18,6 @@
             </span>
         </div>
 
-        <div id="scan-state-panel"
-             class="p-6 border-b border-base-content/10 bg-base-200/30"
-             hx-get="{% url 'web_team:onboarding:discovery_poll' request.team.slug %}"
-             hx-select="#scan-state-panel"
-             hx-target="this"
-             hx-swap="outerHTML"
-             hx-trigger="{% if scan_state.key == 'scanning' %}every 2s{% else %}none{% endif %}">
-            {% include "onboarding/partials/equipment_progress.html" %}
-            {% include "onboarding/partials/discovery_scan_state.html" %}
-        </div>
-
         {% include "onboarding/partials/discovery_region.html" %}
     </section>
 

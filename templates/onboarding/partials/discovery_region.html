@@ -1,25 +1,17 @@
 {% if include_scan_oob %}
-<div id="scan-state-panel"
-     hx-swap-oob="true"
-     class="p-6 border-b border-base-content/10 bg-base-200/30"
+{% include "onboarding/partials/discovery_deployment_preview.html" with deployment_preview_oob=True %}
+{% endif %}
+<div id="equipment-live"
      hx-get="{% url 'web_team:onboarding:discovery_poll' request.team.slug %}"
-     hx-select="#scan-state-panel"
+     hx-select="#equipment-live"
      hx-target="this"
-     hx-swap="outerHTML"
-     hx-trigger="{% if scan_state.key == 'scanning' %}every 2s{% else %}none{% endif %}">
+     hx-trigger="{% if scan_state.key == 'scanning' or commissioning.validation_equipment_count %}every 2s{% else %}none{% endif %}"
+     hx-swap="outerHTML">
+<div id="scan-state-panel" class="p-6 border-b border-base-content/10 bg-base-200/30">
     {% include "onboarding/partials/equipment_progress.html" %}
     {% include "onboarding/partials/discovery_scan_state.html" %}
 </div>
-{% endif %}
-{% if include_scan_oob %}
-{% include "onboarding/partials/discovery_deployment_preview.html" with deployment_preview_oob=True %}
-{% endif %}
-<div id="discovery-list"
-     hx-get="{% url 'web_team:onboarding:discovery_poll' request.team.slug %}"
-     hx-disinherit="hx-target hx-select"
-     hx-target="this"
-     hx-trigger="equipmentScanStarted from:body{% if scan_state.key == 'scanning' or commissioning.validation_equipment_count %}, every 2s{% endif %}"
-     hx-swap="outerHTML">
+<div id="discovery-list">
     <form method="post">
         {% csrf_token %}
         <input type="hidden" name="action" value="review_equipment">
@@ -61,4 +53,5 @@
         </details>
     </div>
     {% endif %}
+</div>
 </div>

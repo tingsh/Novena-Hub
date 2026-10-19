@@ -720,14 +720,14 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(idle, "Template selected")
         self.assertContains(idle, "Live readings verified")
         self.assertNotContains(idle, "Guided Setup progress")
-        self.assertContains(idle, 'hx-trigger="equipmentScanStarted from:body"')
-        self.assertContains(idle, "htmx.trigger(document.body, 'equipmentScanStarted')")
+        self.assertContains(idle, 'hx-trigger="none"')
         self.assertContains(idle, "field-side wired Ethernet")
         self.assertContains(idle, "Modbus RTU")
-        self.assertContains(idle, 'hx-disinherit="hx-target hx-select"')
+        self.assertContains(idle, 'id="equipment-live"')
+        self.assertContains(idle, 'hx-select="#equipment-live"')
         self.assertContains(idle, 'hx-target="this"')
-        self.assertContains(idle, 'hx-target="#scan-state-panel"')
-        self.assertContains(idle, 'hx-sync="#scan-state-panel:replace"')
+        self.assertContains(idle, 'hx-target="#equipment-live"')
+        self.assertContains(idle, 'hx-sync="#equipment-live:replace"')
 
         run = self._scan_run()
         cases = [
@@ -772,7 +772,7 @@ class GuidedSetupViewTest(TestCase):
         self.gateway.save(update_fields=["discovery_data"])
         response = self.client.get(self.url)
         self.assertContains(response, 'id="scan-state-panel"')
-        self.assertContains(response, 'hx-select="#scan-state-panel"')
+        self.assertContains(response, 'hx-select="#equipment-live"')
         self.assertContains(response, 'hx-trigger="every 2s"')
 
         self.gateway.discovery_data = {
@@ -784,6 +784,11 @@ class GuidedSetupViewTest(TestCase):
         response = self.client.get(self.url)
         self.assertContains(response, 'hx-trigger="none"')
         self.assertContains(response, 'id="advanced-discovery-settings" hx-preserve')
+        poll = self.client.get(reverse("web_team:onboarding:discovery_poll", args=[self.team.slug]))
+        self.assertContains(poll, 'id="equipment-live"')
+        self.assertContains(poll, "Found 1 device")
+        self.assertContains(poll, 'id="discovery-list"')
+        self.assertContains(poll, 'id="candidate-row-0"')
 
     def test_discovery_renders_many_results_as_a_compact_equipment_checklist(self):
         self._enable_guided_setup()
@@ -1379,8 +1384,10 @@ class GuidedSetupViewTest(TestCase):
 
         validating = self.client.get(poll_url)
 
-        self.assertContains(validating, 'hx-trigger="equipmentScanStarted from:body, every 2s"')
+        self.assertContains(validating, 'hx-trigger="every 2s"')
         self.assertContains(validating, "Validating")
+        self.assertContains(validating, 'id="scan-state-panel"')
+        self.assertContains(validating, 'id="discovery-list"')
         self.assertContains(validating, 'id="deployment-preview" hx-swap-oob="true"')
         self.assertContains(validating, 'aria-label="Equipment setup progress"')
         self.assertContains(validating, "Checking live readings now")
@@ -1394,7 +1401,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(complete, 'aria-label="Validation complete"')
         self.assertContains(complete, "Deploy and continue")
         self.assertContains(complete, "Live readings passed for at least one equipment item")
-        self.assertContains(complete, 'hx-trigger="equipmentScanStarted from:body"')
+        self.assertContains(complete, 'hx-trigger="none"')
 
     def test_recent_scan_start_keeps_customer_visible_scanning_state(self):
         self._enable_guided_setup()

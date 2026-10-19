@@ -1677,7 +1677,7 @@ def step_3_discover(request, team_slug):
 
 @require_permission("view_devices")
 def discovery_poll(request, team_slug):
-    """HTMX endpoint: returns discovery device list fragment."""
+    """HTMX endpoint: refresh scan status and equipment rows together."""
     from apps.devices.config_generator import human_config_preview
     from apps.devices.gateway_config_delivery import gateway_supports_guided_setup
 
