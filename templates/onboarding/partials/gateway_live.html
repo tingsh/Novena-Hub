@@ -61,9 +61,9 @@
             {% endif %}
 
             <div class="mt-6 flex items-center justify-between border-t border-base-content/10 pt-5">
-                <a href="{% url 'web_team:onboarding:step_2_gateway' request.team.slug %}" class="btn btn-ghost btn-sm rounded-md"><i class="fa fa-chevron-left mr-2 text-xs"></i>Back</a>
+                <a href="{% url 'web_team:onboarding:step_2_gateway' request.team.slug %}" hx-boost="false" class="btn btn-ghost btn-sm rounded-md"><i class="fa fa-chevron-left mr-2 text-xs"></i>Back</a>
                 {% if readiness.status == 'ready' %}
-                    <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}" id="continue-btn" class="btn btn-primary btn-sm rounded-md">Continue to Equipment<i class="fa fa-arrow-right ml-2"></i></a>
+                    <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}" hx-boost="false" id="continue-btn" class="btn btn-primary btn-sm rounded-md">Continue to Equipment<i class="fa fa-arrow-right ml-2"></i></a>
                 {% else %}
                     <span id="continue-btn" class="btn btn-primary btn-sm rounded-md opacity-50" aria-disabled="true">Continue to Equipment<i class="fa fa-arrow-right ml-2"></i></span>
                 {% endif %}

@@ -195,7 +195,7 @@
     </details>
 
     <div class="flex items-center justify-between">
-        <a href="{% url 'web_team:onboarding:step_2b_wait' request.team.slug %}" class="btn btn-ghost btn-sm rounded-lg"><i class="fa fa-chevron-left mr-2"></i>Back</a>
+        <a href="{% url 'web_team:onboarding:step_2b_wait' request.team.slug %}" hx-boost="false" class="btn btn-ghost btn-sm rounded-lg"><i class="fa fa-chevron-left mr-2"></i>Back</a>
         {% if setup_run %}
         <a href="{% url 'web_team:onboarding:support_bundle' request.team.slug setup_run.run_id %}" class="btn btn-ghost btn-sm rounded-lg"><i class="fa fa-download mr-2"></i>Download support details</a>
         {% endif %}

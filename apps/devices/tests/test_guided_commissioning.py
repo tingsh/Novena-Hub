@@ -465,6 +465,8 @@ class GuidedSetupViewTest(TestCase):
         self.assertNotContains(waiting, "Equipment scan running")
         self.assertContains(waiting, 'hx-select="#gateway-live"')
         self.assertContains(waiting, 'hx-target="#gateway-live"')
+        gateway_url = reverse("web_team:onboarding:step_2_gateway", args=[self.team.slug])
+        self.assertContains(waiting, f'href="{gateway_url}" hx-boost="false"')
         self.assertContains(waiting, "Waiting for the Gateway to report this check.", count=7)
         self.assertNotContains(waiting, "border-red-200")
         self.assertContains(waiting, 'aria-disabled="true"')
@@ -488,8 +490,12 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, "Gateway software")
         self.assertContains(response, "Continue to Equipment")
         discover_url = reverse("web_team:onboarding:step_3_discover", args=[self.team.slug])
-        self.assertContains(response, f'href="{discover_url}"')
+        self.assertContains(response, f'href="{discover_url}" hx-boost="false"')
         self.assertContains(response, 'hx-select="#gateway-live"')
+
+        discover = self.client.get(discover_url)
+        wait_url = reverse("web_team:onboarding:step_2b_wait", args=[self.team.slug])
+        self.assertContains(discover, f'href="{wait_url}" hx-boost="false"')
 
     def test_gateway_wait_guides_site_network_failure_without_retrying_credentials(self):
         self.gateway.mqtt_connected = False
