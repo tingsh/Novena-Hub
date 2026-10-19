@@ -187,9 +187,11 @@ def _candidate_for_ref(discovered_devices, run, candidate_ref, expected_key=""):
 
 def _reattach_running_discovery(run):
     """Keep Guided Setup aligned with a Gateway scan that is already running."""
+    from apps.devices.deployment_setup import discovery_report_is_stale
+
     discovery = run.gateway.discovery_data or {}
     scan_id = str(discovery.get("scan_id") or "")
-    if discovery.get("status") != "running" or not scan_id:
+    if discovery.get("status") != "running" or not scan_id or discovery_report_is_stale(discovery):
         return run
     summary = dict(run.summary or {})
     discovery_meta = dict(summary.get("discovery") or {})
@@ -212,6 +214,8 @@ def _reattach_running_discovery(run):
 
 def _has_active_discovery_scan(run):
     """Return true only when the Gateway scan is actually active, not merely held in a UX state."""
+    from apps.devices.deployment_setup import DISCOVERY_REPORT_STALE_AFTER, discovery_report_is_stale
+
     discovery_meta = (run.summary or {}).get("discovery") or {}
     scan_id = str(discovery_meta.get("active_scan_id") or "")
     if not scan_id:
@@ -219,7 +223,19 @@ def _has_active_discovery_scan(run):
 
     discovery = run.gateway.discovery_data or {}
     if str(discovery.get("scan_id") or "") == scan_id:
-        return discovery.get("status") == "running"
+        return discovery.get("status") == "running" and not discovery_report_is_stale(discovery)
+
+    started_at_raw = discovery_meta.get("started_at")
+    if started_at_raw:
+        try:
+            started_at = timezone.datetime.fromisoformat(str(started_at_raw).replace("Z", "+00:00"))
+            if timezone.is_naive(started_at):
+                started_at = timezone.make_aware(started_at, UTC)
+            started_at = started_at.astimezone(UTC)
+        except (TypeError, ValueError):
+            return False
+        if timezone.now() - started_at > DISCOVERY_REPORT_STALE_AFTER:
+            return False
 
     command_id = discovery_meta.get("command_id")
     if command_id:
@@ -235,15 +251,7 @@ def _has_active_discovery_scan(run):
             return False
         return bool(command)
 
-    started_at_raw = discovery_meta.get("started_at")
     if started_at_raw:
-        try:
-            started_at = timezone.datetime.fromisoformat(str(started_at_raw).replace("Z", "+00:00"))
-            if timezone.is_naive(started_at):
-                started_at = timezone.make_aware(started_at, UTC)
-            started_at = started_at.astimezone(UTC)
-        except (TypeError, ValueError):
-            return False
         return timezone.now() - started_at < timedelta(seconds=30)
 
     return False
@@ -1248,6 +1256,7 @@ def step_3_discover(request, team_slug):
 
         if action == "cancel_discovery":
             try:
+                from apps.devices.deployment_setup import discovery_report_is_stale
                 from apps.devices.remote_control import request_remote_command
 
                 scan_id = str(((run.summary or {}).get("discovery") or {}).get("active_scan_id") or "")
@@ -1268,7 +1277,28 @@ def step_3_discover(request, team_slug):
                     actor=request.user,
                     evidence={"command_id": str(command.pk), "scan_id": scan_id},
                 )
-                messages.info(request, "Cancelling equipment discovery…")
+                report = gateway.discovery_data or {}
+                gateway_still_scanning = (
+                    str(report.get("scan_id") or "") == scan_id
+                    and report.get("status") == "running"
+                    and not discovery_report_is_stale(report)
+                )
+                if gateway_still_scanning:
+                    messages.info(request, "Cancelling equipment discovery on the Gateway…")
+                else:
+                    # No active Gateway scan was reported. Release the local UI immediately;
+                    # a fresh running report can still reattach on the next poll.
+                    summary = dict(run.summary or {})
+                    discovery_meta = dict(summary.get("discovery") or {})
+                    discovery_meta["last_cancelled_scan_id"] = scan_id
+                    discovery_meta["last_status"] = "cancelled"
+                    discovery_meta.pop("active_scan_id", None)
+                    discovery_meta.pop("command_id", None)
+                    summary["discovery"] = discovery_meta
+                    run.summary = summary
+                    run.state = DeploymentSetupRun.State.CONFIGURING
+                    run.save(update_fields=["summary", "state", "updated_at"])
+                    messages.info(request, "Scan stopped in setup. You can retry when the equipment is ready.")
             except Exception as exc:
                 messages.error(request, f"Discovery cancellation could not be sent: {exc}")
             return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)

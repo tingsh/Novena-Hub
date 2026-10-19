@@ -64,6 +64,11 @@ def _report_received_at(report: dict):
     return None
 
 
+def discovery_report_is_stale(report: dict) -> bool:
+    received_at = _report_received_at(report)
+    return bool(received_at and timezone.now() - received_at > DISCOVERY_REPORT_STALE_AFTER)
+
+
 def _parse_discovery_timestamp(value):
     if not value:
         return None
@@ -464,10 +469,15 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
     discovery_meta = (run.summary or {}).get("discovery") or {}
     scan_id = str(discovery_meta.get("active_scan_id") or "")
     if not scan_id:
+        locally_cancelled = discovery_meta.get("last_status") == "cancelled"
         return {
-            "key": "idle",
+            "key": "cancelled" if locally_cancelled else "idle",
             "title": "Ready to scan",
-            "message": "Connect your equipment to the Gateway, then start a scan.",
+            "message": (
+                "The previous scan was stopped. You can retry when the equipment is ready."
+                if locally_cancelled
+                else "Connect your equipment to the Gateway, then start a scan."
+            ),
             "scan_id": "",
             "progress": {"completed": 0, "total": 0},
             "scope_label": "Scanning wired Ethernet and Modbus RTU only",
@@ -530,13 +540,13 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             "message": (
                 "The Gateway could not reach that IP and port. Check the address, route, and simulator port."
                 if targeted
-                else "Check power and cabling, retry the scan, or add the device manually."
+                else "Check equipment power and field wiring, then retry or check a known Modbus TCP address below."
             ),
         }
     if status == "cancelled":
         return {
             **base,
-            "key": "idle",
+            "key": "cancelled",
             "title": "Ready to scan",
             "message": "The previous scan was cancelled. You can retry when the equipment is ready.",
         }
@@ -547,18 +557,19 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             "title": "Scan failed",
             "message": customer_safe_error((matching_report.get("errors") or [{}])[0].get("error", "")),
         }
-    if status == "running":
-        received_at = _report_received_at(matching_report)
-        if received_at and timezone.now() - received_at > DISCOVERY_REPORT_STALE_AFTER:
-            return {
-                **base,
-                "key": "error",
-                "title": "Scan timed out",
-                "message": (
-                    "The Gateway stopped reporting scan progress. You can retry the scan, "
-                    "or check the Gateway logs if this keeps happening."
-                ),
-            }
+    if status == "running" and (
+        discovery_report_is_stale(matching_report)
+        or (not _report_received_at(matching_report) and started_at and now - started_at > DISCOVERY_REPORT_STALE_AFTER)
+    ):
+        return {
+            **base,
+            "key": "error",
+            "title": "Scan timed out",
+            "message": (
+                "The Gateway stopped reporting scan progress. You can retry the scan, "
+                "or check the Gateway logs if this keeps happening."
+            ),
+        }
 
     command_id = discovery_meta.get("command_id")
     if command_id:
@@ -603,6 +614,13 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
                 "title": "Scan failed",
                 "message": customer_safe_error(rpc.error_message),
             }
+    if not matching_report and started_at and now - started_at > DISCOVERY_REPORT_STALE_AFTER:
+        return {
+            **base,
+            "key": "error",
+            "title": "Scan did not start",
+            "message": "The Gateway did not confirm this scan. Check its connection, then retry the scan.",
+        }
     if status == "running" or (run.state == DeploymentSetupRun.State.DISCOVERING and not status):
         return {
             **base,

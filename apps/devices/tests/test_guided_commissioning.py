@@ -711,6 +711,58 @@ class GuidedSetupViewTest(TestCase):
         self.assertIn("visible_until", run.summary["discovery"])
         self.assertEqual(discovery_scan_state(run)["title"], "Scanning connected equipment")
 
+    @override_settings(
+        REMOTE_CONTROL_ACTIVE_SIGNING_KEY_ID="setup-test",
+        REMOTE_CONTROL_SIGNING_KEYS={"setup-test": SIGNING_SEED},
+        REMOTE_CONTROL_SIGNING_PRIVATE_KEY=SIGNING_SEED,
+    )
+    @patch("apps.devices.remote_control._schedule_outbox_dispatch")
+    def test_cancel_releases_unconfirmed_scan_and_keeps_equipment_draft(self, _schedule):
+        self._enable_guided_setup()
+        run = self._scan_run()
+        draft = DeploymentSetupItem.objects.create(
+            team=self.team,
+            run=run,
+            state=DeploymentSetupItem.State.DISCOVERED,
+            candidate_data={"connection": "modbus_tcp", "interface": "10.0.0.20:502"},
+        )
+
+        response = self.client.post(self.url, {"action": "cancel_discovery"})
+
+        self.assertEqual(response.status_code, 302)
+        run.refresh_from_db()
+        self.assertEqual(run.state, run.State.CONFIGURING)
+        self.assertFalse(run.summary["discovery"].get("active_scan_id"))
+        self.assertEqual(run.summary["discovery"]["last_cancelled_scan_id"], "scan-current")
+        self.assertTrue(DeploymentSetupItem.objects.filter(pk=draft.pk).exists())
+        self.assertTrue(
+            RemoteCommand.objects.filter(
+                gateway=self.gateway,
+                operation="deployment_discover",
+                request_payload__params__cancel=True,
+            ).exists()
+        )
+        self.assertContains(self.client.get(self.url), "Retry scan")
+
+    @override_settings(
+        REMOTE_CONTROL_ACTIVE_SIGNING_KEY_ID="setup-test",
+        REMOTE_CONTROL_SIGNING_KEYS={"setup-test": SIGNING_SEED},
+        REMOTE_CONTROL_SIGNING_PRIVATE_KEY=SIGNING_SEED,
+    )
+    @patch("apps.devices.remote_control._schedule_outbox_dispatch")
+    def test_unconfirmed_scan_times_out_and_can_retry(self, _schedule):
+        self._enable_guided_setup()
+        run = self._scan_run()
+        run.summary["discovery"]["started_at"] = (timezone.now() - timedelta(minutes=4)).isoformat()
+        run.save(update_fields=["summary", "updated_at"])
+
+        self.assertEqual(discovery_scan_state(run)["title"], "Scan did not start")
+        self.assertContains(self.client.get(self.url), "Retry scan")
+        self.client.post(self.url, {"action": "start_discovery"})
+
+        run.refresh_from_db()
+        self.assertNotEqual(run.summary["discovery"]["active_scan_id"], "scan-current")
+
     def test_scan_states_render_idle_running_found_empty_and_error(self):
         self._enable_guided_setup()
         idle = self.client.get(self.url)
