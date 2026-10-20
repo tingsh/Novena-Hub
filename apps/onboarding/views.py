@@ -990,7 +990,7 @@ def step_3_discover(request, team_slug):
     if request.method == "POST" and request.POST.get("action") == "confirm_setup_item":
         with transaction.atomic():
             item = get_object_or_404(
-                run.items.select_for_update().select_related("device", "selected_template"),
+                run.items.select_related("device", "selected_template").select_for_update(of=("self",)),
                 pk=request.POST.get("item_id"), removed_at__isnull=True, device__isnull=False,
             )
             result = dict(item.validation_result or {})
