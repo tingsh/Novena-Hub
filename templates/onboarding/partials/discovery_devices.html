@@ -47,6 +47,25 @@
     </div>
 </div>
 {% else %}
+{% if scan_state.key == "configured_only" %}
+<div class="p-5 sm:p-6">
+    <h2 class="text-base font-black text-base-content">Equipment already set up</h2>
+    <p class="mt-1 text-sm text-base-content/60">The Gateway skipped connections already in its configuration. Check their current reading status below, or connect another device to discover new equipment.</p>
+    {% if already_configured_devices %}
+    <ul class="mt-4 space-y-2">
+        {% for device in already_configured_devices %}
+        <li class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-success/20 bg-success/5 px-4 py-3">
+            <span class="text-sm font-semibold text-base-content"><i class="fa fa-microchip mr-2 text-primary" aria-hidden="true"></i>{{ device.name }}<span class="mt-1 block pl-6 text-xs font-normal text-base-content/55">{{ device.freshness.display }}</span></span>
+            <a href="{% url 'web_team:devices:device_detail' request.team.slug device.pk %}" class="btn btn-outline btn-sm">View equipment</a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-3 text-sm text-base-content/60">Existing connection{{ scan_state.configured_count|pluralize }}: {{ scan_state.configured_endpoints|join:", " }}</p>
+    {% endif %}
+    <a href="{% url 'web_team:devices:gateway_detail' request.team.slug gateway.pk %}" class="mt-4 inline-block text-sm font-semibold text-primary hover:underline">View Gateway equipment</a>
+</div>
+{% else %}
 <div class="px-6 py-14 text-center">
     <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-base-200 text-base-content/35">
         <i class="fa fa-search text-2xl"></i>
@@ -54,4 +73,5 @@
     <p class="text-sm font-semibold text-base-content/65">{% if scan_state.key == "empty" %}No equipment found{% elif scan_state.key == "error" %}Scan failed{% elif scan_state.key == "scanning" %}Scanning connected equipment{% else %}Ready to scan{% endif %}</p>
     <p class="mt-1 text-xs text-base-content/45">{% if scan_state.key == "scanning" %}Results will appear here as the Gateway checks wired Ethernet and Modbus RTU ports.{% else %}Connect equipment to the Gateway field Ethernet port or Modbus RTU serial, then scan. If it is still missing, open Equipment missing from the scan below.{% endif %}</p>
 </div>
+{% endif %}
 {% endif %}

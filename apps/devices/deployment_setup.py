@@ -488,6 +488,10 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
     matching_report = report if str(report.get("scan_id") or "") == scan_id else {}
     status = matching_report.get("status")
     devices = matching_report.get("devices") or []
+    skipped_configured = [
+        item for item in matching_report.get("skipped_configured") or []
+        if isinstance(item, dict) and item.get("reason") in {"already_configured", "configured_or_busy"}
+    ]
     progress = matching_report.get("progress") or {"completed": 0, "total": 0}
     scope_label = discovery_meta.get("scope_label") or "Scanning wired Ethernet and Modbus RTU only"
     targeted = discovery_meta.get("mode") == "approved_target"
@@ -496,6 +500,8 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
         "progress": progress,
         "interfaces": matching_report.get("interfaces") or [],
         "device_count": len(devices),
+        "configured_count": len(skipped_configured),
+        "configured_endpoints": [item.get("interface", "") for item in skipped_configured],
         "scope_label": scope_label,
         "phase_label": _discovery_phase_label(matching_report),
     }
@@ -523,14 +529,33 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
         }
     if status == "complete":
         if devices:
+            qualifier = "new " if skipped_configured else ""
+            plural = "s" if len(devices) != 1 else ""
+            device_label = f"{len(devices)} {qualifier}device{plural}"
             return {
                 **base,
                 "key": "found",
-                "title": f"Found {len(devices)} device{'s' if len(devices) != 1 else ''}",
+                "title": f"Found {device_label}",
                 "message": (
                     "The endpoint is reachable. Select a template and confirm its unit ID before validation."
                     if targeted
-                    else "Select the equipment you want to configure."
+                    else (
+                        f"Select new equipment to configure. {len(skipped_configured)} already configured "
+                        f"device{'s were' if len(skipped_configured) != 1 else ' was'} skipped."
+                        if skipped_configured else "Select the equipment you want to configure."
+                    )
+                ),
+            }
+        if skipped_configured:
+            return {
+                **base,
+                "key": "configured_only",
+                "title": "No new equipment found",
+                "message": (
+                    f"{len(skipped_configured)} already configured device"
+                    f"{'s were' if len(skipped_configured) != 1 else ' was'} skipped to avoid "
+                    "disturbing existing connections. "
+                    "You can review existing equipment below or connect another device and retry the scan."
                 ),
             }
         return {

@@ -88,7 +88,9 @@
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-4">
+                {% if setup_run.state != "completed" and setup_run.state != "completed_attention" %}
                 <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}" class="btn btn-ghost">Back to equipment</a>
+                {% endif %}
                 {% if setup_run.state == "completed" or setup_run.state == "completed_attention" %}
                 <a href="{% url 'web_team:onboarding:complete' request.team.slug %}" class="btn btn-primary">Finish setup</a>
                 {% else %}

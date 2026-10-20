@@ -843,6 +843,8 @@ def _equipment_progress(run, commissioning, scan_state, can_deploy):
         message = "Checking live readings now. Results will appear automatically."
     elif not listed and scan_state["key"] == "scanning":
         message = "Finding connected equipment. Results will appear automatically."
+    elif not listed and scan_state["key"] == "configured_only":
+        message = "Existing equipment is already configured. Connect another device to set up more equipment."
     elif not listed:
         message = "Scan for equipment or add it manually to begin."
     elif not template_selected:
@@ -856,6 +858,17 @@ def _equipment_progress(run, commissioning, scan_state, can_deploy):
         "verified": can_deploy,
         "message": message,
     }
+
+
+def _already_configured_devices(gateway, scan_state):
+    """Keep previously deployed equipment visible outside a new setup run."""
+    if not gateway or not scan_state.get("configured_count"):
+        return Device.objects.none()
+    return Device.objects.filter(
+        gateway=gateway,
+        deployment_setup_items__state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
+        deployment_setup_items__removed_at__isnull=True,
+    ).distinct().order_by("name")
 
 
 @require_permission("view_devices")
@@ -2033,6 +2046,7 @@ def step_3_discover(request, team_slug):
         "deployable_items": deployable_items,
         "commissioning": commissioning,
         "equipment_progress": equipment_progress,
+        "already_configured_devices": _already_configured_devices(gateway, scan_state),
         "template_workflow": template_workflow if active_candidate else "",
         "active_candidate": active_candidate,
     }
@@ -2084,6 +2098,7 @@ def discovery_poll(request, team_slug):
         request.team, gateway=gateway, session=request.session, setup_run=setup_run
     )
     _attach_equipment_readings(commissioning)
+    already_configured_devices = _already_configured_devices(gateway, scan_state)
     return render(
         request,
         "onboarding/partials/discovery_region.html",
@@ -2100,6 +2115,7 @@ def discovery_poll(request, team_slug):
             "can_deploy": can_deploy,
             "deployable_items": deployable_items,
             "commissioning": commissioning,
+            "already_configured_devices": already_configured_devices,
             "equipment_progress": _equipment_progress(setup_run, commissioning, scan_state, can_deploy)
             if setup_run
             else None,

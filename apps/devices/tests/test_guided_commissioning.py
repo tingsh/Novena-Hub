@@ -464,6 +464,14 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, "synchronizing its secure clock")
         self.assertContains(response, "scanning will unlock automatically")
 
+        self.gateway.status = "offline"
+        self.gateway.last_seen = timezone.now() - timedelta(minutes=10)
+        self.gateway.save(update_fields=["status", "last_seen"])
+        offline = self.client.get(self.url)
+        self.assertContains(offline, "Gateway offline")
+        self.assertContains(offline, "Check the Gateway power and network connection")
+        self.assertNotContains(offline, "synchronizing its secure clock")
+
     def test_gateway_wait_refreshes_stale_blocked_readiness_after_heartbeat(self):
         self.gateway.status = "offline"
         self.gateway.mqtt_connected = False
@@ -819,6 +827,16 @@ class GuidedSetupViewTest(TestCase):
                 },
                 "Found 1 device",
             ),
+            (
+                {
+                    "scan_id": "scan-current", "status": "complete",
+                    "devices": [{"interface": "10.0.0.21:502"}],
+                    "skipped_configured": [
+                        {"interface": "10.0.0.20:502", "reason": "already_configured"},
+                    ],
+                },
+                "Found 1 new device",
+            ),
             ({"scan_id": "scan-current", "status": "complete", "devices": []}, "No devices found"),
             ({"scan_id": "scan-current", "status": "error", "errors": [{"error": "probe failed"}]}, "Scan failed"),
         ]
@@ -856,6 +874,44 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(poll, "Found 1 device")
         self.assertContains(poll, 'id="discovery-list"')
         self.assertContains(poll, 'id="candidate-row-0"')
+
+    def test_rescan_explains_already_configured_equipment_instead_of_claiming_it_disappeared(self):
+        self._enable_guided_setup()
+        run = self._scan_run()
+        completed_run = DeploymentSetupRun.objects.create(
+            team=self.team, site=self.site, gateway=self.gateway,
+            state=DeploymentSetupRun.State.COMPLETED,
+        )
+        device = Device.objects.create(
+            team=self.team, site=self.site, gateway=self.gateway,
+            name="Cold room sensor", protocol="modbus_tcp",
+            last_telemetry_at=timezone.now(),
+        )
+        DeploymentSetupItem.objects.create(
+            team=self.team, run=completed_run, device=device,
+            state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
+            connection={"host": "10.0.0.20", "port": 502},
+        )
+        self.gateway.discovery_data = {
+            "scan_id": "scan-current", "status": "complete", "devices": [],
+            "skipped_configured": [
+                {"interface": "10.0.0.20:502", "reason": "already_configured"},
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+
+        page = self.client.get(self.url)
+        self.assertContains(page, "No new equipment found")
+        self.assertContains(page, "Equipment already set up")
+        self.assertContains(page, "Cold room sensor")
+        self.assertContains(page, "Add another device")
+        self.assertContains(page, reverse("web_team:devices:device_detail", args=[self.team.slug, device.pk]))
+        self.assertNotContains(page, "No equipment found")
+        self.assertNotContains(page, "Deploy and continue")
+        self.assertEqual(discovery_scan_state(run)["configured_count"], 1)
+
+        poll = self.client.get(reverse("web_team:onboarding:discovery_poll", args=[self.team.slug]))
+        self.assertContains(poll, "Cold room sensor")
 
     def test_discovery_renders_many_results_as_a_compact_equipment_checklist(self):
         self._enable_guided_setup()
@@ -1370,6 +1426,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(page.context["commissioning"]["latest_config"].status, "active")
         self.assertTrue(all(step["status"] == "complete" for step in page.context["deployment_progress"]))
         self.assertContains(page, "Finish setup")
+        self.assertNotContains(page, "Back to equipment")
         self.assertContains(page, "Applying configuration")
         self.assertContains(page, "Settings published securely")
         self.assertNotContains(page, "Guided Setup progress")

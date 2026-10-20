@@ -2,13 +2,16 @@
     <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
             <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Next step</p>
-            <h2 class="mt-1 text-xl font-black">Deploy confirmed equipment</h2>
+            <h2 class="mt-1 text-xl font-black">{% if scan_state.key == 'configured_only' and not commissioning.equipment_count %}Add another device{% else %}Deploy confirmed equipment{% endif %}</h2>
             {% if can_deploy %}
             <p class="mt-1 text-sm text-base-content/55">{{ deployable_items|length }} customer-confirmed equipment item{{ deployable_items|length|pluralize }} ready. Only confirmed equipment will be deployed; drafts and skipped items stay saved for later.</p>
+            {% elif scan_state.key == 'configured_only' and not commissioning.equipment_count %}
+            <p class="mt-1 text-sm text-base-content/55">Your existing equipment remains configured. Connect another device to the Gateway, then retry the scan to set it up.</p>
             {% else %}
             <p class="mt-1 text-sm text-base-content/55">Preview a template, test live readings, and confirm they match your equipment to continue.</p>
             {% endif %}
         </div>
+        {% if scan_state.key != 'configured_only' or commissioning.equipment_count %}
         <form method="post" hx-boost="false">
             {% csrf_token %}
             <input type="hidden" name="action" value="deploy">
@@ -16,6 +19,7 @@
                 {% if can_deploy %}Deploy {{ deployable_items|length }} confirmed{% else %}Deploy and continue{% endif %}<i class="fa fa-arrow-right ml-2"></i>
             </button>
         </form>
+        {% endif %}
     </div>
     {% if deployable_items %}
     <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
