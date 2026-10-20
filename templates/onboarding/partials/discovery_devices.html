@@ -10,10 +10,12 @@
             {% endif %}
             {% if commissioning.review_equipment_count %}
             <p class="mt-1 text-sm text-base-content/60">
-                {{ commissioning.review_equipment_count }} equipment item{{ commissioning.review_equipment_count|pluralize }} still need{{ commissioning.review_equipment_count|pluralize:"s," }} review or a successful live check before deployment.
+                {{ commissioning.review_equipment_count }} equipment item{{ commissioning.review_equipment_count|pluralize }} still need{{ commissioning.review_equipment_count|pluralize:"s," }} a template review, live test, or customer confirmation before deployment.
             </p>
             {% elif commissioning.validation_equipment_count %}
             <p class="mt-1 text-sm text-base-content/60">Live validation is in progress. Results will appear here automatically.</p>
+            {% elif commissioning.confirmation_equipment_count %}
+            <p class="mt-1 text-sm text-base-content/60">Live readings are ready. Review and confirm that each template matches its equipment.</p>
             {% elif commissioning.skipped_candidate_count %}
             <p class="mt-1 text-sm text-base-content/60">All remaining equipment is skipped for now. You can resume any row when you are ready.</p>
             {% else %}
@@ -21,7 +23,7 @@
             {% endif %}
         </div>
         <span class="whitespace-nowrap text-xs font-bold text-base-content/55">
-            {{ commissioning.completed_equipment_count }} of {{ commissioning.equipment_count }} validated
+            {{ commissioning.completed_equipment_count }} of {{ commissioning.equipment_count }} customer confirmed
         </span>
     </div>
 

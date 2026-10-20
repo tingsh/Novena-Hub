@@ -12,6 +12,7 @@ urlpatterns = [
     path("gateway/wait/", views.step_2b_wait, name="step_2b_wait"),
     path("gateway/status-poll/", views.gateway_status_poll, name="gateway_status_poll"),
     path("discover/", views.step_3_discover, name="step_3_discover"),
+    path("discover/template-preview/", views.equipment_template_preview, name="equipment_template_preview"),
     path("discover/poll/", views.discovery_poll, name="discovery_poll"),
     path("device/", views.step_3_device, name="step_3_device"),
     path("alert/", views.step_4_alert, name="step_4_alert"),

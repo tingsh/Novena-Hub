@@ -1,0 +1,26 @@
+<section x-show="templateId" x-cloak class="mt-4 rounded-xl border border-base-content/10 bg-base-100 p-4" aria-label="Selected template signal map">
+    <div class="flex flex-wrap items-start justify-between gap-2">
+        <div>
+            <h3 class="text-sm font-bold">What this template will read</h3>
+            <p class="mt-1 text-xs text-base-content/55">Compare the model and signals with your equipment documentation before testing.</p>
+        </div>
+        <span class="badge badge-outline badge-sm" x-text="templatePreview?.protocol || connectionType || 'Equipment'"></span>
+    </div>
+    <p x-show="previewLoading" class="mt-3 text-xs text-base-content/55" role="status">Loading signal map…</p>
+    <p x-show="previewError" class="mt-3 text-xs text-error" x-text="previewError" role="alert"></p>
+    <div x-show="templatePreview && !previewLoading" class="mt-3">
+        <p class="text-xs font-semibold"><span x-text="templatePreview?.manufacturer || 'Manufacturer not listed'"></span><span x-show="templatePreview?.model"> · <span x-text="templatePreview?.model"></span></span></p>
+        <p x-show="!templatePreview?.signals?.length" class="mt-2 rounded-lg bg-warning/10 p-3 text-xs text-base-content/70">This template has no fixed read map. Add this site's signal addresses before testing.</p>
+        <div x-show="templatePreview?.signals?.length" class="mt-3 overflow-x-auto">
+            <table class="table table-xs w-full" aria-label="Template signal addresses">
+                <thead><tr><th>Signal</th><th>Read address</th><th>Function</th><th>Type</th><th>Unit</th><th>Scale / offset</th></tr></thead>
+                <tbody>
+                    <template x-for="point in (templatePreview?.signals || [])" :key="point.key">
+                        <tr><td class="font-medium" x-text="point.label"></td><td class="font-mono" x-text="point.address"></td><td x-text="`FC ${point.function_code}`"></td><td x-text="point.data_type"></td><td x-text="point.unit || '—'"></td><td class="font-mono" x-text="`${point.scale} / ${point.offset}`"></td></tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <p class="mt-2 text-[11px] text-base-content/50">Addresses are the raw Modbus offsets used by the Gateway. Confirm any 0-based or 1-based notation against your equipment manual.</p>
+    </div>
+</section>

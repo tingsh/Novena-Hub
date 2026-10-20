@@ -887,17 +887,13 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
                         item.state = DeploymentSetupItem.State.AWAITING_CONFIRMATION
                         item.trust_level = DeploymentSetupItem.Trust.UNVALIDATED
                     else:
-                        item.state = DeploymentSetupItem.State.VALIDATED
-                        item.trust_level = (
-                            DeploymentSetupItem.Trust.NOVENA_VERIFIED
-                            if item.selected_template and item.selected_template.is_verified
-                            else DeploymentSetupItem.Trust.CUSTOMER_VALIDATED
-                        )
+                        item.state = DeploymentSetupItem.State.AWAITING_CONFIRMATION
+                        item.trust_level = DeploymentSetupItem.Trust.UNVALIDATED
                     message = result.get("message") or "Selected live signals were read successfully."
                     event_type = "validation_succeeded"
                     if item.device and not device_requires_mapping(item.device):
                         metadata = dict(item.device.metadata or {})
-                        metadata["guided_setup_validation"] = "validated"
+                        metadata["guided_setup_validation"] = "awaiting_confirmation"
                         item.device.metadata = metadata
                         item.device.save(update_fields=["metadata", "updated_at"])
                 else:

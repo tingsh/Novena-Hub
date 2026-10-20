@@ -1,15 +1,18 @@
 {% if equipment_progress %}
 <section class="mb-5 rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm" aria-label="Equipment setup progress">
     <p class="text-xs font-bold uppercase tracking-wide text-base-content/60">Equipment setup</p>
-    <ol class="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+    <ol class="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-4">
         <li class="flex items-center gap-2 rounded-md border px-3 py-2 {% if equipment_progress.listed %}border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300{% else %}border-primary/30 bg-primary/5 text-primary{% endif %}" {% if not equipment_progress.listed %}aria-current="step"{% endif %}>
             <i class="fa {% if equipment_progress.listed %}fa-check-circle{% else %}fa-clock{% endif %}" aria-hidden="true"></i><span class="font-semibold">Equipment listed</span>
         </li>
         <li class="flex items-center gap-2 rounded-md border px-3 py-2 {% if equipment_progress.template_selected %}border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300{% elif equipment_progress.listed %}border-primary/30 bg-primary/5 text-primary{% else %}border-base-content/10 bg-base-200/30 text-base-content/60{% endif %}" {% if equipment_progress.listed and not equipment_progress.template_selected %}aria-current="step"{% endif %}>
-            <i class="fa {% if equipment_progress.template_selected %}fa-check-circle{% else %}fa-clock{% endif %}" aria-hidden="true"></i><span class="font-semibold">Template selected</span>
+            <i class="fa {% if equipment_progress.template_selected %}fa-check-circle{% else %}fa-clock{% endif %}" aria-hidden="true"></i><span class="font-semibold">Template saved</span>
         </li>
-        <li class="flex items-center gap-2 rounded-md border px-3 py-2 {% if equipment_progress.verified %}border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300{% elif equipment_progress.template_selected %}border-primary/30 bg-primary/5 text-primary{% else %}border-base-content/10 bg-base-200/30 text-base-content/60{% endif %}" {% if equipment_progress.template_selected and not equipment_progress.verified %}aria-current="step"{% endif %}>
-            <i class="fa {% if equipment_progress.verified %}fa-check-circle{% else %}fa-clock{% endif %}" aria-hidden="true"></i><span class="font-semibold">Live readings verified</span>
+        <li class="flex items-center gap-2 rounded-md border px-3 py-2 {% if equipment_progress.tested %}border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300{% elif equipment_progress.template_selected %}border-primary/30 bg-primary/5 text-primary{% else %}border-base-content/10 bg-base-200/30 text-base-content/60{% endif %}" {% if equipment_progress.template_selected and not equipment_progress.tested %}aria-current="step"{% endif %}>
+            <i class="fa {% if equipment_progress.tested %}fa-check-circle{% else %}fa-clock{% endif %}" aria-hidden="true"></i><span class="font-semibold">Live readings tested</span>
+        </li>
+        <li class="flex items-center gap-2 rounded-md border px-3 py-2 {% if equipment_progress.verified %}border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300{% elif equipment_progress.tested %}border-primary/30 bg-primary/5 text-primary{% else %}border-base-content/10 bg-base-200/30 text-base-content/60{% endif %}" {% if equipment_progress.tested and not equipment_progress.verified %}aria-current="step"{% endif %}>
+            <i class="fa {% if equipment_progress.verified %}fa-check-circle{% else %}fa-clock{% endif %}" aria-hidden="true"></i><span class="font-semibold">Customer confirmed</span>
         </li>
     </ol>
     <p class="mt-3 text-sm {% if equipment_progress.verified %}text-green-700 dark:text-green-300{% else %}text-base-content/65{% endif %}" role="status">{{ equipment_progress.message }}</p>

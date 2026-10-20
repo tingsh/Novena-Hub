@@ -1,6 +1,29 @@
 <div class="border-t border-base-content/10 first:border-t-0" data-equipment-row="configured"
-     x-data="{ open: false, templateId: '{% if item.selected_template %}{{ item.selected_template.pk }}{% endif %}', templateName: '{{ item.selected_template.name|escapejs }}', searchOpen: false }"
-     @template-picked="templateId = $event.detail.id; templateName = $event.detail.name; searchOpen = false">
+     x-data="{
+         open: {% if item.state == 'awaiting_confirmation' %}true{% else %}false{% endif %},
+         templateId: '{% if item.selected_template %}{{ item.selected_template.pk }}{% endif %}',
+         savedTemplateId: '{% if item.selected_template %}{{ item.selected_template.pk }}{% endif %}',
+         templateName: '{{ item.selected_template.name|escapejs }}',
+         connectionType: '{{ item.device.protocol|escapejs }}',
+         searchOpen: false, detailsDirty: false, templatePreview: null, previewLoading: false, previewError: '',
+         async loadTemplatePreview() {
+             const selected = this.templateId;
+             this.templatePreview = null;
+             this.previewError = '';
+             if (!selected) return;
+             this.previewLoading = true;
+             try {
+                 const response = await fetch('{% url "web_team:onboarding:equipment_template_preview" request.team.slug %}?template_id=' + encodeURIComponent(selected));
+                 if (!response.ok) throw new Error('Signal map unavailable. Choose the template again.');
+                 const preview = await response.json();
+                 if (this.templateId === selected) this.templatePreview = preview;
+             } catch (error) {
+                 if (this.templateId === selected) this.previewError = error.message;
+             } finally { if (this.templateId === selected) this.previewLoading = false; }
+         }
+     }"
+     x-init="if (templateId) loadTemplatePreview()"
+     @template-picked="templateId = $event.detail.id; templateName = $event.detail.name; searchOpen = false; detailsDirty = true; loadTemplatePreview()">
     <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 lg:grid-cols-[minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center">
         <div class="min-w-0">
             <p class="truncate text-sm font-bold text-base-content">{% if item.device.name %}{{ item.device.name }}{% elif item.candidate_data.signature %}{{ item.candidate_data.signature }}{% else %}Equipment{% endif %}</p>
@@ -14,7 +37,9 @@
             {% if not item.selected_template %}
             <span class="badge badge-warning badge-outline badge-sm whitespace-nowrap">Needs template</span>
             {% elif item.state == "validated" or item.state == "telemetry_confirmed" or item.state == "queued" or item.state == "applied" %}
-            <span class="badge badge-success badge-sm whitespace-nowrap">Validated ✓</span>
+            <span class="badge badge-success badge-sm whitespace-nowrap">Confirmed ✓</span>
+            {% elif item.state == "awaiting_confirmation" %}
+            <span class="badge badge-info badge-outline badge-sm whitespace-nowrap">Review live readings</span>
             {% elif item.state == "validating" %}
             <span class="badge badge-info badge-outline badge-sm whitespace-nowrap"><i class="fa fa-spinner fa-spin mr-1"></i>Validating</span>
             {% elif item.state == "needs_attention" or item.state == "failed" or item.state == "awaiting_confirmation" %}
@@ -34,9 +59,11 @@
         </button>
         {% if item.state == "validated" or item.state == "telemetry_confirmed" or item.state == "queued" or item.state == "applied" %}
         <span class="col-start-2 row-start-2 flex h-6 w-6 items-center justify-center self-end rounded-full bg-success text-[10px] text-success-content lg:col-auto lg:row-auto lg:self-auto"
-              title="Validation complete" aria-label="Validation complete">
+              title="Customer confirmed" aria-label="Customer confirmed">
             <i class="fa fa-check" aria-hidden="true"></i>
         </span>
+        {% elif item.state == "awaiting_confirmation" %}
+        <span class="col-start-2 row-start-2 flex h-6 w-6 items-center justify-center self-end rounded-full bg-info/15 text-[10px] text-info lg:col-auto lg:row-auto lg:self-auto" title="Customer confirmation needed" aria-label="Customer confirmation needed"><i class="fa fa-eye" aria-hidden="true"></i></span>
         {% elif item.state == "validating" %}
         <span class="col-start-2 row-start-2 flex h-6 w-6 items-center justify-center self-end rounded-full bg-info/15 text-[10px] text-info lg:col-auto lg:row-auto lg:self-auto"
               title="Validation in progress" aria-label="Validation in progress">
@@ -55,26 +82,43 @@
         <p class="text-sm text-warning">The Gateway could not connect to {{ item.connection.host }}:{{ item.connection.port }} during the live check. Check the equipment power, field network, IP address and Modbus port, then retry.</p>
         {% elif item.validation_result.error %}<p class="text-sm text-error">{{ item.validation_result.error }}</p>{% endif %}
         {% if not item.validation_result.message and not item.validation_result.error %}<p class="text-sm text-base-content/55">{% if item.selected_template %}{{ item.get_state_display }}.{% else %}No template selected. Search for the exact model below.{% endif %}</p>{% endif %}
-        {% if item.validation_result.signals %}
-        <div class="mt-3 flex flex-wrap gap-2">
-            {% for signal in item.validation_result.signals %}
-            <span class="badge badge-sm {% if signal.status == 'success' %}badge-success{% else %}badge-error{% endif %}">
-                {{ signal.key|title }}{% if signal.status == 'success' %}: {{ signal.value }} {{ signal.unit }}{% endif %}
-            </span>
-            {% endfor %}
-        </div>
+        {% if item.reading_rows %}
+        <section class="mt-4 rounded-xl border border-base-content/10 bg-base-100 p-4" aria-label="Live reading results">
+            <h3 class="text-sm font-bold">Live readings from the Gateway</h3>
+            <p class="mt-1 text-xs text-base-content/55">Checked {{ item.updated_at|date:"j M Y, H:i T" }}. Compare these readings with the equipment display or documentation. A successful read does not prove that the selected model is correct.</p>
+            <p x-show="detailsDirty" x-cloak class="mt-2 rounded-lg bg-warning/10 p-3 text-xs text-warning">You have changed this equipment since the live check. Save and test the new settings before confirming.</p>
+            <div class="mt-3 overflow-x-auto"><table class="table table-xs w-full" aria-label="Live signal readings">
+                <thead><tr><th>Signal</th><th>Read address</th><th>Function</th><th>Live value</th><th>Raw response</th><th>Result</th></tr></thead>
+                <tbody>{% for signal in item.reading_rows %}<tr>
+                    <td class="font-medium">{{ signal.label }}</td><td class="font-mono">{{ signal.address|default_if_none:"—" }}</td><td>{% if signal.function_code %}FC {{ signal.function_code }}{% else %}—{% endif %}</td>
+                    <td class="font-mono">{{ signal.value|default_if_none:"—" }} {{ signal.unit }}</td><td class="font-mono text-xs">{{ signal.raw_value|default_if_none:"—" }}</td>
+                    <td><span class="badge badge-sm {% if signal.status == 'success' %}badge-success{% elif signal.status == 'warning' %}badge-warning{% else %}badge-error{% endif %}">{{ signal.status|title }}</span>{% if signal.warning %}<p class="mt-1 text-xs text-warning">{{ signal.warning }}</p>{% endif %}</td>
+                </tr>{% endfor %}</tbody>
+            </table></div>
+            {% if item.state == "awaiting_confirmation" %}
+            <div class="mt-4 rounded-lg border border-info/25 bg-info/5 p-3">
+                <p class="text-sm font-semibold">Do these signals and values match your equipment?</p>
+                <p class="mt-1 text-xs text-base-content/60">Check the physical display, units and expected signal names before confirming. You can choose another template or test again.</p>
+                <form method="post" class="mt-3 flex flex-wrap gap-2">{% csrf_token %}<input type="hidden" name="item_id" value="{{ item.pk }}">
+                    <button type="submit" name="action" value="confirm_setup_item" :disabled="detailsDirty || templateId !== savedTemplateId" class="btn btn-primary btn-sm">Confirm template and readings</button>
+                    <a href="#equipment-configuration-{{ item.pk }}" class="btn btn-outline btn-sm">Choose another template</a>
+                </form>
+            </div>
+            {% endif %}
+        </section>
         {% endif %}
+        {% include "onboarding/partials/template_signal_preview.html" %}
         {% if item.device and item.device.template.mapping_strategy == "site_defined" %}
         <a class="btn btn-outline btn-xs mt-3" href="{% url 'web_team:devices:device_datapoint_mapping' request.team.slug item.device.pk %}">Review signal mapping</a>
         {% endif %}
         {% if item.device and not item.device.last_telemetry_at and item.state != "validating" and item.state != "queued" and item.state != "applied" and item.state != "telemetry_confirmed" %}
-        <form method="post" class="mt-4 border-t border-base-content/10 pt-4">
+        <form method="post" id="equipment-configuration-{{ item.pk }}" class="mt-4 border-t border-base-content/10 pt-4">
             {% csrf_token %}
             <input type="hidden" name="item_id" value="{{ item.pk }}">
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label class="form-control">
                     <span class="label-text mb-1 text-xs font-bold">Equipment name</span>
-                    <input type="text" name="equipment_name" value="{{ item.device.name }}" class="input input-bordered input-sm w-full rounded-lg">
+                    <input type="text" name="equipment_name" value="{{ item.device.name }}" @input="detailsDirty = true" class="input input-bordered input-sm w-full rounded-lg">
                 </label>
                 <div class="form-control" id="template-search-context-item-{{ item.pk }}" @click.outside="searchOpen = false" @keydown.escape.window="searchOpen = false">
                     <span class="label-text mb-1 text-xs font-bold">Equipment template</span>
@@ -104,18 +148,18 @@
                     <summary class="cursor-pointer px-3 py-2 text-xs font-bold text-base-content/60">Connection settings</summary>
                     <div class="grid grid-cols-1 gap-3 border-t border-base-content/10 p-3 sm:grid-cols-3">
                         <label class="form-control sm:col-span-2"><span class="label-text mb-1 text-xs font-bold">Equipment IP address</span>
-                            <input type="text" name="host_setup" value="{{ item.connection.host }}" class="input input-bordered input-sm w-full rounded-lg"></label>
+                            <input type="text" name="host_setup" value="{{ item.connection.host }}" @input="detailsDirty = true" class="input input-bordered input-sm w-full rounded-lg"></label>
                         <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Network port</span>
-                            <input type="number" min="1" max="65535" name="port_setup" value="{{ item.connection.port }}" class="input input-bordered input-sm w-full rounded-lg"></label>
+                            <input type="number" min="1" max="65535" name="port_setup" value="{{ item.connection.port }}" @input="detailsDirty = true" class="input input-bordered input-sm w-full rounded-lg"></label>
                         <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Equipment unit ID</span>
-                            <input type="number" min="1" max="247" name="slave_id_setup" value="{{ item.connection.slave_id }}" class="input input-bordered input-sm w-full rounded-lg"></label>
+                            <input type="number" min="1" max="247" name="slave_id_setup" value="{{ item.connection.slave_id }}" @input="detailsDirty = true" class="input input-bordered input-sm w-full rounded-lg"></label>
                     </div>
                 </details>
                 {% endif %}
             </div>
             <div class="mt-4 flex flex-wrap justify-end gap-2">
                 <button type="submit" name="action" value="save_setup_item" class="btn btn-outline btn-sm rounded-lg">Save changes</button>
-                <button type="submit" name="action" value="retry_setup_item" :disabled="!templateId" class="btn btn-primary btn-sm rounded-lg">Save and retry live check</button>
+                <button type="submit" name="action" value="retry_setup_item" :disabled="!templateId" class="btn btn-primary btn-sm rounded-lg">Test live readings again</button>
             </div>
         </form>
         {% endif %}

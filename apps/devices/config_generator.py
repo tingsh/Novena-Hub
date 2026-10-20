@@ -42,7 +42,7 @@ def generate_connector_config(gateway):
     protocol_groups = {}
     for device in devices:
         validation_state = (device.metadata or {}).get("guided_setup_validation")
-        if validation_state in {"pending", "failed"}:
+        if validation_state and validation_state != "validated":
             logger.info("Device %s is not validated yet; excluding it from config", device.name)
             continue
         protocol = device.protocol or "modbus_tcp"
@@ -226,7 +226,11 @@ def human_config_preview(gateway):
     from apps.subscriptions.enforcement import get_effective_polling_interval_seconds
 
     connectors = generate_connector_config(gateway)
-    devices = list(gateway.devices.select_related("template").all())
+    devices = [
+        device for device in gateway.devices.select_related("template").all()
+        if not (device.metadata or {}).get("guided_setup_validation")
+        or (device.metadata or {}).get("guided_setup_validation") == "validated"
+    ]
     return {
         "gateway": gateway.name,
         "connector_count": len(connectors),

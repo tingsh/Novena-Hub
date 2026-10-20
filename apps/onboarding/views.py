@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -831,8 +831,14 @@ def _equipment_progress(run, commissioning, scan_state, can_deploy):
         can_deploy
         or run.items.filter(selected_template__isnull=False, removed_at__isnull=True).exists()
     )
+    tested = bool(can_deploy or commissioning["confirmation_equipment_count"])
     if can_deploy:
-        message = "Live readings passed for at least one equipment item. Deploy it now or review more equipment."
+        message = (
+            "At least one equipment template and its live readings were confirmed. "
+            "Deploy it or review more equipment."
+        )
+    elif commissioning["confirmation_equipment_count"]:
+        message = "Live readings are ready. Review their values and confirm the template for each equipment item."
     elif commissioning["validation_equipment_count"]:
         message = "Checking live readings now. Results will appear automatically."
     elif not listed and scan_state["key"] == "scanning":
@@ -840,15 +846,118 @@ def _equipment_progress(run, commissioning, scan_state, can_deploy):
     elif not listed:
         message = "Scan for equipment or add it manually to begin."
     elif not template_selected:
-        message = "Review an equipment row and select its matching template."
+        message = "Preview the matching template, then save the equipment or test its live readings."
     else:
-        message = "Run a read-only live check before deploying equipment."
+        message = "Test the template's live readings, then confirm they match your equipment."
     return {
         "listed": listed,
         "template_selected": template_selected,
+        "tested": tested,
         "verified": can_deploy,
         "message": message,
     }
+
+
+@require_permission("view_devices")
+def equipment_template_preview(request, team_slug):
+    """Expose a team-visible template's read-only signal map before a live test."""
+    from apps.devices.config_generator import normalized_datapoints
+
+    raw_template_id = request.GET.get("template_id", "")
+    template_id = int(raw_template_id) if raw_template_id.isdecimal() and len(raw_template_id) <= 10 else None
+    template = visible_templates_for_team(request.team).filter(pk=template_id).first() if template_id else None
+    if not template:
+        return JsonResponse({"error": "Template unavailable. Choose another template."}, status=404)
+    signals = [
+        {
+            "key": point["key"],
+            "label": point["label"],
+            "address": point["address"],
+            "function_code": point["functionCode"],
+            "data_type": point["data_type"],
+            "unit": point["unit"],
+            "scale": point["scale"],
+            "offset": point["offset"],
+            "objects_count": point["objectsCount"],
+        }
+        for point in normalized_datapoints(template)
+        if point.get("access") in {"read", "read_only", "read_write"}
+    ]
+    signals.sort(
+        key=lambda point: _signal_display_order(template.register_map, point["key"], point["label"])
+    )
+    return JsonResponse(
+        {
+            "manufacturer": template.manufacturer,
+            "model": template.model_number,
+            "protocol": template.get_protocol_display(),
+            "mapping_strategy": template.mapping_strategy,
+            "signals": signals,
+        }
+    )
+
+
+def _signal_display_order(register_map, key, label):
+    register = (register_map or {}).get(key)
+    role = register.get("dashboard_role") if isinstance(register, dict) else None
+    return ({"primary": 0, "secondary": 1, "health": 2}.get(role, 3), label)
+
+
+def _attach_equipment_readings(commissioning):
+    """Pair each live result with the map the Gateway read, for customer review."""
+    for item in commissioning["equipment_setup_items"]:
+        points = {point.get("key"): point for point in (item.datapoints or [])}
+        item.reading_rows = [
+            {
+                "key": signal.get("key", ""),
+                "label": points.get(signal.get("key"), {}).get("label") or signal.get("key", "Signal"),
+                "address": signal.get("address", points.get(signal.get("key"), {}).get("address")),
+                "function_code": points.get(signal.get("key"), {}).get("functionCode"),
+                "raw_value": signal.get("raw_value"),
+                "value": signal.get("decoded_value", signal.get("value")),
+                "unit": signal.get("unit") or points.get(signal.get("key"), {}).get("unit", ""),
+                "status": signal.get("status", "unknown"),
+                "warning": signal.get("warning_message") or signal.get("error_message") or "",
+            }
+            for signal in (item.validation_result or {}).get("signals", [])
+        ]
+        roles = (item.selected_template.register_map or {}) if item.selected_template else {}
+        item.reading_rows.sort(
+            key=lambda row: _signal_display_order(roles, row["key"], row["label"])
+        )
+
+
+def _require_customer_confirmation_for_predeployment(run):
+    """Bring older technical-only passes into the explicit customer review flow."""
+    if run.configurations.exists():
+        return
+    from apps.devices.deployment_setup import append_setup_event
+
+    for item in run.items.filter(
+        state=DeploymentSetupItem.State.VALIDATED, removed_at__isnull=True
+    ).select_related("device"):
+        result = dict(item.validation_result or {})
+        if result.get("customer_confirmed_at"):
+            continue
+        has_readings = result.get("status") == "success" and bool(result.get("signals"))
+        item.state = (
+            DeploymentSetupItem.State.AWAITING_CONFIRMATION
+            if has_readings else DeploymentSetupItem.State.NEEDS_ATTENTION
+        )
+        item.trust_level = DeploymentSetupItem.Trust.UNVALIDATED
+        if not has_readings:
+            result["message"] = "Test live readings, then confirm they match your equipment."
+        item.validation_result = result
+        item.save(update_fields=["state", "trust_level", "validation_result", "updated_at"])
+        if item.device:
+            metadata = dict(item.device.metadata or {})
+            metadata["guided_setup_validation"] = "awaiting_confirmation" if has_readings else "pending"
+            item.device.metadata = metadata
+            item.device.save(update_fields=["metadata", "updated_at"])
+        append_setup_event(
+            run, "customer_confirmation_required",
+            "Earlier live check needs customer confirmation before deployment.", item=item,
+        )
 
 
 @require_permission("manage_devices")
@@ -856,7 +965,6 @@ def step_3_discover(request, team_slug):
     """Automatic-first equipment setup with guided manual fallback."""
     from apps.devices.config_generator import (
         generate_and_push_config,
-        human_config_preview,
         normalized_datapoints,
     )
     from apps.devices.deployment_setup import (
@@ -876,7 +984,51 @@ def step_3_discover(request, team_slug):
     run = get_or_create_setup_run(team=request.team, gateway=gateway, initiated_by=request.user)
     run = _reattach_running_discovery(run)
     run = sync_setup_run(run)
+    _require_customer_confirmation_for_predeployment(run)
     guided_capable = gateway_supports_guided_setup(gateway)
+
+    if request.method == "POST" and request.POST.get("action") == "confirm_setup_item":
+        with transaction.atomic():
+            item = get_object_or_404(
+                run.items.select_for_update().select_related("device", "selected_template"),
+                pk=request.POST.get("item_id"), removed_at__isnull=True, device__isnull=False,
+            )
+            result = dict(item.validation_result or {})
+            signals = result.get("signals") or []
+            if (
+                item.state != DeploymentSetupItem.State.AWAITING_CONFIRMATION
+                or not item.selected_template
+                or item.selected_template.mapping_strategy == "site_defined"
+                or result.get("status") != "success"
+                or not signals
+                or any(signal.get("status") not in {"success", "warning"} for signal in signals)
+            ):
+                messages.error(request, "Complete a successful live test before confirming this template.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            from apps.devices.deployment_setup import append_setup_event
+
+            item.state = DeploymentSetupItem.State.VALIDATED
+            item.trust_level = (
+                DeploymentSetupItem.Trust.NOVENA_VERIFIED
+                if item.selected_template.is_verified else DeploymentSetupItem.Trust.CUSTOMER_VALIDATED
+            )
+            result["customer_confirmed_at"] = timezone.now().isoformat()
+            result["customer_confirmed_by"] = request.user.pk
+            item.validation_result = result
+            item.save(update_fields=["state", "trust_level", "validation_result", "updated_at"])
+            metadata = dict(item.device.metadata or {})
+            metadata["guided_setup_validation"] = "validated"
+            item.device.metadata = metadata
+            item.device.save(update_fields=["metadata", "updated_at"])
+            append_setup_event(
+                run,
+                "customer_template_confirmed",
+                "Customer confirmed the live readings and template.",
+                item=item,
+                actor=request.user,
+            )
+            messages.success(request, "Template confirmed. This equipment is ready to deploy.")
+        return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
     discovery_data = gateway.discovery_data or {}
     discovered_devices = discovery_data.get("devices", [])
@@ -898,6 +1050,7 @@ def step_3_discover(request, team_slug):
                 DeploymentSetupItem.State.NEEDS_ATTENTION,
                 DeploymentSetupItem.State.FAILED,
                 DeploymentSetupItem.State.VALIDATED,
+                DeploymentSetupItem.State.AWAITING_CONFIRMATION,
             }
             if item.state not in editable_states or item.device.last_telemetry_at:
                 messages.error(
@@ -1310,7 +1463,7 @@ def step_3_discover(request, team_slug):
                 else request.POST.getlist("device_index")
             )
             if not selected:
-                messages.warning(request, "Review an equipment row and choose Save and validate.")
+                messages.warning(request, "Review an equipment row and choose Test live readings.")
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             for raw_index in selected:
                 try:
@@ -1419,20 +1572,20 @@ def step_3_discover(request, team_slug):
                     else:
                         item.selected_template = template
                         item.datapoints = normalized_datapoints(template)
-                        item.trust_level = DeploymentSetupItem.Trust.NOVENA_VERIFIED
-                        item.state = DeploymentSetupItem.State.VALIDATED
+                        item.trust_level = DeploymentSetupItem.Trust.UNVALIDATED
+                        item.state = DeploymentSetupItem.State.NEEDS_ATTENTION
                         item.validation_result = {
                             "status": "compatibility",
                             "message": (
-                                "The Novena-verified template matches saved discovery evidence. "
-                                "Secure live validation requires a Gateway update."
+                                "The Gateway needs an update before it can show live readings "
+                                "for customer confirmation."
                             ),
                         }
                         item.save()
                         append_setup_event(
                             run,
-                            "legacy_template_confirmed",
-                            "A Novena-verified template was confirmed from saved discovery evidence.",
+                            "legacy_template_saved",
+                            "A template was saved, but live readings need a Gateway update before confirmation.",
                             item=item,
                             actor=request.user,
                         )
@@ -1794,11 +1947,14 @@ def step_3_discover(request, team_slug):
             return redirect("web_team:onboarding:step_4_alert", team_slug=team_slug)
 
     scan_state = discovery_scan_state(run)
-    can_deploy = run.items.filter(
+    deployable_items = list(run.items.filter(
         state__in=[DeploymentSetupItem.State.VALIDATED, DeploymentSetupItem.State.TELEMETRY_CONFIRMED],
         device__isnull=False,
-    ).exists()
-    commissioning = build_commissioning_context(request.team, gateway=gateway, session=request.session)
+        removed_at__isnull=True,
+    ).select_related("device"))
+    can_deploy = bool(deployable_items)
+    commissioning = build_commissioning_context(request.team, gateway=gateway, session=request.session, setup_run=run)
+    _attach_equipment_readings(commissioning)
     equipment_progress = _equipment_progress(run, commissioning, scan_state, can_deploy)
     template_workflow = request.GET.get("workflow", "")
     if template_workflow not in {"custom", "request"}:
@@ -1825,10 +1981,10 @@ def step_3_discover(request, team_slug):
         "profile": profile,
         "setup_run": run,
         "setup_items": run.items.select_related("device", "selected_template", "validation_command"),
-        "config_preview": human_config_preview(gateway),
         "guided_setup_available": guided_capable,
         "scan_state": scan_state,
         "can_deploy": can_deploy,
+        "deployable_items": deployable_items,
         "commissioning": commissioning,
         "equipment_progress": equipment_progress,
         "template_workflow": template_workflow if active_candidate else "",
@@ -1840,7 +1996,6 @@ def step_3_discover(request, team_slug):
 @require_permission("view_devices")
 def discovery_poll(request, team_slug):
     """HTMX endpoint: refresh scan status and equipment rows together."""
-    from apps.devices.config_generator import human_config_preview
     from apps.devices.deployment_setup import TERMINAL_RUN_STATES
     from apps.devices.gateway_config_delivery import gateway_supports_guided_setup
 
@@ -1863,6 +2018,7 @@ def discovery_poll(request, team_slug):
 
         setup_run = _reattach_running_discovery(setup_run)
         setup_run = sync_setup_run(setup_run)
+        _require_customer_confirmation_for_predeployment(setup_run)
         scan_state = discovery_scan_state(setup_run)
     else:
         scan_state = {
@@ -1870,14 +2026,18 @@ def discovery_poll(request, team_slug):
             "title": "Ready to scan",
             "message": "Connect your equipment to the Gateway, then start a scan.",
         }
-    can_deploy = bool(
-        setup_run
-        and setup_run.items.filter(
+    deployable_items = list(
+        setup_run.items.filter(
             state__in=[DeploymentSetupItem.State.VALIDATED, DeploymentSetupItem.State.TELEMETRY_CONFIRMED],
             device__isnull=False,
-        ).exists()
+            removed_at__isnull=True,
+        ).select_related("device")
+    ) if setup_run else []
+    can_deploy = bool(deployable_items)
+    commissioning = build_commissioning_context(
+        request.team, gateway=gateway, session=request.session, setup_run=setup_run
     )
-    commissioning = build_commissioning_context(request.team, gateway=gateway, session=request.session)
+    _attach_equipment_readings(commissioning)
     return render(
         request,
         "onboarding/partials/discovery_region.html",
@@ -1892,7 +2052,7 @@ def discovery_poll(request, team_slug):
             "guided_setup_available": bool(gateway and gateway_supports_guided_setup(gateway)),
             "include_scan_oob": True,
             "can_deploy": can_deploy,
-            "config_preview": human_config_preview(gateway) if gateway else {},
+            "deployable_items": deployable_items,
             "commissioning": commissioning,
             "equipment_progress": _equipment_progress(setup_run, commissioning, scan_state, can_deploy)
             if setup_run

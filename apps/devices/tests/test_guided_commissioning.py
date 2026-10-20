@@ -234,8 +234,10 @@ class DeploymentSetupWorkflowTest(TestCase):
         sync_setup_run(run)
         item.refresh_from_db()
         device.refresh_from_db()
-        self.assertEqual(item.state, "validated")
-        self.assertEqual(device.metadata["guided_setup_validation"], "validated")
+        self.assertEqual(item.state, "awaiting_confirmation")
+        self.assertEqual(device.metadata["guided_setup_validation"], "awaiting_confirmation")
+        item.state = DeploymentSetupItem.State.VALIDATED
+        item.save(update_fields=["state"])
 
         GatewayConfig.objects.create(
             team=self.team,
@@ -770,8 +772,8 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(idle, "Scan for equipment")
         self.assertContains(idle, 'aria-label="Equipment setup progress"')
         self.assertContains(idle, "Equipment listed")
-        self.assertContains(idle, "Template selected")
-        self.assertContains(idle, "Live readings verified")
+        self.assertContains(idle, "Template saved")
+        self.assertContains(idle, "Live readings tested")
         self.assertNotContains(idle, "Guided Setup progress")
         self.assertContains(idle, 'hx-trigger="none"')
         self.assertContains(idle, "field-side wired Ethernet")
@@ -863,9 +865,9 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, "Equipment checklist")
         self.assertContains(response, 'role="table" aria-label="Discovered equipment"')
         self.assertContains(response, 'data-equipment-row="candidate"', count=12)
-        self.assertContains(response, "0 of 12 validated")
-        self.assertContains(response, "12 equipment items still need review")
-        self.assertContains(response, "Review this equipment before validation", count=12)
+        self.assertContains(response, "0 of 12 customer confirmed")
+        self.assertContains(response, "12 equipment items still need a template review")
+        self.assertContains(response, "Review the template and connection", count=12)
         self.assertContains(response, '@click.outside="searchOpen = false"', count=12)
         self.assertContains(response, '@keydown.escape.window="searchOpen = false"', count=12)
         self.assertContains(response, 'x-show="searchOpen" x-cloak', count=12)
@@ -1040,7 +1042,7 @@ class GuidedSetupViewTest(TestCase):
         )
 
         ready_page = self.client.get(self.url)
-        self.assertContains(ready_page, "Ready to validate")
+        self.assertContains(ready_page, "Ready to test")
         self.assertContains(ready_page, 'name="save_and_validate" value="0"')
 
         with patch("apps.devices.deployment_setup.start_validation") as validation:
@@ -1101,7 +1103,7 @@ class GuidedSetupViewTest(TestCase):
         failed_page = self.client.get(self.url)
         self.assertContains(failed_page, "Remove template")
         self.assertContains(failed_page, "could not connect to 10.0.0.20:502")
-        self.assertContains(failed_page, "Save and retry live check")
+        self.assertContains(failed_page, "Test live readings again")
         run.refresh_from_db()
         self.assertNotEqual(run.state, run.State.FAILED)
 
@@ -1213,6 +1215,7 @@ class GuidedSetupViewTest(TestCase):
             candidate_data={"interface": "10.0.0.10:502", "connection": "modbus_tcp"},
             selected_template=template,
             state=DeploymentSetupItem.State.VALIDATED,
+            validation_result={"customer_confirmed_at": timezone.now().isoformat()},
         )
         self.gateway.discovery_data = {
             "status": "complete",
@@ -1250,10 +1253,116 @@ class GuidedSetupViewTest(TestCase):
         page = self.client.get(self.url)
 
         self.assertTrue(page.context["can_deploy"])
-        self.assertContains(page, "1 of 3 validated")
-        self.assertContains(page, "Deploy and continue")
+        self.assertContains(page, "1 of 3 customer confirmed")
+        self.assertContains(page, "Deploy 1 confirmed")
+        self.assertContains(page, "Only confirmed equipment will be deployed")
         self.assertContains(page, "Saved as draft")
         self.assertContains(page, "Skipped for now")
+
+    def test_customer_confirms_live_readings_before_deployment(self):
+        from apps.devices.config_generator import generate_connector_config, human_config_preview
+
+        template = DeviceTemplate.objects.create(
+            name="Cold room test map", manufacturer="Novena", model_number="NCS-100",
+            device_type="temp_sensor", protocol="modbus_tcp",
+            register_map={"temperature": {"address": 3000, "functionCode": 3, "type": "float32", "unit": "degC"}},
+        )
+        preview_url = reverse("web_team:onboarding:equipment_template_preview", args=[self.team.slug])
+        preview = self.client.get(preview_url, {"template_id": template.pk})
+        self.assertEqual(preview.status_code, 200)
+        self.assertEqual(preview.json()["signals"][0]["address"], 3000)
+        self.assertEqual(preview.json()["signals"][0]["unit"], "degC")
+
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="Cold room",
+            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            connection_config={"host": "10.0.0.20", "port": 502, "slave_id": 1},
+            metadata={"guided_setup_validation": "awaiting_confirmation"},
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=template,
+            state=DeploymentSetupItem.State.AWAITING_CONFIRMATION,
+            connection={"host": "10.0.0.20", "port": 502, "slave_id": 1},
+            datapoints=[{
+                "key": "temperature", "label": "Temperature", "address": 3000,
+                "functionCode": 3, "unit": "degC",
+            }],
+            validation_result={"status": "success", "signals": [
+                {"key": "temperature", "address": 3000, "status": "success", "decoded_value": 2.5,
+                 "raw_value": [0, 0], "unit": "degC"}
+            ]},
+        )
+        before = self.client.get(self.url)
+        self.assertFalse(before.context["can_deploy"])
+        self.assertEqual(generate_connector_config(self.gateway), [])
+        self.assertEqual(human_config_preview(self.gateway)["devices"], [])
+        self.assertContains(before, "Review live readings")
+        self.assertContains(before, "FC 3")
+        self.assertContains(before, "2.5 degC")
+        self.assertContains(before, "Confirm template and readings")
+
+        confirmed = self.client.post(self.url, {"action": "confirm_setup_item", "item_id": item.pk})
+        self.assertEqual(confirmed.status_code, 302)
+        item.refresh_from_db()
+        device.refresh_from_db()
+        self.assertEqual(item.state, DeploymentSetupItem.State.VALIDATED)
+        self.assertEqual(item.trust_level, DeploymentSetupItem.Trust.CUSTOMER_VALIDATED)
+        self.assertIn("customer_confirmed_at", item.validation_result)
+        self.assertEqual(device.metadata["guided_setup_validation"], "validated")
+        self.assertTrue(generate_connector_config(self.gateway))
+        self.assertEqual(human_config_preview(self.gateway)["device_count"], 1)
+        after = self.client.get(self.url)
+        self.assertTrue(after.context["can_deploy"])
+        self.assertContains(after, "1 of 1 customer confirmed")
+
+    def test_customer_cannot_confirm_failed_or_unread_template(self):
+        template = DeviceTemplate.objects.create(
+            name="Unread map", device_type="power_meter", protocol="modbus_tcp",
+            register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="Meter",
+            template=template, device_type=template.device_type, protocol="modbus_tcp",
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=template,
+            state=DeploymentSetupItem.State.AWAITING_CONFIRMATION,
+            validation_result={"status": "success", "signals": []},
+        )
+        self.client.post(self.url, {"action": "confirm_setup_item", "item_id": item.pk})
+        item.refresh_from_db()
+        self.assertEqual(item.state, DeploymentSetupItem.State.AWAITING_CONFIRMATION)
+        self.assertFalse(self.client.get(self.url).context["can_deploy"])
+
+    def test_older_technical_pass_requires_customer_confirmation(self):
+        template = DeviceTemplate.objects.create(
+            name="Older meter", device_type="power_meter", protocol="modbus_tcp",
+            register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16", "unit": "V"}},
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="Meter",
+            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            metadata={"guided_setup_validation": "validated"},
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=template,
+            state=DeploymentSetupItem.State.VALIDATED,
+            validation_result={"status": "success", "signals": [
+                {"key": "voltage", "status": "success", "value": 230, "unit": "V"}
+            ]},
+        )
+
+        page = self.client.get(self.url)
+
+        item.refresh_from_db()
+        device.refresh_from_db()
+        self.assertEqual(item.state, DeploymentSetupItem.State.AWAITING_CONFIRMATION)
+        self.assertEqual(device.metadata["guided_setup_validation"], "awaiting_confirmation")
+        self.assertFalse(page.context["can_deploy"])
+        self.assertContains(page, "Confirm template and readings")
 
     def test_rescan_reconciles_saved_drafts_by_endpoint_instead_of_row_order(self):
         self._enable_guided_setup()
@@ -1631,14 +1740,17 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(validating, "Checking live readings now")
 
         item.state = DeploymentSetupItem.State.VALIDATED
-        item.validation_result = {"status": "success", "message": "Selected signals were read successfully."}
+        item.validation_result = {
+            "status": "success", "message": "Selected signals were read successfully.",
+            "customer_confirmed_at": timezone.now().isoformat(),
+        }
         item.save(update_fields=["state", "validation_result", "updated_at"])
         complete = self.client.get(poll_url)
 
-        self.assertContains(complete, "1 of 1 validated")
-        self.assertContains(complete, 'aria-label="Validation complete"')
-        self.assertContains(complete, "Deploy and continue")
-        self.assertContains(complete, "Live readings passed for at least one equipment item")
+        self.assertContains(complete, "1 of 1 customer confirmed")
+        self.assertContains(complete, 'aria-label="Customer confirmed"')
+        self.assertContains(complete, "Deploy 1 confirmed")
+        self.assertContains(complete, "At least one equipment template and its live readings were confirmed")
         self.assertContains(complete, 'hx-trigger="none"')
 
     def test_recent_scan_start_keeps_customer_visible_scanning_state(self):
@@ -2146,16 +2258,15 @@ class GuidedSetupViewTest(TestCase):
 
         self.assertEqual(response.status_code, 302)
         item = DeploymentSetupItem.objects.get(run__gateway=self.gateway)
-        self.assertEqual(item.state, "validated")
-        self.assertEqual(item.trust_level, "novena_verified")
+        self.assertEqual(item.state, "needs_attention")
+        self.assertEqual(item.trust_level, "unvalidated")
         self.assertFalse(RemoteCommand.objects.filter(gateway=self.gateway).exists())
 
         page = self.client.get(self.url)
         self.assertContains(page, 'data-equipment-row="configured"')
-        self.assertContains(page, "1 of 1 validated")
-        self.assertContains(page, 'aria-label="Validation complete"')
-        self.assertContains(page, "All listed equipment is ready for the next step")
-        self.assertContains(page, "Deploy and continue")
+        self.assertContains(page, "0 of 1 customer confirmed")
+        self.assertContains(page, "Gateway needs an update")
+        self.assertContains(page, 'aria-label="Needs attention"')
 
     def test_template_request_has_support_reference(self):
         response = self.client.post(
