@@ -1315,6 +1315,56 @@ class GuidedSetupViewTest(TestCase):
         after = self.client.get(self.url)
         self.assertTrue(after.context["can_deploy"])
         self.assertContains(after, "1 of 1 templates confirmed")
+        self.assertContains(after, '<form method="post" hx-boost="false">')
+
+    def test_verify_step_uses_deployed_run_when_newer_run_was_cancelled(self):
+        template = DeviceTemplate.objects.create(
+            name="Cold room map", device_type="temp_sensor", protocol="modbus_tcp",
+            register_map={"temperature": {"address": 3000, "functionCode": 3, "type": "float32"}},
+        )
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="Cold room",
+            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            last_telemetry_at=timezone.now(),
+        )
+        deployed_run = DeploymentSetupRun.objects.create(
+            team=self.team, site=self.site, gateway=self.gateway,
+            state=DeploymentSetupRun.State.COMPLETED, current_step="go_live",
+        )
+        DeploymentSetupItem.objects.create(
+            team=self.team, run=deployed_run, device=device, selected_template=template,
+            state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
+        )
+        GatewayConfig.objects.create(
+            team=self.team, gateway=self.gateway, setup_run=deployed_run,
+            config_json={"connectors": []}, request_id=uuid.uuid4(), status="active",
+        )
+        newer_run = DeploymentSetupRun.objects.create(
+            team=self.team, site=self.site, gateway=self.gateway,
+            state=DeploymentSetupRun.State.CANCELLED,
+        )
+        GatewayConfig.objects.create(
+            team=self.team, gateway=self.gateway, setup_run=newer_run,
+            config_json={"connectors": []}, request_id=uuid.uuid4(), status="failed",
+        )
+        session = self.client.session
+        session["onboarding_device_id"] = device.pk
+        session.save()
+
+        page = self.client.get(reverse("web_team:onboarding:step_4_alert", args=[self.team.slug]))
+
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.context["setup_run"].pk, deployed_run.pk)
+        self.assertEqual(page.context["commissioning"]["latest_config"].status, "active")
+        self.assertTrue(all(step["status"] == "complete" for step in page.context["deployment_progress"]))
+        self.assertContains(page, "Go live")
+        self.assertContains(page, 'id="deployment-live"')
+        self.assertContains(page, 'hx-select="#deployment-live"')
+
+        finished = self.client.get(reverse("web_team:onboarding:complete", args=[self.team.slug]))
+        self.assertEqual(finished.status_code, 200)
+        self.assertEqual(finished.context["setup_run"].pk, deployed_run.pk)
+        self.assertContains(finished, "Your live dashboard is ready")
 
     def test_customer_cannot_confirm_failed_or_unread_template(self):
         template = DeviceTemplate.objects.create(

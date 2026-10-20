@@ -9,7 +9,7 @@
             <p class="mt-1 text-sm text-base-content/55">Preview a template, test live readings, and confirm they match your equipment to continue.</p>
             {% endif %}
         </div>
-        <form method="post">
+        <form method="post" hx-boost="false">
             {% csrf_token %}
             <input type="hidden" name="action" value="deploy">
             <button class="btn btn-primary rounded-lg" type="submit" {% if not can_deploy %}disabled{% endif %}>

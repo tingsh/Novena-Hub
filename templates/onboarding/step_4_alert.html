@@ -3,6 +3,12 @@
 {% block app %}
 <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     {% include "onboarding/partials/progress_bar.html" with current_step=current_step steps=steps %}
+    <div id="deployment-live"
+         hx-get="{% url 'web_team:onboarding:step_4_alert' request.team.slug %}"
+         hx-trigger="{% if setup_run.state == 'completed' or setup_run.state == 'completed_attention' %}none{% else %}every 4s{% endif %}"
+         hx-select="#deployment-live"
+         hx-target="this"
+         hx-swap="outerHTML">
     {% include "onboarding/partials/commissioning_checklist.html" %}
 
     <div class="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -11,7 +17,11 @@
                 <div>
                     <p class="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">{{ profile.name }}</p>
                     <h2 class="mt-2 text-3xl font-black text-gray-900 dark:text-white">Verify equipment deployment</h2>
-                    <p class="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl">Novena is applying the validated equipment setup and waiting for the first live readings. You can create alert rules separately after onboarding.</p>
+                    <p class="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl">
+                        {% if setup_run.state == "completed" %}The Gateway has applied the settings and live readings are flowing. Review the checks below, then go live.
+                        {% elif setup_run.state == "completed_attention" %}Live readings are flowing, but one or more equipment items need attention. Review the checks before going live.
+                        {% else %}Novena is applying the confirmed equipment setup and waiting for the first live readings. You can create alert rules separately after onboarding.{% endif %}
+                    </p>
                 </div>
                 <div class="rounded-2xl bg-indigo-50 px-5 py-4 text-sm text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
                     <i class="fa {{ profile.icon }} mr-2"></i>
@@ -19,12 +29,7 @@
                 </div>
             </div>
 
-            <div id="deployment-status"
-                 class="mb-8 space-y-8"
-                 hx-get="{% url 'web_team:onboarding:step_4_alert' request.team.slug %}"
-                 hx-trigger="every 4s"
-                 hx-select="#deployment-status"
-                 hx-swap="outerHTML">
+            <div id="deployment-status" class="mb-8 space-y-8">
             <div class="rounded-2xl border border-base-content/10 bg-base-200/40 p-5">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -116,6 +121,7 @@
                 {% endif %}
             </div>
         </div>
+    </div>
     </div>
 </div>
 {% endblock %}

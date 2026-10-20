@@ -2114,6 +2114,15 @@ def step_3_device(request, team_slug):
     return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
 
+def _deployment_run_for_device(team, device):
+    """Keep Verify and Go live tied to the configuration sent for this device."""
+    runs = DeploymentSetupRun.objects.filter(team=team, gateway=device.gateway)
+    return (
+        runs.filter(items__device=device, configurations__isnull=False).order_by("-created_at").first()
+        or runs.filter(items__device=device).order_by("-created_at").first()
+    )
+
+
 @require_permission("manage_devices")
 def step_4_alert(request, team_slug):
     device_id = request.session.get("onboarding_device_id")
@@ -2123,13 +2132,9 @@ def step_4_alert(request, team_slug):
 
     profile = get_site_profile(device.site)
     from apps.devices.config_generator import human_config_preview
-    from apps.devices.deployment_setup import TERMINAL_RUN_STATES, deployment_progress, sync_setup_run
+    from apps.devices.deployment_setup import deployment_progress, sync_setup_run
 
-    runs = DeploymentSetupRun.objects.filter(team=request.team, gateway=device.gateway)
-    setup_run = (
-        runs.exclude(state__in=TERMINAL_RUN_STATES).order_by("-created_at").first()
-        or runs.order_by("-created_at").first()
-    )
+    setup_run = _deployment_run_for_device(request.team, device)
     if setup_run:
         setup_run = sync_setup_run(setup_run)
 
@@ -2142,6 +2147,10 @@ def step_4_alert(request, team_slug):
         messages.info(request, "Novena is still verifying the Gateway and first live data.")
         return redirect("web_team:onboarding:step_4_alert", team_slug=team_slug)
 
+    commissioning = build_commissioning_context(
+        request.team, gateway=device.gateway, session=request.session, setup_run=setup_run
+    )
+
     context = {
         "steps": ONBOARDING_STEPS,
         "current_step": 4,
@@ -2150,7 +2159,7 @@ def step_4_alert(request, team_slug):
         "setup_run": setup_run,
         "deployment_progress": deployment_progress(setup_run) if setup_run else [],
         "config_preview": human_config_preview(device.gateway),
-        "commissioning": build_commissioning_context(request.team, gateway=device.gateway, session=request.session),
+        "commissioning": commissioning,
     }
     return render(request, "onboarding/step_4_alert.html", context)
 
@@ -2161,7 +2170,11 @@ def complete(request, team_slug):
     gateway_id = request.session.get("onboarding_gateway_id")
     device_id = request.session.get("onboarding_device_id")
     gateway = Gateway.objects.filter(id=gateway_id, team=request.team).first() if gateway_id else None
-    commissioning = build_commissioning_context(request.team, gateway=gateway, session=request.session)
+    device = Device.objects.filter(id=device_id, team=request.team).first() if device_id else None
+    setup_run = _deployment_run_for_device(request.team, device) if device else None
+    commissioning = build_commissioning_context(
+        request.team, gateway=gateway, session=request.session, setup_run=setup_run
+    )
     setup_run = commissioning.get("setup_run")
     if setup_run and setup_run.state not in {
         DeploymentSetupRun.State.COMPLETED,
