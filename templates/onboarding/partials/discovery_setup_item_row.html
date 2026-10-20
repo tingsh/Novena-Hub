@@ -112,7 +112,7 @@
         <a class="btn btn-outline btn-xs mt-3" href="{% url 'web_team:devices:device_datapoint_mapping' request.team.slug item.device.pk %}">Review signal mapping</a>
         {% endif %}
         {% if item.device and not item.device.last_telemetry_at and item.state != "validating" and item.state != "queued" and item.state != "applied" and item.state != "telemetry_confirmed" %}
-        <form method="post" id="equipment-configuration-{{ item.pk }}" class="mt-4 border-t border-base-content/10 pt-4">
+        <form method="post" hx-boost="false" id="equipment-configuration-{{ item.pk }}" class="mt-4 border-t border-base-content/10 pt-4">
             {% csrf_token %}
             <input type="hidden" name="item_id" value="{{ item.pk }}">
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -157,9 +157,17 @@
                 </details>
                 {% endif %}
             </div>
-            <div class="mt-4 flex flex-wrap justify-end gap-2">
-                <button type="submit" name="action" value="save_setup_item" class="btn btn-outline btn-sm rounded-lg">Save changes</button>
-                <button type="submit" name="action" value="retry_setup_item" :disabled="!templateId" class="btn btn-primary btn-sm rounded-lg">Test live readings again</button>
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <button type="submit" name="action" value="restart_setup_item" formnovalidate
+                            onclick="return confirm('Start over with this equipment? Its saved name, template choice and live test will be cleared. The scanned equipment will remain available to set up again.')"
+                            class="btn btn-outline btn-error btn-sm rounded-lg">Start over</button>
+                    <p class="mt-1 text-xs text-base-content/50">Clear this setup and live test; keep the scanned equipment.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="submit" name="action" value="save_setup_item" class="btn btn-outline btn-sm rounded-lg">Save changes</button>
+                    <button type="submit" name="action" value="retry_setup_item" :disabled="!templateId" class="btn btn-primary btn-sm rounded-lg">Test live readings again</button>
+                </div>
             </div>
         </form>
         {% endif %}

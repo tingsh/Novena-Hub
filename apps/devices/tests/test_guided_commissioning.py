@@ -1336,6 +1336,109 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(item.state, DeploymentSetupItem.State.AWAITING_CONFIRMATION)
         self.assertFalse(self.client.get(self.url).context["can_deploy"])
 
+    def test_customer_can_start_confirmed_equipment_over_from_scan(self):
+        template = DeviceTemplate.objects.create(
+            name="Cold room test map", manufacturer="Novena", model_number="NCS-100",
+            device_type="temp_sensor", protocol="modbus_tcp",
+            register_map={"temperature": {"address": 3000, "functionCode": 3, "type": "float32"}},
+        )
+        self.gateway.discovery_data = {"status": "complete", "devices": [{
+            "connection": "modbus_tcp", "interface": "10.0.0.20:502",
+            "host": "10.0.0.20", "port": 502, "signature": "Unknown Modbus Device",
+        }]}
+        self.gateway.save(update_fields=["discovery_data"])
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="My cold room",
+            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            port="10.0.0.20:502", connection_config={"host": "10.0.0.20", "port": 502},
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=template,
+            candidate_key="modbus_tcp|10.0.0.20|502",
+            candidate_data={"connection": "modbus_tcp", "interface": "10.0.0.20:502",
+                            "customer_name": "My cold room", "customer_draft_saved": True},
+            state=DeploymentSetupItem.State.VALIDATED,
+            validation_result={"status": "success", "customer_confirmed_at": timezone.now().isoformat(),
+                               "signals": [{"key": "temperature", "status": "success", "decoded_value": 2.5}]},
+        )
+        self.assertContains(self.client.get(self.url), "Start over")
+
+        response = self.client.post(self.url, {"action": "restart_setup_item", "item_id": item.pk})
+
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertIsNotNone(item.removed_at)
+        self.assertIsNone(item.device)
+        self.assertIsNone(item.selected_template)
+        self.assertEqual(item.validation_result, {})
+        self.assertFalse(Device.objects.filter(pk=device.pk).exists())
+        self.assertTrue(DeviceTemplate.objects.filter(pk=template.pk).exists())
+        self.assertTrue(run.events.filter(event_type="equipment_setup_restarted", item=item).exists())
+        page = self.client.get(self.url)
+        self.assertContains(page, "Unknown Modbus Device")
+        self.assertContains(page, 'data-equipment-row="candidate"')
+        self.assertNotContains(page, 'data-equipment-row="configured"')
+        self.assertFalse(page.context["can_deploy"])
+
+    def test_customer_cannot_restart_equipment_after_deployment_begins(self):
+        template = DeviceTemplate.objects.create(
+            name="Meter map", device_type="power_meter", protocol="modbus_tcp",
+            register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="Meter",
+            template=template, device_type=template.device_type, protocol="modbus_tcp",
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=template,
+            state=DeploymentSetupItem.State.QUEUED,
+        )
+
+        response = self.client.post(self.url, {"action": "restart_setup_item", "item_id": item.pk})
+
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertIsNone(item.removed_at)
+        self.assertEqual(item.device, device)
+        self.assertTrue(Device.objects.filter(pk=device.pk).exists())
+
+    def test_editing_confirmed_equipment_clears_customer_validated_label(self):
+        template = DeviceTemplate.objects.create(
+            name="Cold room map", device_type="temp_sensor", protocol="modbus_tcp",
+            register_map={"temperature": {"address": 3000, "functionCode": 3, "type": "float32"}},
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="Cold room",
+            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            connection_config={"host": "10.0.0.20", "port": 502, "slave_id": 1},
+            metadata={"guided_setup_validation": "validated"},
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=template,
+            state=DeploymentSetupItem.State.VALIDATED,
+            trust_level=DeploymentSetupItem.Trust.CUSTOMER_VALIDATED,
+            connection={"host": "10.0.0.20", "port": 502, "slave_id": 1},
+            validation_result={"status": "success", "customer_confirmed_at": timezone.now().isoformat()},
+        )
+
+        response = self.client.post(self.url, {
+            "action": "save_setup_item", "item_id": item.pk, "template_id": template.pk,
+            "equipment_name": "Cold room", "host_setup": "10.0.0.20",
+            "port_setup": "502", "slave_id_setup": "1",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        self.assertEqual(item.state, DeploymentSetupItem.State.TEMPLATE_SELECTED)
+        self.assertEqual(item.trust_level, DeploymentSetupItem.Trust.UNVALIDATED)
+        self.assertEqual(item.validation_result, {})
+        page = self.client.get(self.url)
+        self.assertContains(page, "Unvalidated")
+        self.assertFalse(page.context["can_deploy"])
+
     def test_older_technical_pass_requires_customer_confirmation(self):
         template = DeviceTemplate.objects.create(
             name="Older meter", device_type="power_meter", protocol="modbus_tcp",

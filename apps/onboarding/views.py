@@ -1030,6 +1030,51 @@ def step_3_discover(request, team_slug):
             messages.success(request, "Template confirmed. This equipment is ready to deploy.")
         return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
+    if request.method == "POST" and request.POST.get("action") == "restart_setup_item":
+        with transaction.atomic():
+            item = get_object_or_404(
+                run.items.select_related("device").select_for_update(of=("self",)),
+                pk=request.POST.get("item_id"), removed_at__isnull=True, device__isnull=False,
+            )
+            if (
+                item.state not in {
+                    DeploymentSetupItem.State.DISCOVERED,
+                    DeploymentSetupItem.State.TEMPLATE_SELECTED,
+                    DeploymentSetupItem.State.NEEDS_ATTENTION,
+                    DeploymentSetupItem.State.FAILED,
+                    DeploymentSetupItem.State.AWAITING_CONFIRMATION,
+                    DeploymentSetupItem.State.VALIDATED,
+                }
+                or item.device.last_telemetry_at
+                or run.configurations.exists()
+            ):
+                messages.error(request, "This equipment has already entered deployment. Manage it from Devices.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            provisional_device = item.device
+            previous_template_id = item.selected_template_id
+            item.device = None
+            item.selected_template = None
+            item.datapoints = []
+            item.validation_result = {}
+            item.validation_command = None
+            item.trust_level = DeploymentSetupItem.Trust.UNVALIDATED
+            item.state = DeploymentSetupItem.State.DISCOVERED
+            item.removed_at = timezone.now()
+            item.save()
+            provisional_device.delete()
+            from apps.devices.deployment_setup import append_setup_event
+
+            append_setup_event(
+                run,
+                "equipment_setup_restarted",
+                "Customer cleared predeployment equipment setup to start again.",
+                item=item,
+                actor=request.user,
+                evidence={"previous_template_id": previous_template_id},
+            )
+        messages.success(request, "Equipment setup cleared. Review the scanned equipment to start again.")
+        return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+
     discovery_data = gateway.discovery_data or {}
     discovered_devices = discovery_data.get("devices", [])
     profile = get_site_profile(gateway.site)
@@ -1097,6 +1142,7 @@ def step_3_discover(request, team_slug):
                 item.datapoints = []
                 item.validation_result = {}
                 item.validation_command = None
+                item.trust_level = DeploymentSetupItem.Trust.UNVALIDATED
                 item.state = (
                     DeploymentSetupItem.State.TEMPLATE_SELECTED if template else DeploymentSetupItem.State.DISCOVERED
                 )
