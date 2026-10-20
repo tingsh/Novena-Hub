@@ -59,7 +59,7 @@
         </button>
         {% if item.state == "validated" or item.state == "telemetry_confirmed" or item.state == "queued" or item.state == "applied" %}
         <span class="col-start-2 row-start-2 flex h-6 w-6 items-center justify-center self-end rounded-full bg-success text-[10px] text-success-content lg:col-auto lg:row-auto lg:self-auto"
-              title="Customer confirmed" aria-label="Customer confirmed">
+              title="Template confirmed" aria-label="Template confirmed">
             <i class="fa fa-check" aria-hidden="true"></i>
         </span>
         {% elif item.state == "awaiting_confirmation" %}

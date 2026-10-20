@@ -865,7 +865,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(response, "Equipment checklist")
         self.assertContains(response, 'role="table" aria-label="Discovered equipment"')
         self.assertContains(response, 'data-equipment-row="candidate"', count=12)
-        self.assertContains(response, "0 of 12 customer confirmed")
+        self.assertContains(response, "0 of 12 templates confirmed")
         self.assertContains(response, "12 equipment items still need a template review")
         self.assertContains(response, "Review the template and connection", count=12)
         self.assertContains(response, '@click.outside="searchOpen = false"', count=12)
@@ -1253,7 +1253,7 @@ class GuidedSetupViewTest(TestCase):
         page = self.client.get(self.url)
 
         self.assertTrue(page.context["can_deploy"])
-        self.assertContains(page, "1 of 3 customer confirmed")
+        self.assertContains(page, "1 of 3 templates confirmed")
         self.assertContains(page, "Deploy 1 confirmed")
         self.assertContains(page, "Only confirmed equipment will be deployed")
         self.assertContains(page, "Saved as draft")
@@ -1314,7 +1314,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(human_config_preview(self.gateway)["device_count"], 1)
         after = self.client.get(self.url)
         self.assertTrue(after.context["can_deploy"])
-        self.assertContains(after, "1 of 1 customer confirmed")
+        self.assertContains(after, "1 of 1 templates confirmed")
 
     def test_customer_cannot_confirm_failed_or_unread_template(self):
         template = DeviceTemplate.objects.create(
@@ -1850,8 +1850,8 @@ class GuidedSetupViewTest(TestCase):
         item.save(update_fields=["state", "validation_result", "updated_at"])
         complete = self.client.get(poll_url)
 
-        self.assertContains(complete, "1 of 1 customer confirmed")
-        self.assertContains(complete, 'aria-label="Customer confirmed"')
+        self.assertContains(complete, "1 of 1 templates confirmed")
+        self.assertContains(complete, 'aria-label="Template confirmed"')
         self.assertContains(complete, "Deploy 1 confirmed")
         self.assertContains(complete, "At least one equipment template and its live readings were confirmed")
         self.assertContains(complete, 'hx-trigger="none"')
@@ -2367,7 +2367,7 @@ class GuidedSetupViewTest(TestCase):
 
         page = self.client.get(self.url)
         self.assertContains(page, 'data-equipment-row="configured"')
-        self.assertContains(page, "0 of 1 customer confirmed")
+        self.assertContains(page, "0 of 1 templates confirmed")
         self.assertContains(page, "Gateway needs an update")
         self.assertContains(page, 'aria-label="Needs attention"')
 
