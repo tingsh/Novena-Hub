@@ -8,7 +8,7 @@
         <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl {% if setup_run.state == 'completed' %}bg-green-500{% elif setup_run.state == 'completed_attention' %}bg-amber-500{% else %}bg-indigo-600{% endif %} text-white shadow-lg">
             <i class="fa {% if setup_run.state == 'completed' %}fa-check{% elif setup_run.state == 'completed_attention' %}fa-triangle-exclamation{% else %}fa-satellite-dish{% endif %} text-3xl"></i>
         </div>
-        <p class="mt-6 text-xs font-black uppercase tracking-widest text-indigo-600">Go live</p>
+        <p class="mt-6 text-xs font-black uppercase tracking-widest text-indigo-600">Setup complete</p>
         <h1 class="mt-2 text-4xl font-black text-base-content">
             {% if setup_run.state == "completed" %}Your live dashboard is ready
             {% elif setup_run.state == "completed_attention" %}Monitoring is live with items to review

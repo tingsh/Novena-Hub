@@ -1092,6 +1092,42 @@ def deployment_progress(run: DeploymentSetupRun) -> list[dict]:
     ]
 
 
+def verification_progress(run: DeploymentSetupRun) -> list[dict]:
+    """Customer-facing milestones for the asynchronous equipment handoff."""
+    latest_config = run.configurations.first()
+    config_status = latest_config.status if latest_config else ""
+    telemetry_ready = run.items.filter(state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED).exists()
+    completed = [
+        config_status in {"published", "accepted", "active"},
+        config_status == "active",
+        telemetry_ready,
+        run.state == DeploymentSetupRun.State.COMPLETED,
+    ]
+    needs_attention = run.state in {
+        DeploymentSetupRun.State.FAILED,
+        DeploymentSetupRun.State.COMPLETED_ATTENTION,
+    } or config_status in {"failed", "timed_out", "superseded", "rolled_back"}
+    current_step = next((index for index, done in enumerate(completed) if not done), None)
+    labels = [
+        "Applying configuration",
+        "Gateway applied",
+        "Live readings received",
+        "Monitoring ready",
+    ]
+    return [
+        {
+            "label": label,
+            "status": (
+                "complete" if completed[index]
+                else "attention" if index == current_step and needs_attention
+                else "current" if index == current_step
+                else "pending"
+            ),
+        }
+        for index, label in enumerate(labels)
+    ]
+
+
 def support_bundle(run: DeploymentSetupRun) -> dict:
     run = sync_setup_run(run)
     latest_config = run.configurations.first()

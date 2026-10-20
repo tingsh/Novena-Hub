@@ -17,6 +17,7 @@ from apps.devices.deployment_setup import (
     get_or_create_setup_run,
     support_bundle,
     sync_setup_run,
+    verification_progress,
 )
 from apps.devices.gateway_config_delivery import (
     dispatch_gateway_config_outbox,
@@ -339,6 +340,17 @@ class DeploymentSetupWorkflowTest(TestCase):
         progress = {step["label"]: step["status"] for step in deployment_progress(run)}
         self.assertEqual(progress["Connectors started"], "complete")
         self.assertEqual(progress["Equipment communication established"], "pending")
+
+        customer_progress = {step["label"]: step["status"] for step in verification_progress(run)}
+        self.assertEqual(customer_progress["Applying configuration"], "complete")
+        self.assertEqual(customer_progress["Gateway applied"], "complete")
+        self.assertEqual(customer_progress["Live readings received"], "current")
+        self.assertEqual(customer_progress["Monitoring ready"], "pending")
+
+        run.state = DeploymentSetupRun.State.FAILED
+        run.save(update_fields=["state"])
+        customer_progress = {step["label"]: step["status"] for step in verification_progress(run)}
+        self.assertEqual(customer_progress["Live readings received"], "attention")
 
     def test_support_bundle_excludes_raw_configuration_and_credentials(self):
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
@@ -1357,7 +1369,11 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(page.context["setup_run"].pk, deployed_run.pk)
         self.assertEqual(page.context["commissioning"]["latest_config"].status, "active")
         self.assertTrue(all(step["status"] == "complete" for step in page.context["deployment_progress"]))
-        self.assertContains(page, "Go live")
+        self.assertContains(page, "Finish setup")
+        self.assertContains(page, "Applying configuration")
+        self.assertContains(page, "Settings published securely")
+        self.assertNotContains(page, "Guided Setup progress")
+        self.assertTrue(all(step["status"] == "complete" for step in page.context["verification_progress"]))
         self.assertContains(page, 'id="deployment-live"')
         self.assertContains(page, 'hx-select="#deployment-live"')
 

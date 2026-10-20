@@ -40,7 +40,7 @@ ONBOARDING_STEPS = [
     {"num": 2, "label": "Gateway"},
     {"num": 3, "label": "Equipment"},
     {"num": 4, "label": "Verify"},
-    {"num": 5, "label": "Go live"},
+    {"num": 5, "label": "Finish"},
 ]
 
 SETUP_GOAL_CHOICES = (
@@ -2115,7 +2115,7 @@ def step_3_device(request, team_slug):
 
 
 def _deployment_run_for_device(team, device):
-    """Keep Verify and Go live tied to the configuration sent for this device."""
+    """Keep Verify and Finish tied to the configuration sent for this device."""
     runs = DeploymentSetupRun.objects.filter(team=team, gateway=device.gateway)
     return (
         runs.filter(items__device=device, configurations__isnull=False).order_by("-created_at").first()
@@ -2132,7 +2132,7 @@ def step_4_alert(request, team_slug):
 
     profile = get_site_profile(device.site)
     from apps.devices.config_generator import human_config_preview
-    from apps.devices.deployment_setup import deployment_progress, sync_setup_run
+    from apps.devices.deployment_setup import deployment_progress, sync_setup_run, verification_progress
 
     setup_run = _deployment_run_for_device(request.team, device)
     if setup_run:
@@ -2158,6 +2158,7 @@ def step_4_alert(request, team_slug):
         "profile": profile,
         "setup_run": setup_run,
         "deployment_progress": deployment_progress(setup_run) if setup_run else [],
+        "verification_progress": verification_progress(setup_run) if setup_run else [],
         "config_preview": human_config_preview(device.gateway),
         "commissioning": commissioning,
     }

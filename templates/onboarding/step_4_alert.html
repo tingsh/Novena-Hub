@@ -9,8 +9,6 @@
          hx-select="#deployment-live"
          hx-target="this"
          hx-swap="outerHTML">
-    {% include "onboarding/partials/commissioning_checklist.html" %}
-
     <div class="bg-white dark:bg-gray-800 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
         <div class="p-8 sm:p-12">
             <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -18,9 +16,9 @@
                     <p class="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">{{ profile.name }}</p>
                     <h2 class="mt-2 text-3xl font-black text-gray-900 dark:text-white">Verify equipment deployment</h2>
                     <p class="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl">
-                        {% if setup_run.state == "completed" %}The Gateway has applied the settings and live readings are flowing. Review the checks below, then go live.
-                        {% elif setup_run.state == "completed_attention" %}Live readings are flowing, but one or more equipment items need attention. Review the checks before going live.
-                        {% else %}Novena is applying the confirmed equipment setup and waiting for the first live readings. You can create alert rules separately after onboarding.{% endif %}
+                        {% if setup_run.state == "completed" %}The Gateway has applied the configuration and live readings are flowing. Monitoring is ready; finish setup when you are ready to view the dashboard.
+                        {% elif setup_run.state == "completed_attention" %}Live readings are flowing, but some equipment needs attention. Finish setup to review the results.
+                        {% else %}Novena is applying the confirmed configuration and checking for live readings. This page updates automatically; no action is needed unless an issue appears.{% endif %}
                     </p>
                 </div>
                 <div class="rounded-2xl bg-indigo-50 px-5 py-4 text-sm text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
@@ -29,63 +27,54 @@
                 </div>
             </div>
 
-            <div id="deployment-status" class="mb-8 space-y-8">
-            <div class="rounded-2xl border border-base-content/10 bg-base-200/40 p-5">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                        <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Gateway settings</p>
-                        <h3 class="mt-1 font-black">
-                            {% if commissioning.latest_config.status == "queued" or commissioning.latest_config.status == "waiting_for_gateway" %}Queued
-                            {% elif commissioning.latest_config.status == "published" %}Sent securely
-                            {% elif commissioning.latest_config.status == "accepted" %}Reached Gateway
-                            {% elif commissioning.latest_config.status == "active" %}Applied
-                            {% elif commissioning.latest_config.status == "rolled_back" %}Rolled back
-                            {% elif commissioning.latest_config.status == "failed" or commissioning.latest_config.status == "timed_out" %}Needs attention
-                            {% elif commissioning.latest_config.status == "superseded" %}Replaced
-                            {% else %}Not queued{% endif %}
-                        </h3>
-                        <p class="mt-1 text-sm text-base-content/55">
-                            {% if commissioning.latest_config.status == "active" %}The Gateway accepted the settings and started its equipment connections.
-                            {% elif commissioning.latest_config.status == "rolled_back" %}The Gateway restored the last working settings.
-                            {% elif commissioning.latest_config.status == "failed" or commissioning.latest_config.status == "timed_out" %}The settings could not be confirmed. The last working setup remains in place.
-                            {% elif commissioning.latest_config.status == "waiting_for_gateway" %}The settings are safely queued until the Gateway reconnects.
-                            {% elif commissioning.latest_config.status == "published" %}The cloud service sent the settings and is waiting for the Gateway to confirm receipt.
-                            {% else %}Waiting for the Gateway to confirm the settings and start the checked equipment connections.{% endif %}
-                        </p>
-                    </div>
-                    {% if commissioning.latest_config %}
-                    <span class="badge {% if commissioning.latest_config.status == 'active' %}badge-success{% elif commissioning.latest_config.status == 'failed' or commissioning.latest_config.status == 'timed_out' or commissioning.latest_config.status == 'rolled_back' %}badge-error{% else %}badge-warning{% endif %}">
-                        {% if commissioning.latest_config.status == "queued" or commissioning.latest_config.status == "waiting_for_gateway" %}Queued
-                        {% elif commissioning.latest_config.status == "published" %}Sent securely
-                        {% elif commissioning.latest_config.status == "accepted" %}Reached Gateway
-                        {% elif commissioning.latest_config.status == "active" %}Applied
-                        {% elif commissioning.latest_config.status == "rolled_back" %}Rolled back
-                        {% elif commissioning.latest_config.status == "failed" or commissioning.latest_config.status == "timed_out" %}Needs attention
-                        {% elif commissioning.latest_config.status == "superseded" %}Replaced
-                        {% else %}{{ commissioning.latest_config.get_status_display }}{% endif %}
-                    </span>
+            <div id="deployment-status" class="mb-8 space-y-5">
+                <ol class="grid grid-cols-1 gap-3 sm:grid-cols-2" aria-label="Verification progress" aria-live="polite">
+                    {% for step in verification_progress %}
+                    <li class="flex items-center gap-3 rounded-2xl border px-4 py-4 text-sm {% if step.status == 'complete' %}border-success/30 bg-success/10 text-success{% elif step.status == 'attention' %}border-error/30 bg-error/10 text-error{% elif step.status == 'current' %}border-primary/30 bg-primary/5 text-base-content{% else %}border-base-content/10 bg-base-200/30 text-base-content/50{% endif %}">
+                        <i class="fa {% if step.status == 'complete' %}fa-circle-check{% elif step.status == 'attention' %}fa-circle-exclamation{% elif step.status == 'current' %}fa-spinner fa-spin text-primary{% else %}fa-clock{% endif %}" aria-hidden="true"></i>
+                        <span class="font-semibold">{{ step.label }}</span>
+                        <span class="sr-only">{% if step.status == 'complete' %}Complete{% elif step.status == 'attention' %}Needs attention{% elif step.status == 'current' %}In progress{% else %}Waiting{% endif %}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+
+                {% if commissioning.latest_config.status == "failed" or commissioning.latest_config.status == "rolled_back" or commissioning.latest_config.status == "timed_out" or commissioning.latest_config.status == "superseded" %}
+                <div class="rounded-2xl border border-error/20 bg-error/10 p-4 text-sm text-error">
+                    <p class="font-bold">Configuration needs attention</p>
+                    <p class="mt-1">{{ commissioning.latest_config.error_message|default:"The Gateway could not apply this configuration. Review the details and try again." }}</p>
+                    {% if commissioning.latest_config.status != "superseded" %}
+                    <form method="post" action="{% url 'web_team:devices:gateway_retry_config' request.team.slug device.gateway.pk commissioning.latest_config.pk %}" class="mt-3">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary btn-sm rounded-md">Retry these settings</button>
+                    </form>
                     {% endif %}
                 </div>
-                {% if commissioning.latest_config.error_message %}
-                <div class="mt-4 rounded-lg bg-error/10 p-3 text-sm text-error">{{ commissioning.latest_config.error_message }}</div>
-                {% endif %}
-                {% if commissioning.latest_config.status == "failed" or commissioning.latest_config.status == "rolled_back" or commissioning.latest_config.status == "timed_out" %}
-                <form method="post" action="{% url 'web_team:devices:gateway_retry_config' request.team.slug device.gateway.pk commissioning.latest_config.pk %}" class="mt-4">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-primary btn-sm rounded-md">
-                        <i class="fa fa-refresh mr-1"></i> Retry these settings
-                    </button>
-                </form>
                 {% elif commissioning.latest_config.status == "waiting_for_gateway" %}
-                <form method="post" action="{% url 'web_team:devices:gateway_retry_activation' request.team.slug device.gateway.pk %}" class="mt-4">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-outline btn-sm rounded-md">
-                        <i class="fa fa-refresh mr-1"></i> Retry secure connection
-                    </button>
-                </form>
+                <div class="rounded-2xl border border-warning/20 bg-warning/10 p-4 text-sm">
+                    <p class="font-bold">Waiting for the Gateway to reconnect</p>
+                    <p class="mt-1">The configuration is saved and will be sent when the Gateway is available.</p>
+                    <form method="post" action="{% url 'web_team:devices:gateway_retry_activation' request.team.slug device.gateway.pk %}" class="mt-3">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline btn-sm rounded-md">Retry secure connection</button>
+                    </form>
+                </div>
                 {% endif %}
-                <details class="mt-4">
-                    <summary class="cursor-pointer text-xs font-bold text-base-content/55">Technician setup details</summary>
+
+                <details class="rounded-2xl border border-base-content/10 bg-base-200/30 p-5">
+                    <summary class="cursor-pointer font-semibold text-base-content/70">Technical details</summary>
+                    <p class="mt-4 text-sm text-base-content/60">Gateway settings: {{ commissioning.latest_config.get_status_display|default:"Not queued" }}</p>
+                    {% if deployment_progress %}
+                    <ul class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
+                        {% for step in deployment_progress %}
+                        <li class="flex items-center gap-3 rounded-xl bg-base-100 px-3 py-2 text-sm">
+                            <i class="fa {% if step.status == 'complete' %}fa-circle-check text-success{% elif step.status == 'attention' %}fa-circle-exclamation text-error{% else %}fa-clock text-base-content/30{% endif %}" aria-hidden="true"></i>
+                            <span>{{ step.label }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if config_preview.devices %}
+                    <p class="mt-5 text-xs font-bold uppercase tracking-widest text-base-content/45">Equipment connections</p>
                     <div class="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                         {% for equipment in config_preview.devices %}
                         <div class="rounded-lg bg-base-100 p-3">
@@ -94,28 +83,14 @@
                         </div>
                         {% endfor %}
                     </div>
+                    {% endif %}
                 </details>
-            </div>
-
-            {% if deployment_progress %}
-            <div class="rounded-2xl border border-base-content/10 bg-base-100 p-5">
-                <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Deployment progress</p>
-                <div class="mt-4 grid grid-cols-1 gap-2 md:grid-cols-2">
-                    {% for step in deployment_progress %}
-                    <div class="flex items-center gap-3 rounded-xl bg-base-200/40 px-3 py-2 text-sm">
-                        <i class="fa {% if step.status == 'complete' %}fa-circle-check text-success{% elif step.status == 'attention' %}fa-circle-exclamation text-error{% else %}fa-clock text-base-content/30{% endif %}"></i>
-                        <span class="{% if step.status == 'complete' %}font-semibold{% else %}text-base-content/55{% endif %}">{{ step.label }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-            {% endif %}
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}" class="btn btn-ghost">Back to equipment</a>
                 {% if setup_run.state == "completed" or setup_run.state == "completed_attention" %}
-                <a href="{% url 'web_team:onboarding:complete' request.team.slug %}" class="btn btn-primary">Go live</a>
+                <a href="{% url 'web_team:onboarding:complete' request.team.slug %}" class="btn btn-primary">Finish setup</a>
                 {% else %}
                 <p class="text-sm text-base-content/55">This page updates while the Gateway confirms its settings and sends live data.</p>
                 {% endif %}
