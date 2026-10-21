@@ -11,16 +11,6 @@
             <p class="mt-1 text-sm text-base-content/60">Near-live fleet health across gateways, devices, sites, alerts, and work orders.</p>
         </div>
         <div class="flex flex-col gap-2 xl:items-end">
-            <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
-                <span class="inline-flex items-center gap-2 rounded-md border border-base-content/10 bg-base-100 px-3 py-2">
-                    <span class="h-2 w-2 rounded-full {% if devices_attention %}bg-amber-500{% else %}bg-green-500{% endif %}"></span>
-                    {{ devices_live }} / {{ devices_count }} live
-                </span>
-                <span class="inline-flex items-center gap-2 rounded-md border border-base-content/10 bg-base-100 px-3 py-2">
-                    <span class="h-2 w-2 rounded-full {% if gateways_offline %}bg-amber-500{% else %}bg-green-500{% endif %}"></span>
-                    {{ gateways_online }} / {{ gateways_count }} gateways
-                </span>
-            </div>
             <div class="flex flex-wrap items-center justify-end gap-2">
                 <div class="mr-1 text-right text-[11px] leading-4 text-base-content/50" aria-live="polite">
                     <p id="fleet-refresh-copy">Fleet summary updates every 60s</p>
@@ -75,7 +65,7 @@
     <p id="command-center-announcer" class="sr-only" aria-live="polite"></p>
     {% endif %}
 
-    <div id="dashboard-live-container" hx-get="{% url 'web_team:home' team.slug %}" hx-trigger="fleetSummaryRefresh from:body" hx-target="#dashboard-live-container" hx-select="#dashboard-live-container" hx-swap="outerHTML">
+    <div id="dashboard-live-container" hx-boost="false" hx-get="{% url 'web_team:home' team.slug %}" hx-trigger="fleetSummaryRefresh from:body" hx-target="#dashboard-live-container" hx-select="#dashboard-live-container" hx-swap="outerHTML">
         {{ command_center_config|json_script:"command-center-config" }}
         {% if devices_count == 0 %}
         <div class="mx-auto max-w-2xl rounded-lg border border-base-content/10 bg-base-100 p-8 text-center shadow-sm">
@@ -94,17 +84,17 @@
             <a href="{% url 'web_team:devices:device_list' team.slug %}" class="rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm transition hover:border-primary/40" hx-boost="false" data-command-center-kpi-link>
                 <p class="text-[11px] font-bold uppercase tracking-wide text-base-content/50">Fleet Health</p>
                 <div class="mt-2 flex items-end gap-2"><span class="font-mono text-3xl font-bold">{{ devices_live }}</span><span class="pb-1 text-xs font-semibold text-base-content/50">live</span></div>
-                <p class="mt-1 text-xs text-base-content/50">{{ devices_attention }} need attention</p>
+                <p class="mt-1 text-xs text-base-content/50">{{ devices_attention }} devices need attention</p>
             </a>
             <a href="{% url 'web_team:devices:gateway_list' team.slug %}" class="rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm transition hover:border-primary/40" hx-boost="false" data-command-center-kpi-link>
                 <p class="text-[11px] font-bold uppercase tracking-wide text-base-content/50">Gateways</p>
                 <div class="mt-2 flex items-end gap-2"><span class="font-mono text-3xl font-bold">{{ gateways_online }}</span><span class="pb-1 text-xs font-semibold text-base-content/50">online</span></div>
                 <p class="mt-1 text-xs text-base-content/50">{{ gateways_offline }} offline</p>
             </a>
-            <a href="{% url 'web_team:alerts:alert_list' team.slug %}" class="rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm transition hover:border-red-400/50" hx-boost="false" data-command-center-kpi-link>
+            <a href="{% if active_rule_count %}{% url 'web_team:alerts:alert_list' team.slug %}{% else %}{% url 'web_team:alerts:rule_list' team.slug %}{% endif %}" class="rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm transition hover:border-red-400/50" hx-boost="false" data-command-center-kpi-link>
                 <p class="text-[11px] font-bold uppercase tracking-wide text-base-content/50">Active Alerts</p>
                 <div class="mt-2 font-mono text-3xl font-bold {% if active_alerts_count %}text-red-600{% endif %}">{{ active_alerts_count }}</div>
-                <p class="mt-1 text-xs text-base-content/50">live incidents</p>
+                <p class="mt-1 text-xs {% if active_rule_count %}text-base-content/50{% else %}font-semibold text-amber-600{% endif %}">{% if active_rule_count %}live incidents{% else %}No monitoring rules yet{% endif %}</p>
             </a>
             <a href="{% url 'web_team:maintenance:ticket_list' team.slug %}" class="rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm transition hover:border-amber-400/50" hx-boost="false" data-command-center-kpi-link>
                 <p class="text-[11px] font-bold uppercase tracking-wide text-base-content/50">Maintenance</p>
@@ -146,6 +136,7 @@
             <button type="button" class="btn btn-ghost btn-square btn-sm rounded-md" data-close-panel-drawer aria-label="Close add panels"><i class="fa fa-xmark"></i></button>
         </header>
         <div class="flex-1 overflow-auto p-4">
+            <p id="command-center-no-hidden-panels" class="hidden rounded-md border border-base-content/10 p-5 text-sm text-base-content/60">All available panels are already on your dashboard.</p>
             <div class="space-y-2">
                 {% for panel in command_center_panels %}
                 <div class="rounded-md border border-base-content/10 p-4" data-panel-catalog-id="{{ panel.id }}">

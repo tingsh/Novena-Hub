@@ -1,8 +1,9 @@
 import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Count, Sum
+from django.db.models import Avg, Count
 from django.db.models.functions import TruncDate
 from django.urls import reverse
 from django.utils import timezone
@@ -132,6 +133,10 @@ def _format_value(value):
     if isinstance(value, float):
         return f"{value:.1f}"
     return str(value)
+
+
+def _display_unit(unit):
+    return {"degC": "°C", "degF": "°F"}.get(unit, unit)
 
 
 def _recent_keys(device):
@@ -269,7 +274,7 @@ def _latest_readings_for_device(device, limit=4):
                 {
                     "key": item["key"],
                     "label": item["label"],
-                    "unit": item["unit"],
+                    "unit": _display_unit(item["unit"]),
                     "value": value,
                     "display_value": _format_value(value),
                     "timestamp": point.timestamp if point else None,
@@ -324,7 +329,7 @@ def _trend_candidates(devices):
 def _build_operations_trend(team, devices):
     from apps.telemetry.models import TelemetryData
 
-    cache_key = f"dashboard_{team.id}_operations_trend"
+    cache_key = f"dashboard_{team.id}_operations_trend_v2"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -333,7 +338,9 @@ def _build_operations_trend(team, devices):
     start = now - datetime.timedelta(hours=24)
     selected = None
     for device, item, classification, _profile_priority in _trend_candidates(devices):
-        if TelemetryData.objects.filter(device=device, key=item["key"], timestamp__gte=start).exists():
+        if TelemetryData.objects.filter(
+            device=device, key=item["key"], value_numeric__isnull=False, timestamp__gte=start
+        ).exists():
             selected = (device, item, classification)
             break
 
@@ -350,38 +357,52 @@ def _build_operations_trend(team, devices):
         cache.set(cache_key, trend, 60)
         return trend
 
-    _device, item, classification = selected
+    device, item, _classification = selected
+    try:
+        site_timezone = ZoneInfo(device.site.timezone)
+    except (ValueError, ZoneInfoNotFoundError):
+        site_timezone = timezone.get_current_timezone()
     labels = []
     values = []
+    cumulative = item["key"] == "energy"
     for i in range(23, -1, -1):
         hour_start = now - datetime.timedelta(hours=i + 1)
         hour_end = now - datetime.timedelta(hours=i)
-        value = (
-            TelemetryData.objects.filter(
-                device__team=team, key=item["key"], timestamp__gte=hour_start, timestamp__lt=hour_end
-            ).aggregate(Sum("value_numeric"))["value_numeric__sum"]
-            or 0
+        points = TelemetryData.objects.filter(
+            device=device,
+            key=item["key"],
+            value_numeric__isnull=False,
+            timestamp__gte=hour_start,
+            timestamp__lt=hour_end,
         )
-        labels.append(hour_end.strftime("%H:%M"))
-        values.append(round(float(value), 2))
+        value = (
+            points.order_by("-timestamp").values_list("value_numeric", flat=True).first()
+            if cumulative
+            else points.aggregate(average=Avg("value_numeric"))["average"]
+        )
+        labels.append(timezone.localtime(hour_end, site_timezone).strftime("%H:%M"))
+        values.append(round(float(value), 2) if value is not None else None)
+
+    observed = [value for value in values if value is not None]
 
     trend = {
         "title": "Operations Trend",
-        "subtitle": f"{item['label']} across {classification['label']} assets",
+        "subtitle": f"{item['label']} · {device.name} · hourly {'last reading' if cumulative else 'average'}",
         "key": item["key"],
-        "unit": item.get("unit", ""),
+        "unit": _display_unit(item.get("unit", "")),
+        "time_zone": str(site_timezone),
         "labels": labels,
         "values": values,
-        "current": values[-1] if values else None,
-        "minimum": min(values) if values else None,
-        "maximum": max(values) if values else None,
+        "current": observed[-1] if observed else None,
+        "minimum": min(observed) if observed else None,
+        "maximum": max(observed) if observed else None,
         "empty": False,
     }
     cache.set(cache_key, trend, 60)
     return trend
 
 
-def _build_attention_items(team, devices, gateways, active_alerts, open_tickets, overdue_pms):
+def _build_attention_items(team, devices, gateways, active_alerts, open_tickets, overdue_pms, active_rule_count):
     items = []
     for device in devices:
         state = device.freshness
@@ -399,12 +420,12 @@ def _build_attention_items(team, devices, gateways, active_alerts, open_tickets,
                     "action_label": "Inspect device",
                 }
             )
-        elif state.status == "offline" and gateway_state and gateway_state.status == "live":
+        elif state.status == "delayed":
             items.append(
                 {
                     "tone": "amber",
                     "title": device.name,
-                    "message": "Gateway online - device offline",
+                    "message": state.display,
                     "kind": "Field device",
                     "device": device,
                     "occurred_at": device.last_telemetry_at,
@@ -412,6 +433,33 @@ def _build_attention_items(team, devices, gateways, active_alerts, open_tickets,
                     "action_label": "Inspect device",
                 }
             )
+        elif state.status == "offline":
+            items.append(
+                {
+                    "tone": "amber",
+                    "title": device.name,
+                    "message": "Gateway online - device offline"
+                    if gateway_state and gateway_state.status == "live"
+                    else state.display,
+                    "kind": "Field device",
+                    "device": device,
+                    "occurred_at": device.last_telemetry_at,
+                    "action_url": reverse("web_team:devices:device_detail", args=[team.slug, device.pk]),
+                    "action_label": "Inspect device",
+                }
+            )
+    if devices and active_rule_count == 0:
+        items.append(
+            {
+                "tone": "amber",
+                "title": "Alert monitoring not set up",
+                "message": "No active monitoring rules are checking equipment thresholds yet.",
+                "kind": "Monitoring setup",
+                "occurred_at": None,
+                "action_url": reverse("web_team:alerts:rule_list", args=[team.slug]),
+                "action_label": "Review suggested rules",
+            }
+        )
     for gateway in gateways:
         state = gateway.freshness
         if state.status == "offline":
@@ -469,7 +517,7 @@ def _build_attention_items(team, devices, gateways, active_alerts, open_tickets,
 
 
 def build_team_operations_dashboard(team, *, include_impact=False, impact_site_ids=None):
-    from apps.alerts.models import Alert
+    from apps.alerts.models import Alert, AlertRule
     from apps.automations.models import Automation
     from apps.devices.models import Device, Gateway, Site
     from apps.events.models import ActivityLog
@@ -496,6 +544,7 @@ def build_team_operations_dashboard(team, *, include_impact=False, impact_site_i
         .order_by("-triggered_at")
     )
     active_alerts_count = active_alerts_qs.count()
+    active_rule_count = AlertRule.objects.filter(team=team, is_active=True).count()
     active_alerts = list(active_alerts_qs[:10])
     recent_alerts = list(
         Alert.objects.filter(device__team=team).select_related("device", "rule").order_by("-triggered_at")[:5]
@@ -565,6 +614,7 @@ def build_team_operations_dashboard(team, *, include_impact=False, impact_site_i
         "gateways_online": gateway_health.get("live", 0),
         "gateways_offline": gateway_health.get("offline", 0),
         "active_alerts_count": active_alerts_count,
+        "active_rule_count": active_rule_count,
         "open_tickets": open_tickets,
         "overdue_pms": overdue_pms,
         "active_automations": active_automations,
@@ -574,7 +624,9 @@ def build_team_operations_dashboard(team, *, include_impact=False, impact_site_i
         "operations_trend": _build_operations_trend(team, devices),
         "recent_alerts": recent_alerts,
         "top_devices": top_devices,
-        "attention_items": _build_attention_items(team, devices, gateways, active_alerts, open_tickets, overdue_pms),
+        "attention_items": _build_attention_items(
+            team, devices, gateways, active_alerts, open_tickets, overdue_pms, active_rule_count
+        ),
         "site_cards": site_cards,
         "logs": ActivityLog.objects.filter(team=team).order_by("-timestamp")[:15],
         "impact_summary": impact_summary,

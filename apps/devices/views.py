@@ -762,8 +762,17 @@ class DeviceListView(PermissionRequiredMixin, ListView):
     template_name = "devices/device_list.html"
     context_object_name = "devices"
 
+    def get_queryset(self):
+        return super().get_queryset().select_related("site", "gateway", "template")
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        selected = self.request.GET.get("status", "all")
+        if selected not in {"all", "live", "delayed", "offline", "alarm"}:
+            selected = "all"
+        if selected != "all":
+            context["devices"] = [device for device in context["devices"] if device.freshness.status == selected]
+        context["status_filter"] = selected
         context["active_tab"] = "devices"
         return context
 

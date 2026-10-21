@@ -6,7 +6,7 @@
             <div class="min-w-0 flex-1">
                 <div class="flex items-start justify-between gap-3"><p class="truncate text-sm font-semibold">{{ item.title }}</p>{% if item.occurred_at %}<time class="panel-expanded-only shrink-0 text-[10px] text-base-content/40">{{ item.occurred_at|timesince }} ago</time>{% endif %}</div>
                 <p class="mt-1 text-xs text-base-content/55">{{ item.message }}</p>
-                <div class="mt-2 flex items-center justify-between gap-3"><p class="text-[10px] font-bold uppercase tracking-wide text-base-content/40">{{ item.kind }}</p><a href="{{ item.action_url }}" class="panel-expanded-only text-xs font-bold text-primary">{{ item.action_label }}</a></div>
+                <div class="mt-2 flex items-center justify-between gap-3"><p class="text-[10px] font-bold uppercase tracking-wide text-base-content/40">{{ item.kind }}</p><a href="{{ item.action_url }}" class="text-xs font-bold text-primary">{{ item.action_label }}</a></div>
             </div>
         </div>
     </article>

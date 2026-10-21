@@ -41,6 +41,7 @@ class TeamHomeRoutingTest(TestCase):
         self.assertContains(response, '<option value="60" selected>60s</option>', html=True)
         self.assertContains(response, 'id="fleet-refresh-button"')
         self.assertContains(response, 'hx-trigger="fleetSummaryRefresh from:body"')
+        self.assertContains(response, 'id="dashboard-live-container" hx-boost="false"')
         self.assertNotContains(response, 'hx-trigger="every 60s"')
         self.assertNotContains(response, "new WebSocket")
         self.assertNotContains(response, "cdn.jsdelivr.net/npm/chart.js")

@@ -1,17 +1,18 @@
 <div class="flex h-full flex-col p-5">
     <div class="flex items-start justify-between gap-3">
         <p class="text-xs text-base-content/50">{{ operations_trend.subtitle }}</p>
-        {% if operations_trend.unit %}<span class="rounded-md bg-base-200 px-2 py-1 text-[10px] font-bold uppercase text-base-content/50">{{ operations_trend.unit }}</span>{% endif %}
+        {% if operations_trend.unit %}<span class="rounded-md bg-base-200 px-2 py-1 text-[10px] font-bold text-base-content/50">{{ operations_trend.unit }}</span>{% endif %}
     </div>
     {% if operations_trend.empty %}
     <div class="flex flex-1 items-center justify-center text-center"><div><i class="fa fa-chart-line text-3xl text-base-content/20"></i><p class="mt-3 text-sm font-semibold text-base-content/50">Waiting for numeric telemetry</p></div></div>
     {% else %}
     <div class="panel-expanded-only mt-4 grid grid-cols-3 gap-3 border-y border-base-content/10 py-3">
-        <div><p class="text-[9px] font-bold uppercase text-base-content/40">Current</p><p class="mt-1 font-mono text-sm font-bold">{{ operations_trend.current }}</p></div>
-        <div><p class="text-[9px] font-bold uppercase text-base-content/40">Minimum</p><p class="mt-1 font-mono text-sm font-bold">{{ operations_trend.minimum }}</p></div>
-        <div><p class="text-[9px] font-bold uppercase text-base-content/40">Maximum</p><p class="mt-1 font-mono text-sm font-bold">{{ operations_trend.maximum }}</p></div>
+        <div><p class="text-[9px] font-bold uppercase text-base-content/40">Latest hour</p><p class="mt-1 font-mono text-sm font-bold">{{ operations_trend.current }}</p></div>
+        <div><p class="text-[9px] font-bold uppercase text-base-content/40">Lowest hour</p><p class="mt-1 font-mono text-sm font-bold">{{ operations_trend.minimum }}</p></div>
+        <div><p class="text-[9px] font-bold uppercase text-base-content/40">Highest hour</p><p class="mt-1 font-mono text-sm font-bold">{{ operations_trend.maximum }}</p></div>
     </div>
     <div class="min-h-0 flex-1 pt-3"><canvas id="operations-trend-chart"></canvas></div>
+    <p class="mt-1 text-[10px] text-base-content/40">Past 24 hours · {{ operations_trend.time_zone }} time · gaps mean no readings</p>
     {{ operations_trend.labels|json_script:"operations-trend-labels" }}
     {{ operations_trend.values|json_script:"operations-trend-values" }}
     {% endif %}

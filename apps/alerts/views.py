@@ -29,6 +29,7 @@ class AlertListView(PermissionRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "alerts"
         context["rules"] = AlertRule.objects.filter(team=self.request.team)
+        context["active_rule_count"] = context["rules"].filter(is_active=True).count()
         return context
 
 
