@@ -15,6 +15,9 @@
         
         <form method="post" class="p-6">
             {% csrf_token %}
+            <div class="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                This link shows a read-only summary of <strong>all sites</strong> and active alerts in this account to anyone who has its URL. Add a password and expiry if it will be shared outside your team. New links stay inactive until you choose to enable them.
+            </div>
             <div class="space-y-6">
                 {% render_field form.name %}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -26,7 +29,7 @@
             
             <div class="mt-8 flex justify-end space-x-3 border-t border-gray-100 dark:border-gray-700 pt-6">
                 <a href="{% url 'web_team:dashboard_team:list' request.team.slug %}" class="btn btn-outline">Cancel</a>
-                <button type="submit" class="btn btn-primary">Save Link</button>
+                <button type="submit" class="btn btn-primary">{% if form.instance.pk %}Save Changes{% else %}Save Link{% endif %}</button>
             </div>
         </form>
     </div>

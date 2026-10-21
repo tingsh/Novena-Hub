@@ -210,59 +210,26 @@ class SiteDetailView(PermissionRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "sites"
         from apps.alerts.models import Alert
+        from apps.devices.datapoint_maps import effective_register_map
         from apps.telemetry.anomaly import get_ai_insights
         from apps.telemetry.services import get_site_summary_stats
 
         context["stats"] = get_site_summary_stats(self.object)
+        site_devices = list(self.object.devices.select_related("template", "gateway"))
+        context["direct_devices"] = [device for device in site_devices if device.gateway_id is None]
+        energy_keys = {"active_power", "power", "energy", "total_energy", "energy_kwh"}
+        context["has_energy_readings"] = any(
+            device.energy_category != "none" or energy_keys.intersection(effective_register_map(device))
+            for device in site_devices
+        )
 
-        # Process discovery and conflicts for UI
-        for gateway in self.object.gateways.all():
-            port_map = {}
-
-            # 1. Map registered devices by their port (interface key)
-            for device in gateway.devices.all():
-                if device.port:
-                    port_map[device.port] = {"status": "registered", "device": device}
-
-            # 2. Layer discovery data — use interface name as port key
-            discovery_data = gateway.discovery_data or {}
-            discovery_list = discovery_data.get("devices", [])
-            interfaces = discovery_data.get("interfaces", [])
-
-            for disc in discovery_list:
-                # Use interface as the port key (e.g., "/dev/ttyUSB0", "192.168.1.100:502")
-                port_key = disc.get("interface") or disc.get("port")
-                if not port_key:
-                    continue
-                port_key = str(port_key)
-
-                if port_key in port_map:
-                    # Check for conflict
-                    reg_device = port_map[port_key]["device"]
-                    sig = disc.get("signature", "")
-                    if (
-                        sig
-                        and sig.lower() not in reg_device.name.lower()
-                        and sig.lower() not in reg_device.device_type.lower()
-                    ):
-                        port_map[port_key]["status"] = "conflict"
-                        port_map[port_key]["discovered"] = disc
-                else:
-                    port_map[port_key] = {"status": "discovered", "discovered": disc}
-
-            # 3. Add empty slots for interfaces with no devices/discoveries
-            for iface in interfaces:
-                iface_name = iface.get("name", "")
-                if iface_name and iface_name not in port_map:
-                    port_map[iface_name] = {"status": "empty", "interface": iface}
-
-            # Attach to the gateway object for use in templates
-            gateway.computed_port_map = port_map
-            gateway.computed_interfaces = interfaces
+        # The site inventory shows configured equipment. Discovery snapshots are historical
+        # and must not be presented as a current scan or a live hardware conflict.
+        context["gateway_sections"] = list(self.object.gateways.prefetch_related("devices"))
 
         # Aggregate insights for all devices in the site
         site_insights = []
-        for device in self.object.devices.all():
+        for device in site_devices:
             site_insights.extend(get_ai_insights(device))
         context["ai_insights"] = site_insights[:3]  # Show top 3
 
@@ -793,6 +760,9 @@ class DeviceDetailView(PermissionRequiredMixin, DetailView):
         context.update(dashboard_context)
         context["ai_insights"] = get_ai_insights(self.object)
         context["recent_commands"] = self.object.commands.all().order_by("-requested_at")[:10]
+        from .freshness import device_freshness_thresholds
+
+        context["device_delayed_seconds"], context["device_offline_seconds"] = device_freshness_thresholds(self.object)
         context["remote_control_enabled"] = (
             self.request.team.remote_control_mode == self.request.team.RemoteControlMode.CONTROLLED
         )

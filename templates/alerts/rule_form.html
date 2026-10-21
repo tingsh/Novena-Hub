@@ -32,7 +32,7 @@
                 <div>
                     <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Rule Name</label>
                     {{ form.name.errors }}
-                    <input type="text" name="name" value="{{ form.name.value|default:'' }}" class="input input-bordered w-full rounded-2xl font-bold" placeholder="e.g., Critical Boiler Temp" required>
+                    <input type="text" name="name" value="{{ form.name.value|default:'' }}" class="input input-bordered w-full rounded-2xl font-bold" placeholder="e.g., Cold room high temperature" required>
                 </div>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -65,7 +65,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-base-200/50 rounded-2xl border border-base-content/5">
                     <!-- Site -->
                     <div>
-                        <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Filter by Site</label>
+                        <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Site to monitor</label>
                         <select name="site" class="select select-bordered w-full rounded-2xl font-bold">
                             {% for choice in form.site.field.choices %}
                                 <option value="{{ choice.0 }}" {% if form.site.value|slugify == choice.0|slugify %}selected{% endif %}>{{ choice.1 }}</option>
@@ -74,7 +74,7 @@
                     </div>
                     <!-- Device -->
                     <div>
-                        <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Filter by Device</label>
+                        <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Equipment to monitor</label>
                         <select name="device" class="select select-bordered w-full rounded-2xl font-bold">
                             {% for choice in form.device.field.choices %}
                                 <option value="{{ choice.0 }}" {% if form.device.value|slugify == choice.0|slugify %}selected{% endif %}>{{ choice.1 }}</option>

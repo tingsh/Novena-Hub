@@ -69,6 +69,11 @@ class AutomationCreateView(PermissionRequiredMixin, CreateView):
     form_class = AutomationForm
     template_name = "automations/automation_form.html"
 
+    def get_initial(self):
+        initial = super().get_initial()
+        initial["is_active"] = False
+        return initial
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         if self.request.POST:
@@ -105,17 +110,16 @@ class AutomationCreateView(PermissionRequiredMixin, CreateView):
         conditions = context["conditions"]
         actions = context["actions"]
 
+        if not conditions.is_valid() or not actions.is_valid():
+            return self.form_invalid(form)
+
         with transaction.atomic():
             form.instance.team = self.request.team
             self.object = form.save()
-
-            if conditions.is_valid() and actions.is_valid():
-                conditions.instance = self.object
-                conditions.save()
-                actions.instance = self.object
-                actions.save()
-            else:
-                return self.form_invalid(form)
+            conditions.instance = self.object
+            conditions.save()
+            actions.instance = self.object
+            actions.save()
 
         messages.success(self.request, "Automation created successfully.")
         return redirect(self.get_success_url())
@@ -173,13 +177,13 @@ class AutomationUpdateView(PermissionRequiredMixin, UpdateView):
         conditions = context["conditions"]
         actions = context["actions"]
 
+        if not conditions.is_valid() or not actions.is_valid():
+            return self.form_invalid(form)
+
         with transaction.atomic():
             self.object = form.save()
-            if conditions.is_valid() and actions.is_valid():
-                conditions.save()
-                actions.save()
-            else:
-                return self.form_invalid(form)
+            conditions.save()
+            actions.save()
 
         messages.success(self.request, "Automation updated successfully.")
         return redirect(self.get_success_url())

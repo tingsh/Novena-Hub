@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
@@ -38,7 +39,8 @@ def public_dashboard(request, token):
 
     # Gather data for the team's dashboard
     # Let's get the summary stats, active alerts, and site statuses
-    from apps.alerts.models import Alert
+    from apps.alerts.models import Alert, AlertRule
+    from apps.devices.datapoint_maps import effective_register_map
     from apps.telemetry.services import get_site_summary_stats
 
     # Kiosk mode hides navigation and applies tight padding
@@ -48,7 +50,18 @@ def public_dashboard(request, token):
     site_stats = []
     for site in sites:
         stats = get_site_summary_stats(site)
-        site_stats.append({"site": site, "stats": stats})
+        devices = list(site.devices.select_related("template", "gateway"))
+        offline_count = sum(device.freshness.status != "live" for device in devices)
+        monitoring_active = AlertRule.objects.filter(team=link.team, is_active=True).filter(
+            Q(site=site) | Q(device__site=site) | Q(site__isnull=True, device__isnull=True)
+        ).exists()
+        energy_keys = {"energy", "energy_kwh", "total_energy", "active_power", "power"}
+        energy_available = any(
+            device.energy_category != "none" or energy_keys.intersection(effective_register_map(device))
+            for device in devices
+        )
+        site_stats.append({"site": site, "stats": stats, "offline_count": offline_count,
+                           "monitoring_active": monitoring_active, "energy_available": energy_available})
 
     active_alerts = Alert.objects.filter(device__team=link.team, status="active").order_by("-triggered_at")[:10]
 

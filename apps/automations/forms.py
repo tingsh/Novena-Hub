@@ -63,6 +63,7 @@ class AutomationActionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["action_type"].label = "What should Novena do?"
         self.fields["action_type"].choices = (
+            ("", "Choose an action"),
             ("send_command", "Create an equipment action proposal"),
             ("notify_email", "Send an email notification"),
             ("webhook", "Notify an external system (technician setup)"),

@@ -22,7 +22,7 @@
         <p class="mt-1 text-sm text-base-content/55">These are editable suggestions. No rule is created until you review and save one.</p>
         <div class="mt-4 flex flex-wrap gap-2">
             {% for suggestion in suggestions %}
-            <a href="{{ suggestion.url }}" class="btn btn-outline btn-sm">{{ suggestion.device.name }} · {{ suggestion.preset.telemetry_key }} {{ suggestion.preset.condition }} {{ suggestion.preset.threshold }}</a>
+            <a href="{{ suggestion.url }}" class="btn btn-outline btn-sm">{{ suggestion.device.name }} · {{ suggestion.display }}</a>
             {% endfor %}
         </div>
     </section>

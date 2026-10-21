@@ -107,7 +107,11 @@ def telemetry_analyzer(request, team_slug, device_id):
     """
     device = get_object_or_404(Device, id=device_id, team__slug=team_slug)
 
-    context = {"device": device, "team": request.team, "active_tab": "devices", "page_title": f"Analyze: {device.name}"}
+    context = {
+        "device": device, "team": request.team, "active_tab": "devices",
+        "page_title": f"Analyze: {device.name}",
+        "retention_days": get_retention_limit_days(request.team),
+    }
     return render(request, "telemetry/analyzer.html", context)
 
 
@@ -292,6 +296,7 @@ def _site_profile_report_rows(site, days):
     from django.utils import timezone
 
     from apps.alerts.models import Alert
+    from apps.devices.freshness import compact_timesince, device_freshness_thresholds
     from apps.maintenance.models import MaintenanceTicket, PreventiveSchedule
 
     cutoff = timezone.now() - timezone.timedelta(days=days)
@@ -300,6 +305,7 @@ def _site_profile_report_rows(site, days):
     rows = []
 
     for device in devices:
+        delayed_seconds, offline_seconds = device_freshness_thresholds(device)
         register_map = effective_register_map(device)
         for key in profile.key_priority:
             if register_map and key not in register_map:
@@ -313,13 +319,28 @@ def _site_profile_report_rows(site, days):
                 continue
             value = _telemetry_point_value(latest)
             meta = register_map.get(key, {}) if isinstance(register_map, dict) else {}
+            if isinstance(value, bool):
+                display_value = ("Open" if value else "Closed") if key == "door_open" else ("On" if value else "Off")
+            elif isinstance(value, int | float):
+                display_value = f"{value:.2f}".rstrip("0").rstrip(".")
+            else:
+                display_value = value if value is not None else "—"
+            age_seconds = max(0, int((timezone.now() - latest.timestamp).total_seconds()))
+            if age_seconds >= offline_seconds:
+                reading_status = "Offline"
+            elif age_seconds >= delayed_seconds:
+                reading_status = "Delayed"
+            else:
+                reading_status = "Live"
             rows.append(
                 {
                     "device": device,
                     "metric": meta.get("label", key.replace("_", " ").title()),
                     "key": key,
-                    "value": value,
-                    "unit": meta.get("unit", ""),
+                    "value": display_value,
+                    "unit": {"degC": "°C", "degF": "°F"}.get(meta.get("unit"), meta.get("unit", "")),
+                    "reading_status": reading_status,
+                    "reading_age": compact_timesince(latest.timestamp),
                     "timestamp": latest.timestamp,
                     "timestamp_display": format_site_datetime(latest.timestamp, site),
                 }
@@ -364,7 +385,7 @@ def export_site_profile_report_csv(request, team_slug, site_id):
     response = HttpResponse(content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="{site.name}_{report["profile"].key}_report.csv"'
     writer = csv.writer(response)
-    writer.writerow(["Site", "Profile", "Device", "Metric", "Key", "Value", "Unit", "Timestamp"])
+    writer.writerow(["Site", "Profile", "Device", "Metric", "Key", "Value", "Unit", "Timestamp", "Reading Status"])
     for row in report["rows"]:
         writer.writerow(
             [
@@ -376,6 +397,7 @@ def export_site_profile_report_csv(request, team_slug, site_id):
                 row["value"],
                 row["unit"],
                 row["timestamp_display"],
+                row["reading_status"],
             ]
         )
     return response

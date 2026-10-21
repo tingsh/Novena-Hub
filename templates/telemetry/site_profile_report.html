@@ -43,19 +43,21 @@
                         <th>Metric</th>
                         <th>Value</th>
                         <th>Last Seen</th>
+                        <th>Reading Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in rows %}
                     <tr>
                         <td class="font-bold">{{ row.device.name }}</td>
-                        <td>{{ row.metric }} <span class="text-base-content/40 font-mono text-xs">{{ row.key }}</span></td>
+                        <td>{{ row.metric }}</td>
                         <td class="font-mono">{{ row.value }} {{ row.unit }}</td>
                         <td>{{ row.timestamp_display }}</td>
+                        <td><span class="font-semibold {% if row.reading_status == 'Live' %}text-green-600{% elif row.reading_status == 'Delayed' %}text-amber-600{% else %}text-gray-500{% endif %}">{{ row.reading_status }}</span> · {{ row.reading_age }} ago</td>
                     </tr>
                     {% empty %}
                     <tr>
-                        <td colspan="4" class="py-10 text-center text-sm text-base-content/50">No profile readings yet. Once telemetry arrives, Novena will populate this report automatically.</td>
+                        <td colspan="5" class="py-10 text-center text-sm text-base-content/50">No profile readings yet. Once telemetry arrives, Novena will populate this report automatically.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

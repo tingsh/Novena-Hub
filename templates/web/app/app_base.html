@@ -7,7 +7,7 @@
 {% block body %}
   {% block notifications %}
   {% endblock %}
-  <section class="section"
+  <section class="section" hx-boost="false"
            x-data="{ sidebarOpen: window.innerWidth >= 768 }"
            @toggle-sidebar.window="sidebarOpen = !sidebarOpen"
            @resize.window="if (window.innerWidth < 768) sidebarOpen = false">

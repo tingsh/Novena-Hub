@@ -544,7 +544,8 @@ def build_team_operations_dashboard(team, *, include_impact=False, impact_site_i
         .order_by("-triggered_at")
     )
     active_alerts_count = active_alerts_qs.count()
-    active_rule_count = AlertRule.objects.filter(team=team, is_active=True).count()
+    active_rules = list(AlertRule.objects.filter(team=team, is_active=True).select_related("device"))
+    active_rule_count = len(active_rules)
     active_alerts = list(active_alerts_qs[:10])
     recent_alerts = list(
         Alert.objects.filter(device__team=team).select_related("device", "rule").order_by("-triggered_at")[:5]
@@ -583,6 +584,12 @@ def build_team_operations_dashboard(team, *, include_impact=False, impact_site_i
                 "site": site,
                 "devices_count": len(site_devices),
                 "gateways_count": len(site_gateways),
+                "monitoring_active": any(
+                    rule.site_id == site.id
+                    or (rule.device_id and rule.device.site_id == site.id)
+                    or (rule.site_id is None and rule.device_id is None)
+                    for rule in active_rules
+                ),
                 "attention_count": sum(
                     1 for device in site_devices if device.freshness.status in {"delayed", "offline", "alarm"}
                 )

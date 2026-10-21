@@ -20,15 +20,16 @@
         <div>
             <h1 class="text-4xl font-black text-base-content font-heading tracking-tighter">History Analyzer</h1>
             <p class="text-sm text-base-content/50 mt-1 font-light">Review historical readings for <span class="font-bold">{{ device.name }}</span>.</p>
+            <p class="mt-1 text-xs text-base-content/45">History available for {{ retention_days }} days on your current plan.</p>
         </div>
         <div class="flex items-center space-x-4">
             <div class="bg-base-100 p-1.5 rounded-2xl border border-base-content/5 shadow-sm flex space-x-1">
                 <button onclick="setRange(24)" class="range-btn active text-[10px] font-black px-4 py-2 rounded-xl transition-all" data-hours="24">24H</button>
                 <button onclick="setRange(168)" class="range-btn text-[10px] font-black px-4 py-2 rounded-xl transition-all" data-hours="168">7D</button>
-                <button onclick="setRange(720)" class="range-btn text-[10px] font-black px-4 py-2 rounded-xl transition-all" data-hours="720">30D</button>
+                <button onclick="setRange(720)" class="range-btn text-[10px] font-black px-4 py-2 rounded-xl transition-all disabled:cursor-not-allowed disabled:opacity-40" data-hours="720" {% if retention_days < 30 %}disabled title="Your plan includes {{ retention_days }} days of history"{% endif %}>30D</button>
             </div>
             <button onclick="exportCSV()" class="btn btn-primary rounded-2xl font-black shadow-lg shadow-indigo-500/30">
-                <i class="fa fa-download mr-2"></i> EXPORT CSV
+                <i class="fa fa-download mr-2"></i> EXPORT ALL METRICS CSV
             </button>
         </div>
     </div>
@@ -64,7 +65,7 @@
                     </div>
                     <div>
                         <h2 id="active-metric-label" class="text-xl font-black text-base-content">Initializing...</h2>
-                        <p id="active-metric-sub" class="text-[10px] font-black text-base-content/30 uppercase tracking-widest">Time-Series Stream</p>
+                        <p id="active-metric-sub" class="text-[10px] font-black text-base-content/30 uppercase tracking-widest">Historical readings · {{ device.site.timezone }} time</p>
                     </div>
                 </div>
                 <div id="chart-stats" class="hidden md:flex space-x-8">
@@ -106,6 +107,9 @@
     let currentHours = 24;
     let currentMetric = null;
     let chart = null;
+    let historyRequest = 0;
+    const siteTimezone = '{{ device.site.timezone|escapejs }}';
+    const displayUnit = unit => ({degC: '°C', degF: '°F'})[unit] || unit || '';
 
     async function loadMetrics() {
         const response = await fetch('{% url "web_team:telemetry:device_metrics_api" request.team.slug device.id %}');
@@ -120,7 +124,7 @@
             btn.onclick = () => selectMetric(m, btn);
             btn.innerHTML = `
                 <span class="text-sm font-bold text-base-content group-hover:text-indigo-500">${m.label}</span>
-                <span class="text-[10px] font-black opacity-30 uppercase">${m.unit}</span>
+                <span class="text-[10px] font-black opacity-30 uppercase">${displayUnit(m.unit)}</span>
             `;
             container.appendChild(btn);
         });
@@ -145,6 +149,7 @@
 
     async function refreshChart() {
         if (!currentMetric) return;
+        const requestId = ++historyRequest;
         
         const loader = document.getElementById('chart-loader');
         loader.classList.remove('hidden');
@@ -155,13 +160,15 @@
         try {
             const url = `{% url "web_team:telemetry:device_telemetry_history_api" request.team.slug device.id %}?key=${currentMetric.key}&hours=${currentHours}`;
             const response = await fetch(url);
+            if (!response.ok) throw new Error(`History request failed: ${response.status}`);
             const data = await response.json();
-
-            updateChart(data.labels, data.values, currentMetric.unit);
+            if (requestId !== historyRequest) return;
+            updateChart(data.labels, data.values, displayUnit(currentMetric.unit));
         } catch (e) {
             console.error(e);
+            if (requestId === historyRequest) document.getElementById('chart-stats').textContent = 'History is temporarily unavailable.';
         } finally {
-            loader.classList.add('hidden');
+            if (requestId === historyRequest) loader.classList.add('hidden');
         }
     }
 
@@ -173,10 +180,10 @@
         chart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: labels.map(l => new Date(l).toLocaleString()),
+                labels: labels.map(l => new Date(l).toLocaleString(undefined, {timeZone: siteTimezone})),
                 datasets: [{
                     label: currentMetric.label,
-                    data: values,
+                    data: values.map(value => typeof value === 'boolean' ? Number(value) : value),
                     borderColor: '#6366f1',
                     backgroundColor: 'rgba(99, 102, 241, 0.05)',
                     borderWidth: 3,
@@ -221,17 +228,27 @@
         });
 
         // Update Stats
-        if (values.length > 0) {
-            const sum = values.reduce((a, b) => a + b, 0);
-            const avg = sum / values.length;
-            const max = Math.max(...values);
-            const min = Math.min(...values);
+        const stats = document.getElementById('chart-stats');
+        const numericValues = values.filter(value => typeof value === 'number' && Number.isFinite(value));
+        const booleanValues = values.filter(value => typeof value === 'boolean');
+        if (numericValues.length) {
+            const sum = numericValues.reduce((a, b) => a + b, 0);
+            const avg = sum / numericValues.length;
+            const max = Math.max(...numericValues);
+            const min = Math.min(...numericValues);
 
-            document.getElementById('chart-stats').innerHTML = `
+            stats.innerHTML = `
                 <div><p class="text-[9px] font-black text-base-content/30 uppercase tracking-widest">Average</p><p class="text-sm font-bold text-base-content">${avg.toFixed(2)} ${unit}</p></div>
                 <div><p class="text-[9px] font-black text-base-content/30 uppercase tracking-widest">Peak</p><p class="text-sm font-bold text-base-content">${max.toFixed(2)} ${unit}</p></div>
                 <div><p class="text-[9px] font-black text-base-content/30 uppercase tracking-widest">Base</p><p class="text-sm font-bold text-base-content">${min.toFixed(2)} ${unit}</p></div>
             `;
+        } else if (booleanValues.length) {
+            const onCount = booleanValues.filter(Boolean).length;
+            const trueLabel = currentMetric.key === 'door_open' ? 'Open' : 'On';
+            const falseLabel = currentMetric.key === 'door_open' ? 'Closed' : 'Off';
+            stats.textContent = `${onCount} ${trueLabel} · ${booleanValues.length - onCount} ${falseLabel} samples`;
+        } else {
+            stats.textContent = 'No numeric readings in this period';
         }
     }
 

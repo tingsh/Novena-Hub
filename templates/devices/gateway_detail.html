@@ -88,7 +88,7 @@
             {% elif gateway.lifecycle_status == "bootstrap_seen" or gateway.lifecycle_status == "activating" %}Novena is securely preparing this Gateway. Keep it powered on and connected.
             {% elif gateway.lifecycle_status == "commissioning" %}Novena is validating and applying the selected equipment settings. Keep the Gateway online.
             {% elif gateway.lifecycle_status == "active" %}The Gateway is managed by Novena and sending equipment data. No action is required.
-            {% elif gateway.lifecycle_status == "online" %}The secure connection is ready. Continue by adding or discovering equipment.
+            {% elif gateway.lifecycle_status == "online" %}{% if gateway.devices.count %}The Gateway is connected with {{ gateway.devices.count }} configured equipment. Check each equipment status below before relying on its readings.{% else %}The secure connection is ready. Continue by adding or discovering equipment.{% endif %}
             {% else %}Novena is preparing this managed Gateway for monitoring.{% endif %}
         </p>
         {% if gateway.freshness.status != "live" %}
