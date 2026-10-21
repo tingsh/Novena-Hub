@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -2141,20 +2141,44 @@ def _deployment_run_for_device(team, device):
 
 @require_permission("manage_devices")
 def step_4_alert(request, team_slug):
-    device_id = request.session.get("onboarding_device_id")
-    if not device_id:
-        return redirect("web_team:onboarding:step_3_device", team_slug=team_slug)
-    device = get_object_or_404(Device, id=device_id, team=request.team)
+    historical_review = bool(request.GET.get("run"))
+    if historical_review:
+        try:
+            run_id = uuid.UUID(request.GET["run"])
+        except ValueError as exc:
+            raise Http404("Setup run not found") from exc
+        setup_run = get_object_or_404(
+            DeploymentSetupRun,
+            run_id=run_id,
+            team=request.team,
+            state__in=[DeploymentSetupRun.State.COMPLETED, DeploymentSetupRun.State.COMPLETED_ATTENTION],
+        )
+        setup_item = (
+            setup_run.items.filter(device__isnull=False)
+            .select_related("device")
+            .order_by("created_at")
+            .first()
+        )
+        if setup_item is None:
+            raise Http404("Setup equipment not found")
+        device = setup_item.device
+    else:
+        device_id = request.session.get("onboarding_device_id")
+        if not device_id:
+            return redirect("web_team:onboarding:step_3_device", team_slug=team_slug)
+        device = get_object_or_404(Device, id=device_id, team=request.team)
+        setup_run = _deployment_run_for_device(request.team, device)
 
     profile = get_site_profile(device.site)
     from apps.devices.config_generator import human_config_preview
     from apps.devices.deployment_setup import deployment_progress, sync_setup_run, verification_progress
 
-    setup_run = _deployment_run_for_device(request.team, device)
-    if setup_run:
+    if setup_run and not historical_review:
         setup_run = sync_setup_run(setup_run)
 
     if request.method == "POST":
+        if historical_review:
+            return redirect("web_team:home", team_slug=team_slug)
         if setup_run and setup_run.state in {
             DeploymentSetupRun.State.COMPLETED,
             DeploymentSetupRun.State.COMPLETED_ATTENTION,
@@ -2177,6 +2201,7 @@ def step_4_alert(request, team_slug):
         "verification_progress": verification_progress(setup_run) if setup_run else [],
         "config_preview": human_config_preview(device.gateway),
         "commissioning": commissioning,
+        "historical_review": historical_review,
     }
     return render(request, "onboarding/step_4_alert.html", context)
 

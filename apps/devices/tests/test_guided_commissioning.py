@@ -1441,6 +1441,39 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(finished.context["setup_run"].pk, deployed_run.pk)
         self.assertContains(finished, "Your live dashboard is ready")
 
+    def test_completed_verify_result_can_be_reopened_without_onboarding_session(self):
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site,
+            name="Main Gateway", protocol="modbus_tcp",
+        )
+        completed_run = DeploymentSetupRun.objects.create(
+            team=self.team, site=self.site, gateway=self.gateway,
+            state=DeploymentSetupRun.State.COMPLETED, current_step="go_live",
+        )
+        DeploymentSetupItem.objects.create(
+            team=self.team, run=completed_run, device=device,
+            state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
+        )
+        url = reverse("web_team:onboarding:step_4_alert", args=[self.team.slug])
+
+        page = self.client.get(f"{url}?run={completed_run.run_id}")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(page.context["setup_run"].pk, completed_run.pk)
+        self.assertContains(page, "Completed setup result")
+        self.assertContains(page, "Monitoring Main Gateway")
+        self.assertContains(page, "Return to dashboard")
+        self.assertNotContains(page, "Finish setup")
+        self.assertEqual(self.client.get(f"{url}?run=not-a-uuid").status_code, 404)
+        GatewayConfig.objects.create(
+            team=self.team, gateway=self.gateway, setup_run=completed_run,
+            config_json={"connectors": []}, request_id=uuid.uuid4(), status="failed",
+        )
+        self.assertNotContains(self.client.get(f"{url}?run={completed_run.run_id}"), "Retry these settings")
+        completed_run.state = DeploymentSetupRun.State.DRAFT
+        completed_run.save(update_fields=["state"])
+        self.assertEqual(self.client.get(f"{url}?run={completed_run.run_id}").status_code, 404)
+
     def test_customer_cannot_confirm_failed_or_unread_template(self):
         template = DeviceTemplate.objects.create(
             name="Unread map", device_type="power_meter", protocol="modbus_tcp",

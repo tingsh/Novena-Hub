@@ -15,8 +15,10 @@
                 <div>
                     <p class="text-xs font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-300">{{ profile.name }}</p>
                     <h2 class="mt-2 text-3xl font-black text-gray-900 dark:text-white">Verify equipment deployment</h2>
+                    {% if historical_review %}<p class="mt-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300">Completed setup result · read-only review</p>{% endif %}
                     <p class="mt-2 text-gray-500 dark:text-gray-400 max-w-2xl">
-                        {% if setup_run.state == "completed" %}The Gateway has applied the configuration and live readings are flowing. Monitoring is ready; finish setup when you are ready to view the dashboard.
+                        {% if historical_review %}This is the completed verification result for the selected equipment. Current Gateway and reading status may have changed since setup.
+                        {% elif setup_run.state == "completed" %}The Gateway has applied the configuration and live readings are flowing. Monitoring is ready; finish setup when you are ready to view the dashboard.
                         {% elif setup_run.state == "completed_attention" %}Live readings are flowing, but some equipment needs attention. Finish setup to review the results.
                         {% else %}Novena is applying the confirmed configuration and checking for live readings. This page updates automatically; no action is needed unless an issue appears.{% endif %}
                     </p>
@@ -42,7 +44,7 @@
                 <div class="rounded-2xl border border-error/20 bg-error/10 p-4 text-sm text-error">
                     <p class="font-bold">Configuration needs attention</p>
                     <p class="mt-1">{{ commissioning.latest_config.error_message|default:"The Gateway could not apply this configuration. Review the details and try again." }}</p>
-                    {% if commissioning.latest_config.status != "superseded" %}
+                    {% if commissioning.latest_config.status != "superseded" and not historical_review %}
                     <form method="post" action="{% url 'web_team:devices:gateway_retry_config' request.team.slug device.gateway.pk commissioning.latest_config.pk %}" class="mt-3">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-primary btn-sm rounded-md">Retry these settings</button>
@@ -53,10 +55,12 @@
                 <div class="rounded-2xl border border-warning/20 bg-warning/10 p-4 text-sm">
                     <p class="font-bold">Waiting for the Gateway to reconnect</p>
                     <p class="mt-1">The configuration is saved and will be sent when the Gateway is available.</p>
+                    {% if not historical_review %}
                     <form method="post" action="{% url 'web_team:devices:gateway_retry_activation' request.team.slug device.gateway.pk %}" class="mt-3">
                         {% csrf_token %}
                         <button type="submit" class="btn btn-outline btn-sm rounded-md">Retry secure connection</button>
                     </form>
+                    {% endif %}
                 </div>
                 {% endif %}
 
@@ -91,7 +95,9 @@
                 {% if setup_run.state != "completed" and setup_run.state != "completed_attention" %}
                 <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}" class="btn btn-ghost">Back to equipment</a>
                 {% endif %}
-                {% if setup_run.state == "completed" or setup_run.state == "completed_attention" %}
+                {% if historical_review %}
+                <a href="{% url 'web_team:home' request.team.slug %}" class="btn btn-primary">Return to dashboard</a>
+                {% elif setup_run.state == "completed" or setup_run.state == "completed_attention" %}
                 <a href="{% url 'web_team:onboarding:complete' request.team.slug %}" class="btn btn-primary">Finish setup</a>
                 {% else %}
                 <p class="text-sm text-base-content/55">This page updates while the Gateway confirms its settings and sends live data.</p>
