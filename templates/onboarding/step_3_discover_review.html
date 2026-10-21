@@ -1,0 +1,31 @@
+{% extends "web/app/app_base.html" %}
+{% block app %}
+<div class="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
+    {% include "onboarding/partials/progress_bar.html" with current_step=current_step steps=steps %}
+
+    <section class="rounded-3xl border border-base-content/10 bg-base-100 p-6 shadow-sm sm:p-10">
+        <p class="text-xs font-black uppercase tracking-widest text-primary">Equipment</p>
+        <h1 class="mt-2 text-3xl font-black">Review configured equipment</h1>
+        <p class="mt-2 text-sm text-base-content/60">This completed setup is shown for review. Your equipment and Gateway settings will not change.</p>
+
+        <ul class="mt-8 space-y-3">
+            {% for item in equipment_items %}
+            <li class="rounded-2xl border border-success/20 bg-success/5 p-5">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <p class="font-bold">{{ item.device.name }}</p>
+                        <p class="mt-1 text-sm text-base-content/60">{{ item.selected_template.name|default:"Template not available" }}</p>
+                    </div>
+                    <span class="text-sm font-semibold text-success"><i class="fa fa-circle-check mr-1" aria-hidden="true"></i>Configured</span>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+
+        <div class="mt-8 flex flex-wrap items-center justify-between gap-3">
+            <a href="{% url 'web_team:home' request.team.slug %}" class="btn btn-ghost">Return to dashboard</a>
+            <a href="{% url 'web_team:onboarding:step_4_alert' request.team.slug %}?run={{ setup_run.run_id }}" class="btn btn-primary">Continue to Verify <i class="fa fa-arrow-right ml-1" aria-hidden="true"></i></a>
+        </div>
+    </section>
+</div>
+{% endblock %}

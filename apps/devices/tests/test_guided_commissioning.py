@@ -1427,8 +1427,11 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(page.context["setup_run"].pk, deployed_run.pk)
         self.assertEqual(page.context["commissioning"]["latest_config"].status, "active")
         self.assertTrue(all(step["status"] == "complete" for step in page.context["deployment_progress"]))
-        self.assertContains(page, "Finish setup")
-        self.assertNotContains(page, "Back to equipment")
+        self.assertContains(page, "Back to equipment")
+        self.assertContains(page, f"?run={deployed_run.run_id}")
+        self.assertContains(
+            page, reverse("web_team:onboarding:complete", args=[self.team.slug]) + "?next=dashboard"
+        )
         self.assertContains(page, "Applying configuration")
         self.assertContains(page, "Settings published securely")
         self.assertNotContains(page, "Guided Setup progress")
@@ -1440,6 +1443,14 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(finished.status_code, 200)
         self.assertEqual(finished.context["setup_run"].pk, deployed_run.pk)
         self.assertContains(finished, "Your live dashboard is ready")
+        session = self.client.session
+        session["onboarding_device_id"] = device.pk
+        session.save()
+        direct_finish = self.client.get(
+            reverse("web_team:onboarding:complete", args=[self.team.slug]) + "?next=dashboard"
+        )
+        self.assertRedirects(direct_finish, reverse("web_team:home", args=[self.team.slug]))
+        self.assertNotIn("onboarding_device_id", self.client.session)
 
     def test_completed_verify_result_can_be_reopened_without_onboarding_session(self):
         device = Device.objects.create(
@@ -1462,8 +1473,15 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(page.context["setup_run"].pk, completed_run.pk)
         self.assertContains(page, "Completed setup result")
         self.assertContains(page, "Monitoring Main Gateway")
-        self.assertContains(page, "Return to dashboard")
-        self.assertNotContains(page, "Finish setup")
+        self.assertContains(page, "Back to equipment")
+        self.assertContains(page, f"?run={completed_run.run_id}")
+        self.assertContains(page, ">Finish</a>")
+        review = self.client.get(f"{self.url}?run={completed_run.run_id}")
+        self.assertEqual(review.status_code, 200)
+        self.assertContains(review, "Review configured equipment")
+        self.assertContains(review, "Continue to Verify")
+        self.assertNotContains(review, "Retry scan")
+        self.assertEqual(DeploymentSetupRun.objects.filter(team=self.team, gateway=self.gateway).count(), 1)
         self.assertEqual(self.client.get(f"{url}?run=not-a-uuid").status_code, 404)
         GatewayConfig.objects.create(
             team=self.team, gateway=self.gateway, setup_run=completed_run,

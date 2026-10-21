@@ -92,13 +92,15 @@
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-4">
-                {% if setup_run.state != "completed" and setup_run.state != "completed_attention" %}
-                <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}" class="btn btn-ghost">Back to equipment</a>
+                {% if setup_run.state == "completed" or setup_run.state == "completed_attention" %}
+                <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}?run={{ setup_run.run_id }}" hx-boost="false" class="btn btn-ghost"><i class="fa fa-arrow-left mr-1" aria-hidden="true"></i>Back to equipment</a>
+                {% else %}
+                <a href="{% url 'web_team:onboarding:step_3_discover' request.team.slug %}" hx-boost="false" class="btn btn-ghost">Back to equipment</a>
                 {% endif %}
                 {% if historical_review %}
-                <a href="{% url 'web_team:home' request.team.slug %}" class="btn btn-primary">Return to dashboard</a>
+                <a href="{% url 'web_team:home' request.team.slug %}" hx-boost="false" class="btn btn-primary">Finish</a>
                 {% elif setup_run.state == "completed" or setup_run.state == "completed_attention" %}
-                <a href="{% url 'web_team:onboarding:complete' request.team.slug %}" class="btn btn-primary">Finish setup</a>
+                <a href="{% url 'web_team:onboarding:complete' request.team.slug %}?next=dashboard" hx-boost="false" class="btn btn-primary">Finish</a>
                 {% else %}
                 <p class="text-sm text-base-content/55">This page updates while the Gateway confirms its settings and sends live data.</p>
                 {% endif %}

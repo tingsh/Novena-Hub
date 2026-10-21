@@ -976,6 +976,22 @@ def _require_customer_confirmation_for_predeployment(run):
 @require_permission("manage_devices")
 def step_3_discover(request, team_slug):
     """Automatic-first equipment setup with guided manual fallback."""
+    if request.GET.get("run"):
+        if request.method != "GET":
+            raise Http404("Completed equipment review is read-only")
+        completed_run = _completed_setup_run(request.team, request.GET["run"])
+        return render(
+            request,
+            "onboarding/step_3_discover_review.html",
+            {
+                "steps": ONBOARDING_STEPS,
+                "current_step": 3,
+                "setup_run": completed_run,
+                "equipment_items": completed_run.items.filter(device__isnull=False)
+                .select_related("device", "selected_template")
+                .order_by("created_at"),
+            },
+        )
     from apps.devices.config_generator import (
         generate_and_push_config,
         normalized_datapoints,
@@ -2139,20 +2155,24 @@ def _deployment_run_for_device(team, device):
     )
 
 
+def _completed_setup_run(team, raw_run_id):
+    try:
+        run_id = uuid.UUID(raw_run_id)
+    except ValueError as exc:
+        raise Http404("Setup run not found") from exc
+    return get_object_or_404(
+        DeploymentSetupRun,
+        run_id=run_id,
+        team=team,
+        state__in=[DeploymentSetupRun.State.COMPLETED, DeploymentSetupRun.State.COMPLETED_ATTENTION],
+    )
+
+
 @require_permission("manage_devices")
 def step_4_alert(request, team_slug):
     historical_review = bool(request.GET.get("run"))
     if historical_review:
-        try:
-            run_id = uuid.UUID(request.GET["run"])
-        except ValueError as exc:
-            raise Http404("Setup run not found") from exc
-        setup_run = get_object_or_404(
-            DeploymentSetupRun,
-            run_id=run_id,
-            team=request.team,
-            state__in=[DeploymentSetupRun.State.COMPLETED, DeploymentSetupRun.State.COMPLETED_ATTENTION],
-        )
+        setup_run = _completed_setup_run(request.team, request.GET["run"])
         setup_item = (
             setup_run.items.filter(device__isnull=False)
             .select_related("device")
@@ -2247,6 +2267,9 @@ def complete(request, team_slug):
     ]:
         if key in request.session:
             del request.session[key]
+
+    if request.GET.get("next") == "dashboard":
+        return redirect("web_team:home", team_slug=team_slug)
 
     return render(
         request,
