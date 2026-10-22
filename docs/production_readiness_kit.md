@@ -232,6 +232,7 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 Deploy migrations before bringing the final app stack up. Web, worker, Beat, and MQTT consumer should run the same Git SHA.
+The automation notification path requires `events.0004_automation_email_type` and an active Celery worker. After deployment, exercise a disposable automation email to a designated test recipient and verify both its `EmailDelivery` status and receipt outside the Hub. A queued automation log or local console email alone does not prove delivery.
 
 ## Mosquitto Dynamic Security
 

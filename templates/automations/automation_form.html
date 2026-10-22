@@ -15,6 +15,7 @@
 
   <form method="post" class="space-y-8">
     {% csrf_token %}
+    {{ form.non_field_errors }}
     
     <!-- General Settings -->
     <div class="card bg-base-100 shadow-xl border border-base-200">
@@ -42,6 +43,7 @@
                 <span class="label-text font-medium text-base">Enable this Automation immediately</span>
                 {{ form.is_active }}
               </label>
+              <p class="text-xs text-base-content/60 mt-2">Leave this off to save a draft. An enabled automation needs a mapped reading and at least one action.</p>
             </div>
           </div>
         </div>
@@ -57,33 +59,15 @@
         <p class="text-sm text-base-content/70 mb-4">Choose the equipment reading and limit to watch. Add a duration to avoid acting on brief spikes.</p>
         
         {{ conditions.management_form }}
+        {{ conditions.non_form_errors }}
         
         <div id="conditions-container" class="space-y-4">
           {% for form in conditions %}
-            <div class="condition-form p-5 bg-base-200/50 rounded-xl border border-base-300 relative group">
-              <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div class="md:col-span-2">{% render_field form.device %}</div>
-                <div class="md:col-span-3">{% render_field form.telemetry_key %}</div>
-                
-                <div class="md:col-span-2">{% render_field form.operator %}</div>
-                <div class="md:col-span-2">{% render_field form.threshold %}</div>
-                <div class="md:col-span-1">{% render_field form.duration_seconds %}</div>
-              </div>
-              
-              {% if conditions.can_delete %}
-                <div class="absolute top-2 right-2">
-                  <label class="label cursor-pointer justify-start gap-2 text-xs text-error/80 hover:text-error transition-colors">
-                    {{ form.DELETE }} <span class="label-text text-error/80">Delete</span>
-                  </label>
-                </div>
-              {% endif %}
-              
-              {% for hidden in form.hidden_fields %}
-                {{ hidden }}
-              {% endfor %}
-            </div>
+            {% include "automations/partials/condition_row.html" with condition_form=form %}
           {% endfor %}
         </div>
+        <template id="empty-condition-template">{% include "automations/partials/condition_row.html" with condition_form=conditions.empty_form %}</template>
+        <button type="button" id="add-condition" class="btn btn-outline btn-sm mt-4">Add another condition</button>
       </div>
     </div>
 
@@ -96,60 +80,15 @@
         <p class="text-sm text-base-content/70 mb-4">Choose who should be notified or what work should be prepared. Equipment action proposals still require the normal safety checks and approval.</p>
         
         {{ actions.management_form }}
+        {{ actions.non_form_errors }}
         
         <div id="actions-container" class="space-y-4">
           {% for form in actions %}
-            <div class="action-form p-5 bg-base-200/50 rounded-xl border border-base-300 relative group" x-data="{ actionType: '{{ form.action_type.value|default:'' }}' }">
-              <div class="mb-4">
-                {% render_field form.action_type attrs="x-model=actionType" %}
-              </div>
-              
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <!-- Device Command Fields -->
-                <div class="col-span-1 md:col-span-2" x-show="actionType == 'send_command'" x-transition>
-                  <div class="text-sm font-semibold text-base-content/50 uppercase tracking-widest mt-2 mb-2">Equipment action proposal</div>
-                  <p class="text-xs text-warning mb-4">This records a proposal only. It does not send a control request to the equipment.</p>
-                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>{% render_field form.target_device %}</div>
-                    <div>{% render_field form.command_key %}</div>
-                    <div class="col-span-1 md:col-span-2">{% render_field form.command_payload inline_classes="font-mono text-sm" %}</div>
-                  </div>
-                </div>
-                
-                <!-- Webhook Fields -->
-                <div class="col-span-1 md:col-span-2" x-show="actionType == 'webhook'" x-transition>
-                  <div class="text-sm font-semibold text-base-content/50 uppercase tracking-widest mt-4 mb-4">External system notification (technician setup)</div>
-                  <div class="col-span-1 md:col-span-2">{% render_field form.webhook_url %}</div>
-                </div>
-                
-                <!-- Email Fields -->
-                <div class="col-span-1 md:col-span-2" x-show="actionType == 'notify_email'" x-transition>
-                  <div class="text-sm font-semibold text-base-content/50 uppercase tracking-widest mt-4 mb-4">Notification Configuration:</div>
-                  <div class="col-span-1 md:col-span-2">{% render_field form.notify_emails %}</div>
-                </div>
-
-                <!-- Create Ticket Fields -->
-                <div class="col-span-1 md:col-span-2" x-show="actionType == 'create_ticket'" x-transition>
-                  <div class="text-sm font-semibold text-base-content/50 uppercase tracking-widest mt-4 mb-4">Maintenance Ticket Configuration:</div>
-                  <p class="text-xs text-base-content/60 mb-2">A ticket will be automatically created and assigned to the triggered device when conditions are met.</p>
-                  <div>{% render_field form.target_device %}</div>
-                </div>
-              </div>
-
-              {% if actions.can_delete %}
-                <div class="absolute top-2 right-2">
-                  <label class="label cursor-pointer justify-start gap-2 text-xs text-error/80 hover:text-error transition-colors">
-                    {{ form.DELETE }} <span class="label-text text-error/80">Delete</span>
-                  </label>
-                </div>
-              {% endif %}
-              
-              {% for hidden in form.hidden_fields %}
-                {{ hidden }}
-              {% endfor %}
-            </div>
+            {% include "automations/partials/action_row.html" with action_form=form %}
           {% endfor %}
         </div>
+        <template id="empty-action-template">{% include "automations/partials/action_row.html" with action_form=actions.empty_form %}</template>
+        <button type="button" id="add-action" class="btn btn-outline btn-sm mt-4">Add another action</button>
       </div>
     </div>
 
@@ -162,4 +101,57 @@
     </div>
   </form>
 </div>
+<script>
+(() => {
+  function filterReadings(row) {
+    const device = row.querySelector('select[name$="-device"]');
+    const reading = row.querySelector('[data-condition-reading]');
+    if (!device || !reading) return;
+    const previous = reading.selectedOptions[0];
+    for (const option of reading.options) {
+      if (!option.value) continue;
+      const available = option.dataset.deviceId === device.value;
+      option.disabled = !available;
+      option.hidden = !available;
+    }
+    if (previous?.disabled) reading.value = '';
+    reading.options[0].textContent = device.value ? 'Choose a mapped reading' : 'Choose equipment first';
+    updateComparison(row);
+  }
+  function updateComparison(row) {
+    const reading = row.querySelector('[data-condition-reading]');
+    const operator = row.querySelector('[data-condition-operator]');
+    const threshold = row.querySelector('[data-condition-threshold]');
+    if (!reading || !operator || !threshold) return;
+    const isBoolean = reading.selectedOptions[0]?.dataset.boolean === 'true';
+    for (const option of operator.options) {
+      const boolOperator = option.value === 'is_true' || option.value === 'is_false';
+      option.disabled = reading.value ? boolOperator !== isBoolean : false;
+      option.hidden = option.disabled;
+    }
+    if (operator.selectedOptions[0]?.disabled) operator.value = isBoolean ? 'is_true' : 'gt';
+    threshold.hidden = isBoolean;
+    if (isBoolean && threshold.querySelector('input')) threshold.querySelector('input').value = '';
+  }
+  function addForm(kind) {
+    const total = document.getElementById(`id_${kind}-TOTAL_FORMS`);
+    const template = document.getElementById(`empty-${kind.slice(0, -1)}-template`);
+    const container = document.getElementById(`${kind}-container`);
+    if (!total || !template || !container) return;
+    const index = Number(total.value);
+    container.insertAdjacentHTML('beforeend', template.innerHTML.replaceAll('__prefix__', String(index)));
+    total.value = String(index + 1);
+    const row = container.lastElementChild;
+    if (kind === 'conditions') filterReadings(row);
+    if (window.Alpine?.initTree) window.Alpine.initTree(row);
+  }
+  document.querySelectorAll('[data-condition-row]').forEach(filterReadings);
+  document.getElementById('conditions-container')?.addEventListener('change', event => {
+    if (event.target.matches('select[name$="-device"]')) filterReadings(event.target.closest('[data-condition-row]'));
+    if (event.target.matches('[data-condition-reading]')) updateComparison(event.target.closest('[data-condition-row]'));
+  });
+  document.getElementById('add-condition')?.addEventListener('click', () => addForm('conditions'));
+  document.getElementById('add-action')?.addEventListener('click', () => addForm('actions'));
+})();
+</script>
 {% endblock %}

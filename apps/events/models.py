@@ -34,6 +34,7 @@ class EmailDelivery(models.Model):
     class NotificationType(models.TextChoices):
         ALERT_TRIGGERED = "alert_triggered", "Alert triggered"
         ALERT_RESOLVED = "alert_resolved", "Alert resolved"
+        AUTOMATION = "automation", "Automation"
         TEAM_INVITATION = "team_invitation", "Team invitation"
         MAINTENANCE_ASSIGNMENT = "maintenance_assignment", "Maintenance assignment"
         MAINTENANCE_RESOLUTION = "maintenance_resolution", "Maintenance resolution"

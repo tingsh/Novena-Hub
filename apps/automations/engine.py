@@ -1,5 +1,6 @@
 import logging
 from datetime import timedelta
+from uuid import uuid4
 
 import requests
 from django.core.cache import cache
@@ -120,6 +121,7 @@ def execute_automation(automation, trigger_device=None):
 
     log_details = []
     has_error = False
+    event_id = str(uuid4())
 
     for action in automation.actions.all():
         try:
@@ -142,8 +144,12 @@ def execute_automation(automation, trigger_device=None):
                     response.raise_for_status()
                     log_details.append(f"Webhook fired: {action.webhook_url}")
             elif action.action_type == "notify_email":
-                # Simplified Notification logic for emails
-                log_details.append(f"Email sent to {action.notify_emails}")
+                from .tasks import dispatch_automation_email_task
+
+                dispatch_automation_email_task.delay(
+                    action.pk, event_id, trigger_device.pk if trigger_device else None
+                )
+                log_details.append(f"Email queued for {action.notify_emails}; delivery is tracked separately.")
             elif action.action_type == "create_ticket":
                 from apps.maintenance.models import MaintenanceTicket
 

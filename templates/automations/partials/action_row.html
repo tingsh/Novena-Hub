@@ -1,0 +1,38 @@
+{% load form_tags %}
+<div class="action-form p-5 bg-base-200/50 rounded-xl border border-base-300 relative group" x-data="{ actionType: '{{ action_form.action_type.value|default:''|escapejs }}' }">
+  {{ action_form.non_field_errors }}
+  <div class="mb-4">{% render_field action_form.action_type %}</div>
+  <div x-show="actionType == 'send_command' || actionType == 'create_ticket'" x-transition>
+    {% render_field action_form.target_device %}
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="col-span-1 md:col-span-2" x-show="actionType == 'send_command'" x-transition>
+      <div class="text-sm font-semibold text-base-content/50 uppercase tracking-widest mt-2 mb-2">Equipment action proposal</div>
+      <p class="text-xs text-warning mb-4">This records a proposal only. It does not send a control request to the equipment.</p>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>{% render_field action_form.command_key %}</div>
+        <div class="col-span-1 md:col-span-2">{% render_field action_form.command_payload inline_classes="font-mono text-sm" %}</div>
+      </div>
+    </div>
+    <div class="col-span-1 md:col-span-2" x-show="actionType == 'webhook'" x-transition>
+      <div class="text-sm font-semibold text-base-content/50 uppercase tracking-widest mt-4 mb-4">External system notification (technician setup)</div>
+      <div>{% render_field action_form.webhook_url %}</div>
+    </div>
+    <div class="col-span-1 md:col-span-2" x-show="actionType == 'notify_email'" x-transition>
+      <div class="text-sm font-semibold text-base-content/50 uppercase tracking-widest mt-4 mb-4">Notification configuration</div>
+      <div>{% render_field action_form.notify_emails %}</div>
+    </div>
+    <div class="col-span-1 md:col-span-2" x-show="actionType == 'create_ticket'" x-transition>
+      <div class="text-sm font-semibold text-base-content/50 uppercase tracking-widest mt-4 mb-4">Maintenance ticket configuration</div>
+      <p class="text-xs text-base-content/60 mb-2">A ticket will be created and linked to the triggered equipment.</p>
+    </div>
+  </div>
+  {% if actions.can_delete %}
+    <div class="absolute top-2 right-2">
+      <label class="label cursor-pointer justify-start gap-2 text-xs text-error/80 hover:text-error transition-colors">
+        {{ action_form.DELETE }} <span class="label-text text-error/80">Remove</span>
+      </label>
+    </div>
+  {% endif %}
+  {% for hidden in action_form.hidden_fields %}{{ hidden }}{% endfor %}
+</div>

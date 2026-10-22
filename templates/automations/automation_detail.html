@@ -57,7 +57,9 @@
                 <span class="badge badge-primary badge-outline font-mono">{{ cond.device.name }}</span>
                 <span class="font-bold text-base-content">{{ cond.reading_label }}</span>
                 <span class="text-info font-bold">{{ cond.operator_label }}</span>
-                <span class="font-mono font-bold bg-base-300 px-2 rounded">{{ cond.threshold }}</span>
+                {% if cond.operator != "is_true" and cond.operator != "is_false" %}
+                  <span class="font-mono font-bold bg-base-300 px-2 rounded">{{ cond.threshold }}{% if cond.reading_unit %} {{ cond.reading_unit }}{% endif %}</span>
+                {% endif %}
                 
                 {% if cond.duration_seconds > 0 %}
                   <div class="w-full sm:w-auto sm:ml-auto mt-2 sm:mt-0 text-xs font-semibold bg-warning/20 text-warning-content px-2 py-1 rounded flex items-center gap-1">

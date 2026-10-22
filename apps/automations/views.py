@@ -1,17 +1,27 @@
-import json
-
 from django.contrib import messages
 from django.db import transaction
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, UpdateView
 
-from apps.devices.datapoint_maps import effective_register_map
-from apps.devices.models import Device
 from apps.teams.mixins import PermissionRequiredMixin
 
 from .forms import ActionFormSet, AutomationForm, ConditionFormSet
 from .models import Automation, AutomationLog
+
+
+def _has_live_rows(formset):
+    return any(row.cleaned_data and not row.cleaned_data.get("DELETE") for row in formset.forms)
+
+
+def _save_automation_rows(formset, team):
+    rows = formset.save(commit=False)
+    for deleted in formset.deleted_objects:
+        deleted.delete()
+    for row in rows:
+        row.team = team
+        row.save()
+    formset.save_m2m()
 
 
 class AutomationListView(PermissionRequiredMixin, ListView):
@@ -83,25 +93,6 @@ class AutomationCreateView(PermissionRequiredMixin, CreateView):
             context["conditions"] = ConditionFormSet(form_kwargs={"team": self.request.team})
             context["actions"] = ActionFormSet(form_kwargs={"team": self.request.team})
 
-        # Prepare devices data for the step-by-step logic builder
-        devices_data = {}
-        for device in Device.objects.filter(team=self.request.team).select_related("template"):
-            register_map = effective_register_map(device)
-            keys = list(register_map.keys())
-            site_defined = getattr(device.template, "mapping_strategy", "fixed") == "site_defined"
-            if not keys and not site_defined:
-                keys = ["temp", "humidity", "pressure", "voltage", "current", "status"]
-
-            writable_keys = [k for k, v in register_map.items() if isinstance(v, dict) and v.get("writable")]
-            if not writable_keys and not site_defined:
-                writable_keys = ["turn_on", "turn_off", "set_speed", "reset"]
-
-            devices_data[str(device.id)] = {
-                "name": device.name,
-                "telemetry_keys": keys,
-                "command_keys": writable_keys,
-            }
-        context["devices_json"] = json.dumps(devices_data)
         context["active_tab"] = "automations"
         return context
 
@@ -110,16 +101,25 @@ class AutomationCreateView(PermissionRequiredMixin, CreateView):
         conditions = context["conditions"]
         actions = context["actions"]
 
-        if not conditions.is_valid() or not actions.is_valid():
+        conditions_valid = conditions.is_valid()
+        actions_valid = actions.is_valid()
+        if not conditions_valid or not actions_valid:
             return self.form_invalid(form)
+        if form.cleaned_data.get("is_active"):
+            if not _has_live_rows(conditions):
+                form.add_error(None, "Add at least one equipment reading before enabling this automation.")
+            if not _has_live_rows(actions):
+                form.add_error(None, "Add at least one action before enabling this automation.")
+            if form.errors:
+                return self.form_invalid(form)
 
         with transaction.atomic():
             form.instance.team = self.request.team
             self.object = form.save()
             conditions.instance = self.object
-            conditions.save()
+            _save_automation_rows(conditions, self.request.team)
             actions.instance = self.object
-            actions.save()
+            _save_automation_rows(actions, self.request.team)
 
         messages.success(self.request, "Automation created successfully.")
         return redirect(self.get_success_url())
@@ -150,25 +150,6 @@ class AutomationUpdateView(PermissionRequiredMixin, UpdateView):
             context["conditions"] = ConditionFormSet(instance=self.object, form_kwargs={"team": self.request.team})
             context["actions"] = ActionFormSet(instance=self.object, form_kwargs={"team": self.request.team})
 
-        # Prepare devices data for the step-by-step logic builder
-        devices_data = {}
-        for device in Device.objects.filter(team=self.request.team).select_related("template"):
-            register_map = effective_register_map(device)
-            keys = list(register_map.keys())
-            site_defined = getattr(device.template, "mapping_strategy", "fixed") == "site_defined"
-            if not keys and not site_defined:
-                keys = ["temp", "humidity", "pressure", "voltage", "current", "status"]
-
-            writable_keys = [k for k, v in register_map.items() if isinstance(v, dict) and v.get("writable")]
-            if not writable_keys and not site_defined:
-                writable_keys = ["turn_on", "turn_off", "set_speed", "reset"]
-
-            devices_data[str(device.id)] = {
-                "name": device.name,
-                "telemetry_keys": keys,
-                "command_keys": writable_keys,
-            }
-        context["devices_json"] = json.dumps(devices_data)
         context["active_tab"] = "automations"
         return context
 
@@ -177,13 +158,22 @@ class AutomationUpdateView(PermissionRequiredMixin, UpdateView):
         conditions = context["conditions"]
         actions = context["actions"]
 
-        if not conditions.is_valid() or not actions.is_valid():
+        conditions_valid = conditions.is_valid()
+        actions_valid = actions.is_valid()
+        if not conditions_valid or not actions_valid:
             return self.form_invalid(form)
+        if form.cleaned_data.get("is_active"):
+            if not _has_live_rows(conditions):
+                form.add_error(None, "Add at least one equipment reading before enabling this automation.")
+            if not _has_live_rows(actions):
+                form.add_error(None, "Add at least one action before enabling this automation.")
+            if form.errors:
+                return self.form_invalid(form)
 
         with transaction.atomic():
             self.object = form.save()
-            conditions.save()
-            actions.save()
+            _save_automation_rows(conditions, self.request.team)
+            _save_automation_rows(actions, self.request.team)
 
         messages.success(self.request, "Automation updated successfully.")
         return redirect(self.get_success_url())
