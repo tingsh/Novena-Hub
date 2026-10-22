@@ -231,7 +231,7 @@ def _normalize_command_value(value):
 
 
 def _register_params_from_template(device, key, command_type, value):
-    from .datapoint_maps import effective_register_map
+    from .datapoint_maps import default_register_count, effective_register_map
 
     register = effective_register_map(device).get(key)
 
@@ -247,7 +247,7 @@ def _register_params_from_template(device, key, command_type, value):
     if "objectsCount" in register:
         params["objectsCount"] = register["objectsCount"]
     elif command_type == "read":
-        params["objectsCount"] = 1
+        params["objectsCount"] = default_register_count(register.get("type"))
     if command_type == "write":
         params["value"] = value
     return params

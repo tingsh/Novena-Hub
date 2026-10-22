@@ -114,7 +114,10 @@ def _build_slave_config(device, is_tcp):
         "sendDataOnlyOnChange": connection.get("sendDataOnlyOnChange", False),
         "connectAttemptTimeMs": connection.get("connectAttemptTimeMs", 5000),
         "connectAttemptCount": connection.get("connectAttemptCount", 5),
-        "waitAfterFailedAttemptsMs": connection.get("waitAfterFailedAttemptsMs", 300000),
+        # Retry within the device's offline window after the attempt budget is
+        # exhausted. Five minutes leaves a recovered field device stale while
+        # the Gateway heartbeat remains healthy.
+        "waitAfterFailedAttemptsMs": connection.get("waitAfterFailedAttemptsMs", 30000),
         "timeseries": [],
         "attributes": [],
     }

@@ -1,3 +1,5 @@
+import hashlib
+
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, render
@@ -16,7 +18,9 @@ def public_dashboard(request, token):
         raise Http404("This shared link has expired.")
 
     # Check if a password is required
-    session_key = f"unlocked_dashboard_{link.token}"
+    # A changed password must revoke sessions unlocked with the old password.
+    password_version = hashlib.sha256(link.password_hash.encode()).hexdigest()[:16]
+    session_key = f"unlocked_dashboard_{link.token}_{password_version}"
     is_unlocked = request.session.get(session_key, False)
 
     if link.password_hash and not is_unlocked:

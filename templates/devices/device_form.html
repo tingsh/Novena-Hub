@@ -5,13 +5,16 @@
     <div class="md:flex md:items-center md:justify-between mb-8">
         <div class="min-w-0 flex-1">
             <h2 class="text-3xl font-black text-base-content font-heading tracking-tight">
-                {% if object %}Edit {{ object.name }}{% else %}Add New Device{% endif %}
+                {% if object %}Rename {{ object.name }}{% else %}Add New Device{% endif %}
             </h2>
         </div>
     </div>
 
     <div class="bg-base-100 border border-base-content/10 rounded-2xl shadow-lg">
         <div class="p-6 sm:p-8">
+            {% if object %}
+            <p class="mb-6 max-w-2xl text-sm text-base-content/70">This changes the equipment label only. Connection settings, signal mapping, and live status are protected so a rename cannot interrupt monitoring. Contact Novena support to reconfigure deployed equipment.</p>
+            {% endif %}
             <form method="post" class="space-y-6">
                 {% csrf_token %}
                 
@@ -46,11 +49,11 @@
                 </div>
 
                 <div class="flex justify-end space-x-3 pt-5 border-t border-base-content/10">
-                    <a href="javascript:history.back()" class="btn btn-ghost rounded-xl">
+                    <a href="{% if object %}{% url 'web_team:devices:device_detail' request.team.slug object.pk %}{% else %}{% url 'web_team:devices:device_list' request.team.slug %}{% endif %}" class="btn btn-ghost rounded-xl">
                         Cancel
                     </a>
                     <button type="submit" class="btn btn-primary rounded-xl px-6 shadow-lg shadow-indigo-600/20">
-                        {% if object %}Update{% else %}Create{% endif %}
+                        {% if object %}Save name{% else %}Create{% endif %}
                     </button>
                 </div>
             </form>

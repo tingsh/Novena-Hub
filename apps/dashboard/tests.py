@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -88,6 +89,39 @@ class SharedDashboardTests(TestCase):
         self.assertContains(response, "Test Team - Reception Screen")
         self.link.refresh_from_db()
         self.assertEqual(self.link.view_count, 1)
+
+    def test_changing_public_link_password_revokes_prior_unlock(self):
+        self.link.set_password("first-password")
+        self.link.save()
+        url = reverse("dashboard_public:view", args=[self.link.token])
+        response = self.client.post(url, {"password": "first-password"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(self.client.get(url), "Test Team - Reception Screen")
+
+        self.link.set_password("second-password")
+        self.link.save()
+        self.assertContains(self.client.get(url), "Protected Dashboard")
+        self.assertContains(self.client.post(url, {"password": "first-password"}), "Incorrect password.")
+        self.assertContains(self.client.post(url, {"password": "second-password"}), "Test Team - Reception Screen")
+
+        self.link.is_active = False
+        self.link.save()
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_public_summary_excludes_another_teams_site(self):
+        from apps.devices.models import Site
+
+        Site.objects.create(team=self.team, name="Own Cold Room")
+        other_team = Team.objects.create(name="Other Team", slug="other-team")
+        Site.objects.create(team=other_team, name="Other Team Private Site")
+
+        with patch(
+            "apps.telemetry.services.get_site_summary_stats",
+            return_value={"total_devices": 0, "active_alerts": 0},
+        ):
+            response = self.client.get(reverse("dashboard_public:view", args=[self.link.token]))
+        self.assertContains(response, "Own Cold Room")
+        self.assertNotContains(response, "Other Team Private Site")
 
     def test_public_dashboard_kiosk_mode(self):
         url = reverse("dashboard_public:view", args=[self.link.token]) + "?kiosk=1"

@@ -1469,12 +1469,14 @@
             if (data.error) throw new Error(data.error);
             const result = await pollCommandResult(data.transaction_id);
             if (valEl) {
-                if (result.status === 'executed' && result.result) {
-                    const response = result.result.response || result.result;
-                    const val = response.value !== undefined ? response.value : JSON.stringify(response);
-                    valEl.textContent = val;
+                const reading = result.result?.read_value ?? result.result?.response?.value;
+                if (result.status === 'executed' && reading !== undefined && reading !== null) {
+                    valEl.textContent = typeof reading === 'boolean'
+                        ? (reading ? 'ON' : 'OFF')
+                        : (typeof reading === 'number' ? String(Number(reading.toFixed(2))) : String(reading));
+                    valEl.classList.remove('text-red-500');
                 } else {
-                    valEl.textContent = result.error || 'Could not check this reading. Check the equipment connection.';
+                    valEl.textContent = result.error || 'Could not verify this reading. Check the equipment connection.';
                     valEl.classList.add('text-red-500');
                 }
             }

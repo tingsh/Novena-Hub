@@ -4,6 +4,7 @@ from datetime import timedelta
 from django.db import models
 from django.utils import timezone
 
+from apps.devices.freshness import device_freshness_thresholds
 from apps.telemetry.models import TelemetryData
 
 from .models import Alert, AlertRule
@@ -42,12 +43,15 @@ def evaluate_condition(rule, device, key, value):
 
     # Check historical values in duration window
     window_start = timezone.now() - timedelta(seconds=rule.duration_seconds)
-    points = TelemetryData.objects.filter(device=device, key=key, timestamp__gte=window_start)
+    points = list(
+        TelemetryData.objects.filter(device=device, key=key, timestamp__gte=window_start)
+        .order_by("timestamp")
+    )
 
-    oldest_in_window = points.order_by("timestamp").first()
-    if not oldest_in_window:
+    if not points:
         return False
 
+    oldest_in_window = points[0]
     # If the oldest telemetry point in the window is newer than window_start + tolerance,
     # we must check if there is an out-of-bounds point immediately before the window.
     if oldest_in_window.timestamp > window_start + timedelta(seconds=2):
@@ -60,10 +64,32 @@ def evaluate_condition(rule, device, key, value):
         if not prev_point:
             return False
 
-        if prev_point.value_numeric is None or not evaluate_condition_value(rule, prev_point.value_numeric):
+        prev_value = _condition_value(prev_point)
+        if prev_value is None or not evaluate_condition_value(rule, prev_value):
             return False
+        points.insert(0, prev_point)
 
-    return all(pt.value_numeric is not None and evaluate_condition_value(rule, pt.value_numeric) for pt in points)
+    # A disconnected sensor cannot establish that a limit stayed exceeded. Use
+    # the same per-device offline threshold as the monitoring UI so a long gap
+    # breaks the duration window, including the gap before the first new sample.
+    _, max_gap_seconds = device_freshness_thresholds(device)
+    max_gap = timedelta(seconds=max_gap_seconds)
+    if timezone.now() - points[-1].timestamp > max_gap:
+        return False
+    return all(
+        _condition_value(point) is not None
+        and evaluate_condition_value(rule, _condition_value(point))
+        and (index == 0 or point.timestamp - points[index - 1].timestamp <= max_gap)
+        for index, point in enumerate(points)
+    )
+
+
+def _condition_value(point):
+    if point.value_numeric is not None:
+        return point.value_numeric
+    if point.value_bool is not None:
+        return int(point.value_bool)
+    return None
 
 
 def evaluate_condition_value(rule, value):

@@ -10,7 +10,7 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.utils import timezone
 
-from .models import GatewayActivation, GatewayInventory
+from .models import Gateway, GatewayActivation, GatewayInventory
 
 logger = logging.getLogger("novena_hub")
 
@@ -80,9 +80,29 @@ def queue_gateway_activation(gateway, operational_password: str) -> GatewayActiv
     return activation
 
 
+@transaction.atomic
 def provision_gateway_activation(activation_id) -> bool:
-    activation = GatewayActivation.objects.select_related("gateway").filter(pk=activation_id).first()
-    if not activation or activation.status in {"acknowledged", "expired", "superseded"}:
+    # Serialise provisioning with reissue and acknowledgement. Otherwise an
+    # in-flight retry can restore Pending after the CM4 has acknowledged.
+    gateway_id = GatewayActivation.objects.filter(pk=activation_id).values_list("gateway_id", flat=True).first()
+    if gateway_id is None:
+        return False
+    Gateway.objects.select_for_update().get(pk=gateway_id)
+    activation = (
+        GatewayActivation.objects.select_for_update()
+        .select_related("gateway")
+        .filter(pk=activation_id)
+        .first()
+    )
+    if not activation or activation.acknowledged_at or activation.status in {"acknowledged", "expired", "superseded"}:
+        return False
+    latest_generation = (
+        GatewayActivation.objects.filter(gateway_id=gateway_id)
+        .order_by("-generation")
+        .values_list("generation", flat=True)
+        .first()
+    )
+    if activation.generation != latest_generation:
         return False
     if activation.expires_at <= timezone.now():
         expire_gateway_activation(activation)
@@ -144,12 +164,23 @@ def retry_delay_for_attempts(attempt_count: int) -> timedelta:
     return timedelta(seconds=seconds)
 
 
+@transaction.atomic
 def deliver_gateway_activation(activation: GatewayActivation, *, retry: bool = False) -> bool:
     """Publish activation and persist the transport-level delivery attempt."""
     now = timezone.now()
-    activation = GatewayActivation.objects.select_related("gateway", "team").get(pk=activation.pk)
+    gateway_id = activation.gateway_id
+    Gateway.objects.select_for_update().get(pk=gateway_id)
+    activation = GatewayActivation.objects.select_for_update().select_related("gateway", "team").get(pk=activation.pk)
 
-    if activation.status == "acknowledged":
+    if activation.acknowledged_at or activation.status in {"acknowledged", "superseded", "expired"}:
+        return False
+    latest_generation = (
+        GatewayActivation.objects.filter(gateway_id=gateway_id)
+        .order_by("-generation")
+        .values_list("generation", flat=True)
+        .first()
+    )
+    if activation.generation != latest_generation:
         return False
     if activation.expires_at <= now:
         expire_gateway_activation(activation)
@@ -191,6 +222,7 @@ def latest_retryable_activation(gateway):
     return (
         gateway.activations.filter(
             status__in=GatewayActivation.UNRESOLVED_STATUSES,
+            acknowledged_at__isnull=True,
             expires_at__gt=now,
         )
         .order_by("-created_at")
@@ -259,7 +291,12 @@ def acknowledge_gateway_activation(gateway, request_id: str, generation, status:
     if activation.generation != latest_generation or activation.status in {"expired", "superseded"}:
         return None
 
-    if activation.status == "acknowledged":
+    if activation.acknowledged_at or activation.status == "acknowledged":
+        if activation.status != "acknowledged":
+            activation.status = "acknowledged"
+            activation.encrypted_mqtt_password = ""
+            activation.last_error = ""
+            activation.save(update_fields=["status", "encrypted_mqtt_password", "last_error", "updated_at"])
         return activation
 
     if status == "success":
@@ -279,6 +316,13 @@ def acknowledge_gateway_activation(gateway, request_id: str, generation, status:
 
 def expire_gateway_activation(activation: GatewayActivation) -> bool:
     activation = GatewayActivation.objects.get(pk=activation.pk)
+    if activation.acknowledged_at:
+        if activation.status != "acknowledged":
+            activation.status = "acknowledged"
+            activation.encrypted_mqtt_password = ""
+            activation.last_error = ""
+            activation.save(update_fields=["status", "encrypted_mqtt_password", "last_error", "updated_at"])
+        return False
     if activation.status in ("acknowledged", "expired"):
         return False
     activation.status = "expired"
@@ -302,6 +346,7 @@ def expire_and_retry_gateway_activations() -> dict:
 
     retryable = GatewayActivation.objects.select_related("gateway", "team").filter(
         status__in=GatewayActivation.UNRESOLVED_STATUSES,
+        acknowledged_at__isnull=True,
         expires_at__gt=now,
     )
     for activation in retryable:

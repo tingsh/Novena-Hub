@@ -3,6 +3,8 @@
      {% if command.status == 'pending' or command.status == 'sent' %}
      hx-get="{% url 'web_team:devices:device_command_status' request.team.slug command.device.id command.transaction_id %}"
      hx-trigger="every 2s"
+     hx-target="this"
+     hx-select="unset"
      hx-swap="outerHTML"
      {% endif %}>
     

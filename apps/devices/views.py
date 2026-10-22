@@ -928,35 +928,11 @@ class DeviceCreateView(PermissionRequiredMixin, CreateView):
 class DeviceUpdateView(PermissionRequiredMixin, UpdateView):
     permission_required = "manage_devices"
     model = Device
-    fields = ["name", "device_type", "protocol", "energy_category", "connection_config", "status"]
+    fields = ["name"]
     template_name = "devices/device_form.html"
 
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        connection_changed = "connection_config" in form.changed_data
-        if connection_changed and self.object.template and self.object.template.mapping_strategy == "site_defined":
-            from .datapoint_maps import ensure_device_datapoint_map
-
-            mapping = ensure_device_datapoint_map(self.object)
-            mapping.status = mapping.Status.DRAFT
-            mapping.last_validation = {}
-            mapping.datapoint_health = {}
-            mapping.tested_checksum = ""
-            mapping.confirmed_checksum = ""
-            mapping.last_tested_at = None
-            mapping.validated_by = None
-            mapping.validated_at = None
-            mapping.confirmed_by = None
-            mapping.confirmed_at = None
-            mapping.save()
-            metadata = dict(self.object.metadata or {})
-            metadata["guided_setup_validation"] = "pending"
-            self.object.metadata = metadata
-            self.object.save(update_fields=["metadata", "updated_at"])
-        return response
-
     def get_success_url(self):
-        return reverse_lazy("web_team:devices:device_list", args=[self.request.team.slug])
+        return reverse_lazy("web_team:devices:device_detail", args=[self.request.team.slug, self.object.pk])
 
 
 @require_permission("manage_devices")

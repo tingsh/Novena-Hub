@@ -191,7 +191,7 @@
                     <div class="relative">
                         <input type="text" name="q" placeholder="Search team members by name or email..." class="input input-bordered w-full rounded-2xl font-bold"
                                hx-get="{% url 'web_team:alerts:search_users' request.team.slug %}" 
-                               hx-trigger="keyup changed delay:300ms" hx-target="#search-results"
+                               hx-trigger="keyup changed delay:300ms" hx-target="#search-results" hx-select="unset" hx-swap="innerHTML"
                                @click.outside="document.getElementById('search-results').innerHTML = ''">
                         <div id="search-results"></div>
                     </div>

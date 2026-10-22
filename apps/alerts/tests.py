@@ -338,6 +338,35 @@ def test_search_team_members_htmx():
     assert response.status_code == 200
     assert b"John Doe" not in response.content
 
+    form_response = client.get(reverse("web_team:alerts:rule_create", args=[team.slug]))
+    assert b'hx-target="#search-results" hx-select="unset" hx-swap="innerHTML"' in form_response.content
+
+
+@pytest.mark.django_db
+def test_acknowledge_alert_returns_replaceable_row():
+    team = Team.objects.create(name="Ack Test", slug="ack-test")
+    site = Site.objects.create(team=team, name="Cold Room")
+    device = Device.objects.create(team=team, site=site, name="Sensor")
+    user = CustomUser.objects.create_user(username="operator", email="operator@example.com", password="pwd")
+    Membership.objects.create(team=team, user=user, role=ROLE_ADMIN)
+    rule = AlertRule.objects.create(
+        team=team, device=device, name="High temperature", telemetry_key="temperature",
+        condition="gt", threshold=4, notify_email=False,
+    )
+    alert = Alert.objects.create(team=team, rule=rule, device=device, trigger_value=8)
+    client = Client()
+    client.force_login(user)
+
+    list_response = client.get(reverse("web_team:alerts:alert_list", args=[team.slug]))
+    assert b'hx-select="unset"' in list_response.content
+    response = client.post(reverse("web_team:alerts:acknowledge_alert", args=[team.slug, alert.pk]))
+
+    alert.refresh_from_db()
+    assert response.status_code == 200
+    assert alert.status == "acknowledged"
+    assert f'id="alert-row-{alert.pk}"'.encode() in response.content
+    assert b"Acknowledged" in response.content
+
 
 @pytest.mark.django_db
 @override_settings(SITE_URL="http://testserver", CELERY_TASK_ALWAYS_EAGER=True)
@@ -510,6 +539,76 @@ def test_duration_seconds_evaluation():
 
     check_alerts_for_payload(device, "current", 12.0)
     assert Alert.objects.filter(rule=rule, device=device).count() == 1
+
+
+@pytest.mark.django_db
+def test_sustained_alert_does_not_bridge_offline_telemetry_gap():
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.telemetry.models import TelemetryData
+
+    team = Team.objects.create(name="Gap Test", slug="gap-test")
+    site = Site.objects.create(team=team, name="Cold Room")
+    device = Device.objects.create(team=team, site=site, name="Temperature Sensor")
+    rule = AlertRule.objects.create(
+        team=team,
+        name="Sustained high temperature",
+        device=device,
+        telemetry_key="temperature",
+        condition="gt",
+        threshold=4,
+        duration_seconds=60,
+        notify_email=False,
+    )
+    now = timezone.now()
+    for age in (90, 0):
+        TelemetryData.objects.create(
+            device=device,
+            key="temperature",
+            value_numeric=6,
+            timestamp=now - timedelta(seconds=age),
+        )
+
+    check_alerts_for_payload(device, "temperature", 6)
+
+    assert not Alert.objects.filter(rule=rule).exists()
+
+
+@pytest.mark.django_db
+def test_sustained_boolean_alert_uses_door_readings():
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.telemetry.models import TelemetryData
+
+    team = Team.objects.create(name="Door Test", slug="door-test")
+    site = Site.objects.create(team=team, name="Cold Room")
+    device = Device.objects.create(team=team, site=site, name="Door Sensor")
+    rule = AlertRule.objects.create(
+        team=team,
+        name="Door open too long",
+        device=device,
+        telemetry_key="door_open",
+        condition="eq",
+        threshold=1,
+        duration_seconds=60,
+        notify_email=False,
+    )
+    now = timezone.now()
+    for age in (65, 45, 25, 5, 0):
+        TelemetryData.objects.create(
+            device=device,
+            key="door_open",
+            value_bool=True,
+            timestamp=now - timedelta(seconds=age),
+        )
+
+    check_alerts_for_payload(device, "door_open", True)
+
+    assert Alert.objects.filter(rule=rule, status="active").count() == 1
 
 
 @pytest.mark.django_db

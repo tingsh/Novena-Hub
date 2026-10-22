@@ -20,6 +20,14 @@ DISPLAY_TYPES = {"value", "gauge", "trend", "status"}
 ACCESS_TYPES = {"read_only", "read_write"}
 READ_FUNCTION_CODES = {1, 2, 3, 4}
 WRITE_FUNCTION_CODES = {5, 6, 15, 16}
+
+
+def default_register_count(data_type) -> int:
+    """Return the number of 16-bit Modbus objects used by a signal."""
+    normalized = str(data_type or "").lower()
+    return 4 if "64" in normalized else 2 if "32" in normalized else 1
+
+
 CSV_COLUMNS = (
     "key",
     "label",
@@ -94,7 +102,7 @@ def normalize_datapoints(datapoints) -> list[dict]:
         )
         if read_function_code not in READ_FUNCTION_CODES:
             raise ValidationError(f"Signal '{key}' must use a read-only Modbus function code.")
-        default_count = 4 if "64" in data_type else 2 if "32" in data_type else 1
+        default_count = default_register_count(data_type)
         objects_count = _integer(
             raw.get("objects_count") or raw.get("objectsCount") or default_count,
             field="objects_count",

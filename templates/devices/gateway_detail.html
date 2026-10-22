@@ -472,7 +472,7 @@
                     </div>
                 </div>
                 <div class="p-6">
-                    {% if latest_activation and latest_activation.status != "acknowledged" and gateway.freshness.status == "live" and gateway.lifecycle_status != "release_pending" and gateway.lifecycle_status != "released" %}
+                    {% if latest_activation and latest_activation.status != "acknowledged" and gateway.lifecycle_status != "active" and gateway.freshness.status == "live" and gateway.lifecycle_status != "release_pending" and gateway.lifecycle_status != "released" %}
                     <div class="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-800">
                         <div class="font-bold">Activation: {{ latest_activation.get_status_display }}</div>
                         <p class="mt-1">If the Gateway is powered on but has not connected, securely retry activation. No password will be shown.</p>

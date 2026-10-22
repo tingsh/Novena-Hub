@@ -46,6 +46,28 @@ class PostOnboardingCustomerAuditTest(TestCase):
             last_telemetry_at=timezone.now() - timedelta(minutes=4),
         )
 
+    def test_customer_edit_can_rename_without_overriding_live_health_or_connection(self):
+        url = reverse("web_team:devices:device_edit", args=[self.team.slug, self.device.pk])
+        form = self.client.get(url)
+        self.assertContains(form, "changes the equipment label only")
+        self.assertNotContains(form, 'name="status"')
+        self.assertNotContains(form, 'name="connection_config"')
+
+        original_status = self.device.status
+        original_connection = self.device.connection_config
+        response = self.client.post(url, {
+            "name": "Cold Room A",
+            "status": "online",
+            "connection_config": '{"host":"wrong-server"}',
+            "protocol": "modbus_rtu",
+        })
+        self.assertRedirects(response, reverse("web_team:devices:device_detail", args=[self.team.slug, self.device.pk]))
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.name, "Cold Room A")
+        self.assertEqual(self.device.status, original_status)
+        self.assertEqual(self.device.connection_config, original_connection)
+        self.assertEqual(self.device.protocol, "modbus_tcp")
+
     def test_site_and_gateway_show_configured_equipment_without_a_fresh_scan(self):
         self.gateway.discovery_data = {
             "devices": [{"interface": "10.0.0.20:502", "signature": "Modbus device"}],
