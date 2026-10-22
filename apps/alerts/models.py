@@ -79,7 +79,8 @@ class AlertRule(BaseTeamModel):
 
     @property
     def metric_unit(self):
-        return self.metric_config.get("unit", "")
+        unit = self.metric_config.get("unit", "")
+        return {"degC": "°C", "degF": "°F"}.get(unit, unit)
 
     @property
     def threshold_display(self):

@@ -155,7 +155,11 @@ def test_site_wide_alert_rejects_mixed_units_for_same_reading():
 def test_alert_rule_display_translates_signal_and_condition_codes():
     team = Team.objects.create(name="Display", slug="display")
     site = Site.objects.create(team=team, name="Cold Store")
-    device = Device.objects.create(team=team, site=site, name="Cold Room")
+    template = DeviceTemplate.objects.create(
+        name="Cold Sensor", device_type="temperature_sensor", protocol="modbus_tcp",
+        register_map={"cold_room_temperature": {"address": 0, "type": "float32", "unit": "degC"}},
+    )
+    device = Device.objects.create(team=team, site=site, name="Cold Room", template=template)
     rule = AlertRule.objects.create(
         team=team,
         device=device,
@@ -166,7 +170,9 @@ def test_alert_rule_display_translates_signal_and_condition_codes():
     )
 
     assert rule.metric_label == "Cold Room Temperature"
-    assert rule.threshold_display == "above 8"
+    assert rule.threshold_display == "above 8 °C"
+    alert = Alert.objects.create(team=team, rule=rule, device=device, trigger_value=8.5)
+    assert alert.trigger_value_display == "8.5 °C"
 
 
 @pytest.mark.django_db
