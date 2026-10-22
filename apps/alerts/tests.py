@@ -82,6 +82,76 @@ def test_alert_rule_form_uses_operator_labels():
 
 
 @pytest.mark.django_db
+def test_active_alert_rule_requires_a_confirmed_signal_on_its_equipment():
+    team = Team.objects.create(name="Signal Rules", slug="signal-rules")
+    site = Site.objects.create(team=team, name="Cold Store")
+    template = DeviceTemplate.objects.create(
+        name="Cold Sensor", device_type="temperature_sensor", protocol="modbus_tcp",
+        register_map={"temperature": {"address": 0, "type": "float32", "unit": "degC"}},
+    )
+    device = Device.objects.create(team=team, site=site, name="Room Sensor", template=template)
+    data = {
+        "name": "Warm room", "site": site.pk, "device": device.pk,
+        "telemetry_key": "temperatur", "condition": "gt", "threshold": "4",
+        "severity": "warning", "is_active": "on", "cooldown_minutes": "15", "duration_seconds": "60",
+    }
+    form = AlertRuleForm(team=team, data=data)
+    assert not form.is_valid()
+    assert "telemetry_key" in form.errors
+    assert any(signal["key"] == "temperature" and signal["unit"] == "°C" for signal in form.available_signals)
+
+    data["telemetry_key"] = "temperature"
+    form = AlertRuleForm(team=team, data=data)
+    assert form.is_valid(), form.errors
+
+
+@pytest.mark.django_db
+def test_alert_rule_rejects_site_that_does_not_contain_selected_equipment():
+    team = Team.objects.create(name="Signal Site", slug="signal-site")
+    site = Site.objects.create(team=team, name="Cold Store")
+    other_site = Site.objects.create(team=team, name="Factory")
+    device = Device.objects.create(team=team, site=site, name="Room Sensor")
+    form = AlertRuleForm(team=team, data={
+        "name": "Draft", "site": other_site.pk, "device": device.pk,
+        "telemetry_key": "temperature", "condition": "gt", "threshold": "4",
+        "severity": "warning", "cooldown_minutes": "15", "duration_seconds": "60",
+    })
+    assert not form.is_valid()
+    assert "site" in form.errors
+
+
+@pytest.mark.django_db
+def test_site_wide_alert_rejects_mixed_units_for_same_reading():
+    team = Team.objects.create(name="Mixed Units", slug="mixed-units")
+    site = Site.objects.create(team=team, name="Plant")
+    celsius = DeviceTemplate.objects.create(
+        name="Celsius Sensor", device_type="temperature_sensor", protocol="modbus_tcp",
+        register_map={"temperature": {"address": 0, "type": "float32", "unit": "degC"}},
+    )
+    fahrenheit = DeviceTemplate.objects.create(
+        name="Fahrenheit Sensor", device_type="temperature_sensor", protocol="modbus_tcp",
+        register_map={"temperature": {"address": 0, "type": "float32", "unit": "degF"}},
+    )
+    Device.objects.create(team=team, site=site, name="Room A", template=celsius)
+    Device.objects.create(team=team, site=site, name="Room B", template=fahrenheit)
+    data = {
+        "name": "High temperature", "site": site.pk, "device": "", "telemetry_key": "temperature",
+        "condition": "gt", "threshold": "4", "severity": "warning", "is_active": "on",
+        "cooldown_minutes": "15", "duration_seconds": "60",
+    }
+    form = AlertRuleForm(team=team, data=data)
+    assert not form.is_valid()
+    assert "different units" in str(form.errors["telemetry_key"])
+    assert all(not signal["site_wide_safe"] for signal in form.available_signals)
+
+    fahrenheit.register_map["temperature"]["unit"] = "degC"
+    fahrenheit.save(update_fields=["register_map"])
+    form = AlertRuleForm(team=team, data=data)
+    assert form.is_valid(), form.errors
+    assert all(signal["site_wide_safe"] for signal in form.available_signals)
+
+
+@pytest.mark.django_db
 def test_alert_rule_display_translates_signal_and_condition_codes():
     team = Team.objects.create(name="Display", slug="display")
     site = Site.objects.create(team=team, name="Cold Store")
@@ -148,6 +218,9 @@ def test_template_suggestion_prefills_separate_alert_form_without_creating_rule(
     form_response = client.get(suggestion["url"])
     assert form_response.status_code == 200
     assert form_response.context["form"].initial["telemetry_key"] == "active_power"
+    assert b'id="alert-reading"' in form_response.content
+    assert f'data-device-id="{device.pk}"'.encode() in form_response.content
+    assert b'active_power' in form_response.content
     assert not AlertRule.objects.filter(device=device).exists()
 
     saved = client.post(
