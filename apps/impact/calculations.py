@@ -306,6 +306,7 @@ def _energy_sources(site_profile):
             verification_status=ImpactDataSource.VerificationStatus.CONFIRMED,
             include_in_totals=True,
             device__template__is_verified=True,
+            device__template__evidence_status="field_verified",
             quantity_kind__in=[ImpactDataSource.QuantityKind.ENERGY, ImpactDataSource.QuantityKind.POWER],
         ).select_related("device", "device__template")
     )
@@ -492,6 +493,7 @@ def calculate_power_factor_metric(site_profile, start, end):
         verification_status=ImpactDataSource.VerificationStatus.CONFIRMED,
         quantity_kind=ImpactDataSource.QuantityKind.POWER_FACTOR,
         device__template__is_verified=True,
+        device__template__evidence_status="field_verified",
     ).select_related("device", "device__template")
     low_seconds = Decimal("0")
     covered_seconds = Decimal("0")

@@ -306,6 +306,12 @@ class DeviceTemplate(models.Model):
         ("cold_chain", _("Cold Chain")),
         ("factory", _("Smart Factory")),
     )
+    EVIDENCE_STATUS_CHOICES = (
+        ("legacy_unreviewed", _("Legacy · review required")),
+        ("documented", _("Documented draft")),
+        ("field_verified", _("Field verified")),
+        ("retired", _("Retired")),
+    )
 
     name = models.CharField(max_length=200)
     manufacturer = models.CharField(max_length=200, blank=True)
@@ -324,6 +330,14 @@ class DeviceTemplate(models.Model):
     category = models.CharField(max_length=20, choices=VERTICAL_CHOICES, default="energy")
     alert_presets = models.JSONField(default=list, blank=True)
     is_verified = models.BooleanField(default=False)
+    catalog_key = models.CharField(max_length=120, blank=True, null=True)
+    catalog_revision = models.PositiveIntegerField(blank=True, null=True)
+    is_current = models.BooleanField(default=True)
+    evidence_status = models.CharField(
+        max_length=20, choices=EVIDENCE_STATUS_CHOICES, default="legacy_unreviewed"
+    )
+    document_revision = models.CharField(max_length=100, blank=True)
+    compatibility_notes = models.TextField(blank=True)
     datapoint_schema_version = models.PositiveSmallIntegerField(
         default=2,
         help_text=_("Version of the normalized datapoint representation stored in register_map."),
@@ -349,6 +363,15 @@ class DeviceTemplate(models.Model):
 
     def __str__(self):
         return self.name
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["catalog_key", "catalog_revision"],
+                condition=models.Q(catalog_key__isnull=False),
+                name="unique_device_template_catalog_revision",
+            )
+        ]
 
 
 class Device(BaseTeamModel):

@@ -3,19 +3,23 @@
         {{ template_count }} compatible template{{ template_count|pluralize }}{% if template_count > 10 %} · showing the first 10; type to narrow the list{% endif %}. Choose the exact manufacturer and model.
     </p>
     {% for template in templates %}
-    <button type="button"
+    <div role="button" tabindex="0"
             class="flex w-full items-start justify-between gap-3 border-b border-base-content/10 p-3 text-left last:border-b-0 hover:bg-base-200/60"
-            @click="$dispatch('template-picked', { id: '{{ template.id }}', name: '{{ template.name|escapejs }}', trust: '{% if template.mapping_strategy == "site_defined" %}Customisable starter{% elif template.is_verified %}Novena verified{% elif template.source == "ai_generated" %}AI draft{% else %}Customer template{% endif %}' })">
+            @keydown.enter.self="$el.click()"
+            @keydown.space.self.prevent="$el.click()"
+            @click="$dispatch('template-picked', { id: '{{ template.id }}', name: '{{ template.name|escapejs }}', trust: '{% if template.mapping_strategy == "site_defined" %}Customisable starter{% elif template.evidence_status == "documented" %}Documented draft · live test required{% elif template.evidence_status == "field_verified" %}Field verified{% elif template.source == "ai_generated" %}AI draft{% else %}Unreviewed template{% endif %}' })">
         <span class="min-w-0">
             <span class="block truncate text-sm font-bold text-base-content">{{ template.name }}</span>
             <span class="mt-1 block text-xs text-base-content/50">
                 {{ template.manufacturer|default:"Manufacturer not listed" }}{% if template.model_number %} · {{ template.model_number }}{% endif %} · {{ template.get_protocol_display }}
+                {% if template.catalog_revision %} · r{{ template.catalog_revision }}{% endif %}
             </span>
+            {% if template.evidence_status == "documented" and template.source_url %}<a href="{{ template.source_url }}" target="_blank" rel="noopener noreferrer" class="mt-1 block text-xs text-primary-500 underline" @click.stop>OEM register source</a>{% endif %}
         </span>
-        <span class="badge badge-sm shrink-0 {% if template.is_verified %}badge-success{% elif template.source == 'ai_generated' %}badge-warning{% else %}badge-outline{% endif %}">
-            {% if template.mapping_strategy == "site_defined" %}Starter{% elif template.is_verified %}Verified{% elif template.source == "ai_generated" %}AI draft{% else %}Private{% endif %}
+        <span class="badge badge-sm shrink-0 {% if template.evidence_status == 'field_verified' %}badge-success{% elif template.evidence_status == 'documented' %}badge-info{% elif template.source == 'ai_generated' %}badge-warning{% else %}badge-outline{% endif %}">
+            {% if template.mapping_strategy == "site_defined" %}Starter{% elif template.evidence_status == "field_verified" %}Field verified{% elif template.evidence_status == "documented" %}Documented draft{% elif template.source == "ai_generated" %}AI draft{% else %}Unreviewed{% endif %}
         </span>
-    </button>
+    </div>
     {% empty %}
     <div class="p-4 text-center">
         <p class="text-sm font-semibold text-base-content/65">No matching template found</p>
@@ -32,12 +36,14 @@
                     {{ template.manufacturer|default:"Manufacturer not listed" }}
                     {% if template.model_number %} · {{ template.model_number }}{% endif %}
                     · {{ template.get_protocol_display }}
+                    {% if template.catalog_revision %} · r{{ template.catalog_revision }}{% endif %}
                 </p>
             </div>
-            <span class="badge badge-sm {% if template.is_verified %}badge-success{% elif template.source == 'ai_generated' %}badge-warning{% else %}badge-outline{% endif %}">
-                {% if template.mapping_strategy == "site_defined" %}Starter · map signals{% elif template.is_verified %}Novena verified{% elif template.source == "ai_generated" %}AI draft{% else %}Unvalidated{% endif %}
+            <span class="badge badge-sm {% if template.evidence_status == 'field_verified' %}badge-success{% elif template.evidence_status == 'documented' %}badge-info{% elif template.source == 'ai_generated' %}badge-warning{% else %}badge-outline{% endif %}">
+                {% if template.mapping_strategy == "site_defined" %}Starter · map signals{% elif template.evidence_status == "field_verified" %}Field verified{% elif template.evidence_status == "documented" %}Documented draft{% elif template.source == "ai_generated" %}AI draft{% else %}Unreviewed{% endif %}
             </span>
         </div>
+        {% if template.evidence_status == "documented" and template.source_url %}<a href="{{ template.source_url }}" target="_blank" rel="noopener noreferrer" class="mt-2 block text-xs text-primary-500 underline">OEM register source</a>{% endif %}
         <p class="mt-2 text-xs text-base-content/45">Choose this name in the Equipment template selector for the discovered item above, then run live validation.</p>
     </div>
     {% empty %}

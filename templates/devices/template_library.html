@@ -112,15 +112,18 @@
                         </h3>
                     </div>
                     <div class="shrink-0 flex flex-col items-end gap-1.5">
-                        {% if template.is_verified %}
+                        {% if template.evidence_status == "field_verified" %}
                         <span class="badge badge-success text-white font-black uppercase tracking-wider text-[8px] py-2 px-3 gap-1">
-                            <i class="fa fa-check-circle text-[7px]"></i> Verified
+                            <i class="fa fa-check-circle text-[7px]"></i> Field verified
                         </span>
+                        {% elif template.evidence_status == "documented" %}
+                        <span class="badge badge-info font-black uppercase tracking-wider text-[8px] py-2 px-3">Documented draft</span>
                         {% elif template.source == "ai_generated" %}
                         <span class="badge badge-warning font-black uppercase tracking-wider text-[8px] py-2 px-3 gap-1">
                             <i class="fa fa-robot text-[7px]"></i> AI Draft
                         </span>
                         {% endif %}
+                        {% if template.catalog_revision %}<span class="text-[10px] text-base-content/50 font-mono">Revision {{ template.catalog_revision }}</span>{% endif %}
                         <span class="badge badge-outline border-base-content/10 font-mono uppercase text-[8px] py-2 px-3">
                             {{ template.protocol|upper }}
                         </span>
@@ -128,6 +131,7 @@
                 </div>
 
                 <div class="mt-4 flex-1">
+                    {% if template.compatibility_notes %}<p class="mb-3 text-xs text-base-content/60">{{ template.compatibility_notes }}</p>{% endif %}
                     <span class="text-[9px] font-black text-base-content/40 uppercase tracking-widest block mb-2">Mapped Registers</span>
                     <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                         {% for reg, info in template.register_map.items %}
@@ -148,8 +152,8 @@
                         {% endif %}
                     </div>
                     {% if template.source_url %}
-                    <a href="{{ template.source_url }}" target="_blank" class="text-xs text-primary-500 font-bold hover:underline flex items-center gap-1">
-                        <i class="fa fa-link text-[10px]"></i> Citation
+                    <a href="{{ template.source_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary-500 font-bold hover:underline flex items-center gap-1">
+                        <i class="fa fa-link text-[10px]"></i> OEM source
                     </a>
                     {% endif %}
                 </div>

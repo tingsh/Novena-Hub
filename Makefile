@@ -72,7 +72,10 @@ local-test: ensure-local-venv ## Run Django tests with the WSL virtualenv. E.g. 
 local-pytest: ensure-local-venv ## Run pytest with the WSL virtualenv. E.g. `make local-pytest ARGS='apps/devices/tests/test_infrastructure.py -q'`
 	@DJANGO_SETTINGS_MODULE=$(NOVENA_DJANGO_SETTINGS_MODULE) $(NOVENA_PYTHON) -m pytest ${ARGS}
 
-init: setup-env start-bg migrations migrate bootstrap_content  ## Quickly get up and running (start containers and bootstrap DB and front end)
+energy-catalog: ## Import the versioned OEM-documented energy templates after migrations
+	@docker compose run --rm web python manage.py import_energy_catalog
+
+init: setup-env start-bg migrations migrate energy-catalog bootstrap_content  ## Quickly get up and running (start containers and bootstrap DB and front end)
 
 uv: ## Run a uv command
 	@docker compose run --rm web uv $(filter-out $@,$(MAKECMDGOALS))

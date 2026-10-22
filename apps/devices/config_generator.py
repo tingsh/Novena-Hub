@@ -156,6 +156,8 @@ def _build_slave_config(device, is_tcp):
             entry["multiplier"] = reg["multiplier"]
         if "offset" in reg:
             entry["offset"] = reg["offset"]
+        if "invalidValues" in reg:
+            entry["invalidValues"] = reg["invalidValues"]
 
         if reg.get("attribute"):
             slave["attributes"].append(entry)

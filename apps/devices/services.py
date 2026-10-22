@@ -56,8 +56,11 @@ def gateways_for_team(team):
 
 
 def visible_templates_for_team(team):
-    """Global templates plus private templates created by the current team."""
-    return DeviceTemplate.objects.filter(Q(created_by_team__isnull=True) | Q(created_by_team=team))
+    """Selectable current templates; retired revisions remain on assigned devices."""
+    return DeviceTemplate.objects.filter(
+        Q(created_by_team__isnull=True) | Q(created_by_team=team),
+        is_current=True,
+    ).exclude(evidence_status="retired")
 
 
 def normalize_gateway_serial(serial_number: str) -> str:

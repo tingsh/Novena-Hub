@@ -17,6 +17,18 @@ from .base import ImpactTestCase
 
 
 class ScheduleAndEnergyCalculationTests(ImpactTestCase):
+    def test_documented_energy_template_cannot_feed_impact_even_if_legacy_flag_is_true(self):
+        template = self.create_template({"energy_import": {"unit": "kWh"}})
+        template.evidence_status = "documented"
+        template.save(update_fields=["evidence_status"])
+        device = self.create_device(template, energy_category="utility")
+        self.create_source(device, "energy_import")
+
+        sources, has_boundary = _energy_sources(self.profile)
+
+        self.assertEqual(sources, [])
+        self.assertFalse(has_boundary)
+
     def test_schedule_handles_midnight_weekends_and_date_override(self):
         self.profile.operating_schedule = {
             "monday": [["22:00", "06:00"]],

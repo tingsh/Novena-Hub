@@ -1,0 +1,514 @@
+{
+  "schema_version": 1,
+  "catalog": "energy",
+  "templates": [
+    {
+      "catalog_key": "schneider-pm5110-modbus-rtu",
+      "catalog_revision": 1,
+      "name": "Schneider PowerLogic PM5110 (METSEPM5110)",
+      "manufacturer": "Schneider Electric",
+      "model_number": "METSEPM5110",
+      "protocol": "modbus_rtu",
+      "document_revision": "PM51xx_PM53xx PMC Register List v2011/v2021 R01",
+      "source_url": "https://www.se.com/th/en/faqs/FA234017/",
+      "regional_url": "https://www.se.com/sg/en/product/METSEPM5110/power-meter-powerlogic-pm5110-modbus-up-to-15th-harmonic-1do-33-alarms/",
+      "firmware": "PM5110 v2.011 register column; confirm installed firmware",
+      "address_convention": "Schneider one-based register numbers minus one for gateway wire address",
+      "word_order": "BIG",
+      "configuration_notes": "Configure RS485 unit ID, baud, parity and CT/PT ratios on the meter; verify phase sequence and import/export direction.",
+      "register_map": {
+        "voltage_l1_n": {
+          "address": 3027,
+          "type": "float32",
+          "unit": "V",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "current_l1": {
+          "address": 2999,
+          "type": "float32",
+          "unit": "A",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "active_power_total": {
+          "address": 3059,
+          "type": "float32",
+          "unit": "W",
+          "scale": 1000,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "power_factor_total": {
+          "address": 3191,
+          "type": "float32",
+          "unit": "",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "frequency": {
+          "address": 3109,
+          "type": "float32",
+          "unit": "Hz",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "energy_import": {
+          "address": 2699,
+          "type": "float32",
+          "unit": "kWh",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "energy_export": {
+          "address": 2701,
+          "type": "float32",
+          "unit": "kWh",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        }
+      }
+    },
+    {
+      "catalog_key": "schneider-pm5340-modbus-tcp",
+      "catalog_revision": 1,
+      "name": "Schneider PowerLogic PM5340 (METSEPM5340)",
+      "manufacturer": "Schneider Electric",
+      "model_number": "METSEPM5340",
+      "protocol": "modbus_tcp",
+      "document_revision": "PM51xx_PM53xx PMC Register List v2011/v2021 R01",
+      "source_url": "https://www.se.com/th/en/faqs/FA234017/",
+      "regional_url": "https://www.se.com/my/en/product/METSEPM5340/pm5340-powermeter-w-ethernet-upto-31st-h-256k-2di-2do-35-alarms-flush-mount/",
+      "firmware": "PM5340 v2.021 register column; confirm installed firmware",
+      "address_convention": "Schneider one-based register numbers minus one for gateway wire address",
+      "word_order": "BIG",
+      "configuration_notes": "Configure meter IP, unit ID and CT/PT ratios; verify phase sequence and import/export direction.",
+      "register_map": {
+        "voltage_l1_n": {
+          "address": 3027,
+          "type": "float32",
+          "unit": "V",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "current_l1": {
+          "address": 2999,
+          "type": "float32",
+          "unit": "A",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "active_power_total": {
+          "address": 3059,
+          "type": "float32",
+          "unit": "W",
+          "scale": 1000,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "power_factor_total": {
+          "address": 3191,
+          "type": "float32",
+          "unit": "",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "frequency": {
+          "address": 3109,
+          "type": "float32",
+          "unit": "Hz",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "energy_import": {
+          "address": 2699,
+          "type": "float32",
+          "unit": "kWh",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "energy_export": {
+          "address": 2701,
+          "type": "float32",
+          "unit": "kWh",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        }
+      }
+    },
+    {
+      "catalog_key": "schneider-iem3255-modbus-rtu",
+      "catalog_revision": 1,
+      "name": "Schneider Acti9 iEM3255 (A9MEM3255)",
+      "manufacturer": "Schneider Electric",
+      "model_number": "A9MEM3255",
+      "protocol": "modbus_rtu",
+      "document_revision": "iEM3100/iEM3200/iEM3300 user manual DOCA0005EN-16",
+      "source_url": "https://productinfo.se.com/iem3100_iem3200_iem3300/viewer?docidentity=EnergyEnergyByTariffAndInputMeterin-86B2B4A3&extension=xml&lang=en&manualidentity=UserManualEnergyMetersSeriesDOCA000-78C9EF88",
+      "regional_url": "https://www.se.com/sg/en/product/A9MEM3255/iem3255-energy-meter-ct-modbus-1-digital-i-1-digital-o-multitariff/",
+      "firmware": "iEM3255; confirm installed firmware against DOCA0005EN-16",
+      "address_convention": "OEM hex Address column is zero based; decimal Register minus one",
+      "word_order": "BIG",
+      "configuration_notes": "Configure CT ratio, wiring mode and RS485 settings on meter. Export register does not apply to iEM3250, but is listed for iEM3255.",
+      "register_map": {
+        "voltage_l1_n": {
+          "address": 3027,
+          "type": "float32",
+          "unit": "V",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "current_l1": {
+          "address": 2999,
+          "type": "float32",
+          "unit": "A",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "active_power_total": {
+          "address": 3059,
+          "type": "float32",
+          "unit": "W",
+          "scale": 1000,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "frequency": {
+          "address": 3109,
+          "type": "float32",
+          "unit": "Hz",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "energy_import": {
+          "address": 3203,
+          "type": "int64",
+          "unit": "Wh",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 4
+        },
+        "energy_export": {
+          "address": 3207,
+          "type": "int64",
+          "unit": "Wh",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 4
+        }
+      }
+    },
+    {
+      "catalog_key": "eastron-sdm120-m-modbus-rtu",
+      "catalog_revision": 1,
+      "name": "Eastron SDM120-M",
+      "manufacturer": "Eastron",
+      "model_number": "SDM120-M",
+      "protocol": "modbus_rtu",
+      "document_revision": "SDM120-M User Manual v1.0",
+      "source_url": "https://www.eastrongroup.com/eastrongroup/2025/03/22/eastronsdm120-musermanualv1.0.pdf",
+      "regional_url": "https://www.eastrongroup.com/product/single-phase-energy-meter/rs485-45a-din-rail-single-phase-multifunction-energy-meter.html",
+      "firmware": "SDM120-M manual v1.0; verify meter variant",
+      "address_convention": "Use OEM Modbus Protocol Start Address Hex directly (zero based)",
+      "word_order": "BIG",
+      "configuration_notes": "Set RS485 unit ID and serial settings; check meter word order and import/export wiring direction.",
+      "register_map": {
+        "voltage": {
+          "address": 0,
+          "type": "float32",
+          "unit": "V",
+          "scale": 1,
+          "functionCode": 4,
+          "objectsCount": 2
+        },
+        "current": {
+          "address": 6,
+          "type": "float32",
+          "unit": "A",
+          "scale": 1,
+          "functionCode": 4,
+          "objectsCount": 2
+        },
+        "active_power": {
+          "address": 12,
+          "type": "float32",
+          "unit": "W",
+          "scale": 1,
+          "functionCode": 4,
+          "objectsCount": 2
+        },
+        "power_factor": {
+          "address": 30,
+          "type": "float32",
+          "unit": "",
+          "scale": 1,
+          "functionCode": 4,
+          "objectsCount": 2
+        },
+        "frequency": {
+          "address": 70,
+          "type": "float32",
+          "unit": "Hz",
+          "scale": 1,
+          "functionCode": 4,
+          "objectsCount": 2
+        },
+        "energy_import": {
+          "address": 72,
+          "type": "float32",
+          "unit": "kWh",
+          "scale": 1,
+          "functionCode": 4,
+          "objectsCount": 2
+        },
+        "energy_export": {
+          "address": 74,
+          "type": "float32",
+          "unit": "kWh",
+          "scale": 1,
+          "functionCode": 4,
+          "objectsCount": 2
+        }
+      }
+    },
+    {
+      "catalog_key": "siemens-pac3220-7km3220-0ba01-1da0-modbus-tcp",
+      "catalog_revision": 1,
+      "name": "Siemens SENTRON PAC3220 (7KM3220-0BA01-1DA0)",
+      "manufacturer": "Siemens",
+      "model_number": "7KM3220-0BA01-1DA0",
+      "protocol": "modbus_tcp",
+      "document_revision": "L1V30425208F_RS-AA_002, 07/2024",
+      "source_url": "https://support.industry.siemens.com/cs/attachments/download/109767307/MAN_L1V30425208F_RS-AA_002_en_en-US.pdf",
+      "regional_url": "https://sieportal.siemens.com/en-si/products-services/detail/7KM3220-0BA01-1DA0",
+      "firmware": "PAC3220 per 07/2024 manual; compare hardware revision",
+      "address_convention": "Siemens one-based Offset minus one for gateway wire address",
+      "word_order": "BIG",
+      "configuration_notes": "Configure TCP network, CT/PT ratios, wiring mode and tariff settings on meter. Energy counters are tariff-specific and omitted from this first map.",
+      "register_map": {
+        "voltage_l1_n": {
+          "address": 0,
+          "type": "float32",
+          "unit": "V",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "current_l1": {
+          "address": 12,
+          "type": "float32",
+          "unit": "A",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "active_power_total": {
+          "address": 64,
+          "type": "float32",
+          "unit": "W",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "power_factor_total": {
+          "address": 68,
+          "type": "float32",
+          "unit": "",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "frequency": {
+          "address": 54,
+          "type": "float32",
+          "unit": "Hz",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        }
+      }
+    },
+    {
+      "catalog_key": "abb-b23-312-100-modbus-rtu",
+      "catalog_revision": 1,
+      "name": "ABB B23 312-100",
+      "manufacturer": "ABB",
+      "model_number": "B23 312-100",
+      "protocol": "modbus_rtu",
+      "document_revision": "2CMC485003M0201 Revision A",
+      "source_url": "https://library.e.abb.com/public/6d7783fdb45ace75c1257c3f00474022/B23_B24_User_Manual.pdf.pdf",
+      "regional_url": "https://library.e.abb.com/public/61ce136545954ae39e0e58e0671cb6c7/2CMC481004C0201.pdf",
+      "firmware": "B23/B24 mapping Revision A; verify mapping-version register on hardware",
+      "address_convention": "OEM hexadecimal start register is exact wire address; do not subtract one",
+      "word_order": "BIG",
+      "configuration_notes": "Direct 65 A B23 model; verify configured meter variant, RS485 settings and import/export direction. Invalid unsigned values require live quality review.",
+      "register_map": {
+        "voltage_l1_n": {
+          "address": 23296,
+          "type": "uint32",
+          "unit": "V",
+          "scale": 0.1,
+          "functionCode": 3,
+          "objectsCount": 2,
+          "invalidValues": [
+            4294967295
+          ]
+        },
+        "current_l1": {
+          "address": 23308,
+          "type": "uint32",
+          "unit": "A",
+          "scale": 0.01,
+          "functionCode": 3,
+          "objectsCount": 2,
+          "invalidValues": [
+            4294967295
+          ]
+        },
+        "active_power_total": {
+          "address": 23316,
+          "type": "int32",
+          "unit": "W",
+          "scale": 0.01,
+          "functionCode": 3,
+          "objectsCount": 2,
+          "invalidValues": [
+            2147483647
+          ]
+        },
+        "power_factor_total": {
+          "address": 23354,
+          "type": "int16",
+          "unit": "",
+          "scale": 0.001,
+          "functionCode": 3,
+          "objectsCount": 1,
+          "invalidValues": [
+            32767
+          ]
+        },
+        "frequency": {
+          "address": 23340,
+          "type": "uint16",
+          "unit": "Hz",
+          "scale": 0.01,
+          "functionCode": 3,
+          "objectsCount": 1,
+          "invalidValues": [
+            65535
+          ]
+        },
+        "energy_import": {
+          "address": 20480,
+          "type": "uint64",
+          "unit": "kWh",
+          "scale": 0.01,
+          "functionCode": 3,
+          "objectsCount": 4,
+          "invalidValues": [
+            18446744073709551615
+          ]
+        },
+        "energy_export": {
+          "address": 20484,
+          "type": "uint64",
+          "unit": "kWh",
+          "scale": 0.01,
+          "functionCode": 3,
+          "objectsCount": 4,
+          "invalidValues": [
+            18446744073709551615
+          ]
+        }
+      }
+    },
+    {
+      "catalog_key": "socomec-diris-a40-48250501-modbus-tcp",
+      "catalog_revision": 1,
+      "name": "Socomec DIRIS A-40 (48250501)",
+      "manufacturer": "Socomec",
+      "model_number": "48250501",
+      "protocol": "modbus_tcp",
+      "document_revision": "DIRIS A-40 communication table v1.7.4, 2022-01",
+      "source_url": "https://apac.socomec.com/sites/default/files/2024-03/DIRIS-A-40-1.7.4_COMMUNICATION-TABLE_2022-01_CMT_EN.html",
+      "regional_url": "https://apac.socomec.com/en/reference/48250501",
+      "firmware": "Communication table v1.7.4; verify product and mapping version",
+      "address_convention": "Use OEM decimal/hex start address directly (zero based)",
+      "word_order": "BIG",
+      "configuration_notes": "Configure Ethernet, TE/TR sensor type, CT/PT and wiring. Load block must be enabled; check load status 18432. Energy registers denote positive/negative flow; confirm site wiring before labeling import/export. Energy is integer kWh, so sub-kWh residual is omitted.",
+      "register_map": {
+        "voltage_l1_n": {
+          "address": 18444,
+          "type": "uint32",
+          "unit": "V",
+          "scale": 0.01,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "current_l1": {
+          "address": 18458,
+          "type": "uint32",
+          "unit": "A",
+          "scale": 0.001,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "active_power_total": {
+          "address": 18476,
+          "type": "int32",
+          "unit": "W",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "power_factor_total": {
+          "address": 18486,
+          "type": "int16",
+          "unit": "",
+          "scale": 0.001,
+          "functionCode": 3,
+          "objectsCount": 1
+        },
+        "frequency": {
+          "address": 18442,
+          "type": "uint32",
+          "unit": "Hz",
+          "scale": 0.001,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "active_energy_positive": {
+          "address": 19843,
+          "type": "uint32",
+          "unit": "kWh",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        },
+        "active_energy_negative": {
+          "address": 19846,
+          "type": "uint32",
+          "unit": "kWh",
+          "scale": 1,
+          "functionCode": 3,
+          "objectsCount": 2
+        }
+      }
+    }
+  ]
+}

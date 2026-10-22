@@ -232,6 +232,7 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 Deploy migrations before bringing the final app stack up. Web, worker, Beat, and MQTT consumer should run the same Git SHA.
+For the energy catalog release, run `python manage.py import_energy_catalog --dry-run` from the new web image after migrations. Review the listed legacy templates and assigned-device counts, then run `python manage.py import_energy_catalog` from that image. The importer retires legacy energy maps from new selection but preserves every assigned device and its pinned template revision. Deploy the matching Gateway decoder before live testing ABB invalid-value sentinels and nonfinite meter values. New maps enter as documented drafts; do not promote them to field verified until representative hardware readings match the meter display or an independent reference. The source and qualification checklist are in `docs/product/energy_template_catalog.md`.
 The automation notification path requires `events.0004_automation_email_type` and an active Celery worker. After deployment, exercise a disposable automation email to a designated test recipient and verify both its `EmailDelivery` status and receipt outside the Hub. A queued automation log or local console email alone does not prove delivery.
 
 ## Mosquitto Dynamic Security
@@ -392,6 +393,7 @@ For a bad database migration:
 5. Run migrations and readiness checks.
 
 For governed remote-control deployments, keep command workers stopped after restore and run the governed-control recovery reset from `docs/governed_remote_control_operations.md`. Restored command/outbox rows must not execute accidentally.
+If reverting to a code version before the energy catalog picker filter, verify energy template selection before onboarding another meter: that older code may show legacy rows that the importer retired. Do not reverse `devices.0033_energy_template_catalog` while devices reference catalog revisions; retain the columns and rows or restore a matching database backup.
 
 ## Upgrade Path
 

@@ -259,6 +259,8 @@ def suggest_data_sources(site):
     suggestions = []
     boundary_exists = profile.data_sources.filter(source_role=ImpactDataSource.SourceRole.SITE_BOUNDARY).exists()
     for device in site.devices.select_related("template").filter(template__is_verified=True):
+        if device.template.category == "energy" and device.template.evidence_status != "field_verified":
+            continue
         from apps.devices.datapoint_maps import effective_register_map
 
         register_map = effective_register_map(device)

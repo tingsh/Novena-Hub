@@ -1820,6 +1820,7 @@ class GuidedSetupViewTest(TestCase):
             protocol="modbus_tcp",
             register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
             is_verified=True,
+            evidence_status="field_verified",
         )
         incompatible_template = DeviceTemplate.objects.create(
             name="Novena RTU Sensor",
@@ -1865,7 +1866,7 @@ class GuidedSetupViewTest(TestCase):
 
         self.assertContains(search, template.name)
         self.assertContains(search, "template-picked")
-        self.assertContains(search, "Novena verified")
+        self.assertContains(search, "Field verified")
 
         redirect_to_builder = self.client.post(
             self.url,
