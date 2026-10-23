@@ -6,14 +6,14 @@ This guide is for the first low-cost production deployment where Novena runs Pos
 
 ## Mental Model
 
-A backup is a copy of the database and private report files at a point in time. A restore is the act of loading those copies again.
+A backup is a copy of the database and private files, including impact reports and equipment request manuals/nameplates, at a point in time. A restore is the act of loading those copies again.
 
 The important part is the restore. Until we have restored a backup once, we only have a file that we hope is useful.
 
 ## What The Scripts Do
 
 - `deploy/backups/backup_postgres.sh` creates a compressed custom-format `pg_dump`.
-- `deploy/backups/backup_private_media.sh` creates an atomic archive of confidential Business Impact PDFs.
+- `deploy/backups/backup_private_media.sh` creates an atomic archive of all confidential files under `private_media/`.
 - `deploy/backups/restore_postgres.sh` restores one selected backup into a target database.
 - `deploy/backups/backup_retention.sh` applies the same daily, weekly, and monthly retention to both backup sets.
 - The systemd examples run the backup nightly.
@@ -73,7 +73,7 @@ select count(*) from telemetry_telemetrydata;
 select count(*) from impact_impactreport;
 ```
 
-Restore private reports into a disposable directory and compare it with the restored `impact_impactreport.private_file_name` rows:
+Restore private files into a disposable directory and compare them with restored `impact_impactreport.private_file_name` and `devices_equipmenttemplaterequest` file rows:
 
 ```bash
 mkdir -p /tmp/novena-private-media-restore

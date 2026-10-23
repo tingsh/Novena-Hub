@@ -2,6 +2,8 @@ import logging
 import uuid
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.core.files.storage import storages
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -9,6 +11,10 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.teams.models import BaseTeamModel
+
+
+def template_request_document_storage():
+    return storages["template_request_documents"]
 
 
 class Site(BaseTeamModel):
@@ -347,9 +353,16 @@ class DeviceTemplate(models.Model):
         ("curated", _("Curated (Novena)")),
         ("ai_generated", _("AI Generated")),
         ("user_created", _("User Created")),
+        ("novena_assisted", _("Novena assisted · private")),
     )
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="curated")
     source_url = models.URLField(blank=True, max_length=500, help_text=_("URL where the register map was found"))
+    firmware_scope = models.CharField(max_length=200, blank=True)
+    program_scope = models.CharField(max_length=200, blank=True)
+    source_mapping_revision = models.OneToOneField(
+        "DeviceDatapointMapRevision", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="saved_team_template",
+    )
     ai_confidence = models.FloatField(null=True, blank=True, help_text=_("AI confidence score 0.0-1.0"))
     created_by_team = models.ForeignKey(
         "teams.Team",
@@ -363,6 +376,21 @@ class DeviceTemplate(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if self.pk and self.created_by_team_id and self.catalog_key:
+            previous = type(self).objects.filter(pk=self.pk).first()
+            immutable = (
+                "name", "manufacturer", "model_number", "device_type", "protocol",
+                "mapping_strategy", "register_map", "category", "source", "source_url",
+                "firmware_scope", "program_scope", "catalog_key", "catalog_revision",
+                "source_mapping_revision_id", "created_by_team_id", "evidence_status", "is_verified",
+                "default_polling_interval", "discovery_hints", "compatibility_notes",
+                "document_revision", "datapoint_schema_version", "alert_presets",
+            )
+            if previous and any(getattr(previous, field) != getattr(self, field) for field in immutable):
+                raise ValidationError("Create a new team-map revision instead of changing a published snapshot.")
+        return super().save(*args, **kwargs)
 
     class Meta:
         constraints = [
@@ -825,9 +853,13 @@ class EquipmentTemplateRequest(BaseTeamModel):
     """Customer request for Novena to create a missing equipment template."""
 
     class Status(models.TextChoices):
-        OPEN = "open", _("Open")
-        REVIEWING = "reviewing", _("Reviewing")
+        SUBMITTED = "submitted", _("Submitted")
+        MORE_INFO = "more_info", _("More information needed")
+        QUOTED = "quoted", _("Quote sent")
+        IN_PROGRESS = "in_progress", _("In progress")
+        READY_TO_TEST = "ready_to_test", _("Ready for live test")
         COMPLETED = "completed", _("Completed")
+        CLOSED = "closed", _("Closed")
 
     run = models.ForeignKey(
         DeploymentSetupRun,
@@ -836,17 +868,99 @@ class EquipmentTemplateRequest(BaseTeamModel):
         on_delete=models.SET_NULL,
         related_name="template_requests",
     )
-    manufacturer = models.CharField(max_length=200)
-    model_number = models.CharField(max_length=200)
-    protocol = models.CharField(max_length=20, choices=DeviceTemplate.PROTOCOL_CHOICES)
+    setup_item = models.ForeignKey(
+        DeploymentSetupItem, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="template_help_requests",
+    )
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="equipment_template_requests",
+    )
+    manufacturer = models.CharField(max_length=200, blank=True)
+    model_number = models.CharField(max_length=200, blank=True)
+    protocol = models.CharField(max_length=20, choices=DeviceTemplate.PROTOCOL_CHOICES, blank=True)
+    device_type = models.CharField(
+        max_length=30, choices=DeviceTemplate.DEVICE_TYPE_CHOICES, default="other"
+    )
+    equipment_purpose = models.TextField(blank=True)
+    desired_signals = models.TextField(blank=True)
+    firmware_or_program = models.CharField(max_length=200, blank=True)
     documentation_url = models.URLField(blank=True, max_length=500)
     documentation_file = models.FileField(
         upload_to="equipment-template-requests/%Y/%m/",
+        storage=template_request_document_storage,
+        blank=True,
+    )
+    nameplate_photo = models.FileField(
+        upload_to="equipment-template-requests/nameplates/%Y/%m/",
+        storage=template_request_document_storage,
         blank=True,
     )
     discovery_evidence = models.JSONField(default=dict, blank=True)
     support_reference = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.SUBMITTED)
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="assigned_template_requests",
+    )
+    customer_update = models.TextField(blank=True)
+    customer_reply = models.TextField(blank=True)
+    internal_notes = models.TextField(blank=True)
+    quote_reference = models.CharField(max_length=100, blank=True)
+    quote_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    quote_currency = models.CharField(max_length=3, default="SGD")
+    quote_accepted_reference = models.CharField(max_length=100, blank=True)
+    payment_reference = models.CharField(max_length=100, blank=True)
+    payment_waived_reason = models.TextField(blank=True)
+    proposed_signals = models.JSONField(default=list, blank=True)
+    map_configuration_notes = models.TextField(blank=True)
+    delivered_template = models.ForeignKey(
+        DeviceTemplate, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="help_requests",
+    )
+    validation_evidence = models.TextField(blank=True)
+    closed_reason = models.TextField(blank=True)
+
+    def clean(self):
+        super().clean()
+        if self.setup_item_id and self.setup_item.team_id != self.team_id:
+            raise ValidationError("The setup item must belong to the request team.")
+        if self.delivered_template_id and self.delivered_template.created_by_team_id != self.team_id:
+            raise ValidationError("The delivered map must remain private to the request team.")
+        if self.status == self.Status.QUOTED and (not self.quote_reference or self.quote_amount is None):
+            raise ValidationError("Record a quote reference and amount before marking the quote sent.")
+        if self.quote_amount is not None and self.quote_amount <= 0:
+            raise ValidationError("The quoted service amount must be positive.")
+        if self.status == self.Status.MORE_INFO and not self.customer_update:
+            raise ValidationError("Tell the customer what information Novena needs.")
+        if (
+            self.status in {self.Status.IN_PROGRESS, self.Status.READY_TO_TEST, self.Status.COMPLETED}
+            and (not self.quote_accepted_reference or not (self.payment_reference or self.payment_waived_reason))
+        ):
+            raise ValidationError("Record quote acceptance and payment or a waiver before starting work.")
+        if self.status in {self.Status.READY_TO_TEST, self.Status.COMPLETED} and not self.delivered_template_id:
+            raise ValidationError("Deliver a private map before marking it ready for a live test.")
+        if self.status == self.Status.COMPLETED and (
+            not self.validation_evidence
+            or not self.setup_item_id
+            or self.setup_item.state != DeploymentSetupItem.State.VALIDATED
+        ):
+            raise ValidationError("Link a validated setup item and record reading comparison before completion.")
+        if self.status == self.Status.CLOSED and not self.closed_reason:
+            raise ValidationError("Give a reason when closing a request.")
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values_list("status", flat=True).first()
+            allowed = {
+                self.Status.SUBMITTED: {self.Status.MORE_INFO, self.Status.QUOTED, self.Status.CLOSED},
+                self.Status.MORE_INFO: {self.Status.SUBMITTED, self.Status.QUOTED, self.Status.CLOSED},
+                self.Status.QUOTED: {self.Status.IN_PROGRESS, self.Status.CLOSED},
+                self.Status.IN_PROGRESS: {self.Status.READY_TO_TEST, self.Status.CLOSED},
+                self.Status.READY_TO_TEST: {self.Status.IN_PROGRESS, self.Status.COMPLETED, self.Status.CLOSED},
+                self.Status.COMPLETED: set(),
+                self.Status.CLOSED: set(),
+            }
+            if previous and previous != self.status and self.status not in allowed.get(previous, set()):
+                raise ValidationError("Choose the next request state in order.")
 
 
 class RpcCommand(BaseTeamModel):

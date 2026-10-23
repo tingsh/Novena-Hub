@@ -4,17 +4,23 @@
                     {% if active_candidate %}<input type="hidden" name="draft_index" value="{{ active_candidate.action_ref }}">{% endif %}
                     {% if active_candidate %}<input type="hidden" name="draft_candidate_key" value="{{ active_candidate.candidate_key }}">{% endif %}
                     <div>
-                        <p class="text-xs font-black uppercase tracking-widest text-indigo-600">Request a Novena template</p>
-                        <p class="mt-1 text-sm text-base-content/55">Send the equipment identity and documentation to support. Discovery evidence is attached automatically.</p>
+                        <p class="text-xs font-black uppercase tracking-widest text-indigo-600">Get Novena setup help</p>
+                        <p class="mt-1 text-sm text-base-content/55">Free assessment first. Novena will review the equipment and quote private mapping and remote live-validation help before starting. Installation and wiring are separate.</p>
                     </div>
-                    <input class="input input-bordered w-full rounded-lg" required name="request_manufacturer" value="{{ active_candidate.template_request_manufacturer|default:'' }}" placeholder="Manufacturer">
-                    <input class="input input-bordered w-full rounded-lg" required name="request_model" value="{{ active_candidate.template_request_model|default:'' }}" placeholder="Model number">
-                    <select class="select select-bordered w-full rounded-lg" name="request_protocol">
+                    <input class="input input-bordered w-full rounded-lg" name="manufacturer" value="{{ active_candidate.template_request_manufacturer|default:'' }}" placeholder="Manufacturer">
+                    <input class="input input-bordered w-full rounded-lg" name="model_number" value="{{ active_candidate.template_request_model|default:'' }}" placeholder="Exact model, or attach a nameplate photo">
+                    <select class="select select-bordered w-full rounded-lg" name="protocol">
+                        <option value="">Not sure</option>
                         <option value="modbus_tcp" {% if active_candidate.connection != 'modbus_rtu' %}selected{% endif %}>Modbus TCP</option>
                         <option value="modbus_rtu" {% if active_candidate.connection == 'modbus_rtu' %}selected{% endif %}>Modbus RTU</option>
                     </select>
-                    <input class="input input-bordered w-full rounded-lg" type="url" name="request_documentation_url" placeholder="Equipment manual URL (optional)">
+                    <select class="select select-bordered w-full rounded-lg" name="device_type"><option value="power_meter">Power meter</option><option value="solar_inverter">Solar inverter</option><option value="plc">PLC</option><option value="vfd">Drive</option><option value="other" selected>Other equipment</option></select>
+                    <input class="input input-bordered w-full rounded-lg" name="firmware_or_program" placeholder="Firmware or PLC program, if known">
+                    <textarea required class="textarea textarea-bordered w-full rounded-lg" name="equipment_purpose" maxlength="2000" rows="2" placeholder="What is this equipment used for?"></textarea>
+                    <textarea required class="textarea textarea-bordered w-full rounded-lg" name="desired_signals" maxlength="2000" rows="2" placeholder="Readings needed, e.g. power, voltage, imported energy"></textarea>
+                    <input class="input input-bordered w-full rounded-lg" type="url" name="documentation_url" placeholder="Equipment manual URL (optional)">
                     <input class="file-input file-input-bordered w-full rounded-lg" type="file" accept="application/pdf,.pdf" name="documentation_file">
-                    <p class="text-xs text-base-content/45">Optional PDF, maximum 10 MB.</p>
-                    <button class="btn btn-outline w-full rounded-lg" type="submit">Request template</button>
+                    <input class="file-input file-input-bordered w-full rounded-lg" type="file" accept="image/jpeg,image/png,image/webp" name="nameplate_photo">
+                    <p class="text-xs text-base-content/45">Optional manual PDF up to 10 MB; nameplate photo up to 5 MB. The photo is needed if the model is unknown.</p>
+                    <button class="btn btn-outline w-full rounded-lg" type="submit">Send free assessment request</button>
                 </form>

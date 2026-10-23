@@ -6,6 +6,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import re
 
 from django.core.exceptions import ValidationError
@@ -46,6 +47,8 @@ CSV_COLUMNS = (
     "safety_min",
     "safety_max",
     "alert_suggestion",
+    "invalid_values",
+    "energy_direction",
 )
 
 
@@ -67,9 +70,12 @@ def _number(value, *, field, default=None):
     if value in (None, ""):
         return default
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError) as exc:
         raise ValidationError({field: "Enter a valid number."}) from exc
+    if not math.isfinite(parsed):
+        raise ValidationError({field: "Enter a finite number."})
+    return parsed
 
 
 def normalize_datapoints(datapoints) -> list[dict]:
@@ -90,6 +96,8 @@ def normalize_datapoints(datapoints) -> list[dict]:
         if key in seen:
             raise ValidationError(f"Signal key '{key}' is duplicated.")
         seen.add(key)
+        if raw.get("address") in (None, ""):
+            raise ValidationError(f"Signal '{key}' needs a register address from the equipment source.")
 
         data_type = str(raw.get("data_type") or raw.get("type") or "uint16").lower()
         if data_type not in DATA_TYPES:
@@ -103,14 +111,15 @@ def normalize_datapoints(datapoints) -> list[dict]:
         if read_function_code not in READ_FUNCTION_CODES:
             raise ValidationError(f"Signal '{key}' must use a read-only Modbus function code.")
         default_count = default_register_count(data_type)
+        raw_objects_count = raw.get("objects_count", raw.get("objectsCount"))
         objects_count = _integer(
-            raw.get("objects_count") or raw.get("objectsCount") or default_count,
+            default_count if raw_objects_count in (None, "") else raw_objects_count,
             field="objects_count",
             minimum=1,
             maximum=4,
         )
-        if objects_count < default_count:
-            raise ValidationError(f"Signal '{key}' needs at least {default_count} Modbus object(s).")
+        if objects_count != default_count:
+            raise ValidationError(f"Signal '{key}' needs exactly {default_count} Modbus object(s) for {data_type}.")
         access = str(raw.get("access") or ("read_write" if raw.get("writable") else "read_only"))
         if access not in ACCESS_TYPES:
             raise ValidationError(f"Signal '{key}' has an invalid access setting.")
@@ -134,6 +143,23 @@ def normalize_datapoints(datapoints) -> list[dict]:
         if multiplier == 0:
             raise ValidationError(f"Signal '{key}' multiplier cannot be zero.")
         offset = _number(raw.get("offset", 0), field="offset", default=0.0)
+        raw_invalid = raw.get("invalid_values", raw.get("invalidValues", [])) or []
+        if isinstance(raw_invalid, str):
+            raw_invalid = [value.strip() for value in raw_invalid.split(",") if value.strip()]
+        if not isinstance(raw_invalid, list) or len(raw_invalid) > 8:
+            raise ValidationError(f"Signal '{key}' has too many invalid-value codes.")
+        try:
+            invalid_values = [
+                int(value) if str(value).lstrip("+-").isdigit() else float(value)
+                for value in raw_invalid
+            ]
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(f"Signal '{key}' has an invalid-value code that is not a number.") from exc
+        if any(not math.isfinite(value) for value in invalid_values):
+            raise ValidationError(f"Signal '{key}' has a nonfinite invalid-value code.")
+        energy_direction = str(raw.get("energy_direction") or "none").lower()
+        if energy_direction not in {"none", "import", "export", "net"}:
+            raise ValidationError(f"Signal '{key}' has an unsupported energy direction.")
         normal_min = _number(raw.get("normal_min"), field="normal_min")
         normal_max = _number(raw.get("normal_max"), field="normal_max")
         safety_min = _number(raw.get("safety_min", raw.get("min")), field="safety_min")
@@ -154,6 +180,8 @@ def normalize_datapoints(datapoints) -> list[dict]:
                 "unit": str(raw.get("unit") or "").strip()[:32],
                 "multiplier": multiplier,
                 "offset": offset,
+                "invalid_values": invalid_values,
+                "energy_direction": energy_direction,
                 "access": access,
                 "write_function_code": write_function_code,
                 "display_type": display_type,
@@ -192,6 +220,8 @@ def datapoints_to_csv(datapoints) -> str:
                 "safety_min": point.get("safety_min") if point.get("safety_min") is not None else "",
                 "safety_max": point.get("safety_max") if point.get("safety_max") is not None else "",
                 "alert_suggestion": point.get("alert_suggestion", ""),
+                "invalid_values": ",".join(str(value) for value in point.get("invalid_values", [])),
+                "energy_direction": point.get("energy_direction", "none"),
             }
         )
     return output.getvalue()
@@ -244,6 +274,8 @@ def datapoints_from_csv(content: str) -> list[dict]:
                 "safety_min": row.get("safety_min"),
                 "safety_max": row.get("safety_max"),
                 "alert_suggestion": row.get("alert_suggestion"),
+                "invalid_values": row.get("invalid_values"),
+                "energy_direction": row.get("energy_direction"),
             }
             try:
                 point = normalize_datapoints([raw])[0]
@@ -302,6 +334,8 @@ def register_map_to_datapoints(register_map) -> list[dict]:
                 "safety_min": config.get("safety_min", config.get("min")),
                 "safety_max": config.get("safety_max", config.get("max")),
                 "alert_suggestion": config.get("alert_suggestion", ""),
+                "invalid_values": config.get("invalidValues", []),
+                "energy_direction": config.get("energy_direction", "none"),
             }
         )
     return normalize_datapoints(rows) if rows else []
@@ -328,7 +362,10 @@ def datapoints_to_register_map(datapoints) -> dict:
             "safety_min": point.get("safety_min"),
             "safety_max": point.get("safety_max"),
             "alert_suggestion": point.get("alert_suggestion", ""),
+            "energy_direction": point.get("energy_direction", "none"),
         }
+        if point.get("invalid_values"):
+            config["invalidValues"] = point["invalid_values"]
         if point.get("write_function_code"):
             config["writeFunctionCode"] = point["write_function_code"]
         result[point["key"]] = config
@@ -390,6 +427,28 @@ def ensure_device_datapoint_map(device) -> DeviceDatapointMap:
         device=device,
         defaults={"datapoints": register_map_to_datapoints(device.template.register_map)},
     )
+    return mapping
+
+
+@transaction.atomic
+def reset_device_datapoint_map_for_template(*, device, team) -> DeviceDatapointMap:
+    """A newly selected team map is a draft, even if this device had a confirmed map."""
+    if device.team_id != team.pk or not device_requires_mapping(device):
+        raise ValidationError("Choose a site-defined map for this team's equipment.")
+    mapping = ensure_device_datapoint_map(device)
+    mapping.datapoints = register_map_to_datapoints(device.template.register_map)
+    mapping.status = DeviceDatapointMap.Status.DRAFT
+    mapping.last_validation = {}
+    mapping.datapoint_health = {}
+    mapping.tested_checksum = ""
+    mapping.confirmed_checksum = ""
+    mapping.last_tested_at = None
+    mapping.validated_by = None
+    mapping.validated_at = None
+    mapping.confirmed_by = None
+    mapping.confirmed_at = None
+    mapping.cloned_from = None
+    mapping.save()
     return mapping
 
 
@@ -498,7 +557,11 @@ def confirm_device_datapoint_map(*, device, team, confirmed_by) -> DeviceDatapoi
     device.save(update_fields=["metadata", "updated_at"])
     latest = mapping.revisions.order_by("-revision_number").first()
     current_datapoints_checksum = datapoints_checksum(mapping.datapoints)
-    if latest is None or latest.datapoints_checksum != current_datapoints_checksum:
+    if (
+        latest is None
+        or latest.datapoints_checksum != current_datapoints_checksum
+        or latest.confirmed_checksum != mapping.confirmed_checksum
+    ):
         DeviceDatapointMapRevision.objects.create(
             team=team,
             mapping=mapping,

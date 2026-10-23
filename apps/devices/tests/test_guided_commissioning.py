@@ -1206,8 +1206,8 @@ class GuidedSetupViewTest(TestCase):
         )
         returned_to_review = self.client.get(self.url)
         self.assertContains(returned_to_review, 'data-equipment-row="candidate"')
-        self.assertContains(returned_to_review, "Request a Novena template")
-        self.assertContains(returned_to_review, "Create a custom template")
+        self.assertContains(returned_to_review, "Get Novena setup help")
+        self.assertContains(returned_to_review, "Map signals with a register list")
 
         with patch("apps.devices.deployment_setup.start_validation") as validation:
             retry = self.client.post(self.url, {
@@ -1856,7 +1856,7 @@ class GuidedSetupViewTest(TestCase):
         )
         self.assertContains(available, template.name)
         self.assertContains(available, "template-picked")
-        self.assertContains(available, "1 compatible template")
+        self.assertContains(available, "1 template for this protocol")
         self.assertNotContains(available, incompatible_template.name)
 
         search = self.client.get(
@@ -1925,6 +1925,10 @@ class GuidedSetupViewTest(TestCase):
         )
 
         self.assertEqual(created.status_code, 302)
+        self.assertTrue(
+            DeviceTemplate.objects.filter(created_by_team=self.team, manufacturer="Omron").exists(),
+            [str(message) for message in created.wsgi_request._messages],
+        )
         private_template = DeviceTemplate.objects.get(
             created_by_team=self.team,
             manufacturer="Omron",
@@ -1940,6 +1944,16 @@ class GuidedSetupViewTest(TestCase):
             DeploymentSetupItem.objects.filter(run__gateway=self.gateway, discovery_index=0).count(),
             1,
         )
+        retry = self.client.post(self.url, {
+            "action": "manual", "draft_index": "0", "manual_name": "Main incomer meter",
+            "manual_protocol": "modbus_tcp", "manual_manufacturer": "Omron",
+            "manual_model": "KM-N2-FLK", "manual_device_type": "power_meter",
+            "manual_host": "10.0.0.20", "manual_port": "1502", "manual_slave_id": "7",
+            "point_key_1": "voltage", "point_address_1": "0", "point_type_1": "uint16",
+        })
+        self.assertEqual(retry.status_code, 302)
+        self.assertEqual(Device.objects.filter(gateway=self.gateway, name="Main incomer meter").count(), 1)
+        self.assertEqual(DeviceTemplate.objects.filter(created_by_team=self.team, manufacturer="Omron").count(), 1)
 
     def test_template_request_is_linked_back_to_saved_candidate(self):
         self._enable_guided_setup()
@@ -1962,9 +1976,11 @@ class GuidedSetupViewTest(TestCase):
                 "action": "request_template",
                 "draft_index": "0",
                 "draft_candidate_key": "modbus_tcp|10.0.0.20|502",
-                "request_manufacturer": "Eaton",
-                "request_model": "Power Xpert 2000",
-                "request_protocol": "modbus_tcp",
+                "manufacturer": "Eaton",
+                "model_number": "Power Xpert 2000",
+                "protocol": "modbus_tcp",
+                "equipment_purpose": "Main power meter",
+                "desired_signals": "Power and energy",
             },
         )
 
@@ -1976,8 +1992,40 @@ class GuidedSetupViewTest(TestCase):
             str(request_row.support_reference),
         )
         page = self.client.get(self.url)
-        self.assertContains(page, "Template requested")
+        self.assertContains(page, "Template request sent")
         self.assertContains(page, str(request_row.support_reference))
+
+    def test_private_team_map_requires_identity_confirmation_and_starts_draft(self):
+        self._enable_guided_setup()
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [{
+                "interface": "10.0.0.20:502", "connection": "modbus_tcp",
+                "host": "10.0.0.20", "port": 502, "signature": "Example M1",
+            }],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+        private = DeviceTemplate.objects.create(
+            name="Example M1 team map", manufacturer="Example", model_number="M1",
+            device_type="power_meter", protocol="modbus_tcp", mapping_strategy="site_defined",
+            register_map={"voltage": {
+                "address": 100, "functionCode": 3, "type": "uint16", "unit": "V",
+            }}, source="user_created", created_by_team=self.team,
+            catalog_key="team-guided-test", catalog_revision=1,
+        )
+        payload = {
+            "action": "validate_selected", "device_index": ["0"],
+            "name_0": "Main meter", "template_0": str(private.pk),
+            "host_0": "10.0.0.20", "port_0": "502", "slave_id_0": "1",
+        }
+        self.client.post(self.url, payload)
+        self.assertFalse(Device.objects.filter(gateway=self.gateway, template=private).exists())
+        response = self.client.post(self.url, {**payload, "confirm_private_map_0": "on"})
+        self.assertEqual(response.status_code, 302)
+        device = Device.objects.get(gateway=self.gateway, template=private)
+        self.assertEqual(device.datapoint_map.status, "draft")
+        self.assertEqual(device.datapoint_map.datapoints[0]["address"], 100)
+        self.assertFalse(device.datapoint_map.confirmed_checksum)
 
     def test_validation_poll_updates_row_completion_and_next_step(self):
         self._enable_guided_setup()
@@ -2553,9 +2601,11 @@ class GuidedSetupViewTest(TestCase):
             self.url,
             {
                 "action": "request_template",
-                "request_manufacturer": "UnknownCo",
-                "request_model": "X1",
-                "request_protocol": "modbus_tcp",
+                "manufacturer": "UnknownCo",
+                "model_number": "X1",
+                "protocol": "modbus_tcp",
+                "equipment_purpose": "Power monitoring",
+                "desired_signals": "Power",
             },
         )
 

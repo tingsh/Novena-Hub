@@ -905,6 +905,9 @@ def equipment_template_preview(request, team_slug):
             "model": template.model_number,
             "protocol": template.get_protocol_display(),
             "mapping_strategy": template.mapping_strategy,
+            "team_private": bool(template.created_by_team_id),
+            "firmware_scope": template.firmware_scope,
+            "program_scope": template.program_scope,
             "signals": signals,
         }
     )
@@ -1557,6 +1560,12 @@ def step_3_discover(request, team_slug):
                     template = visible_templates_for_team(request.team).filter(pk=template_id).first()
                     if not template:
                         raise ValueError("Choose an equipment template before validation.")
+                    if template.created_by_team_id and template.catalog_key and (
+                        request.POST.get(f"confirm_private_map_{raw_index}") != "on"
+                    ):
+                        raise ValueError(
+                            "Confirm the private map matches this model, firmware and PLC program before testing."
+                        )
                     if not guided_capable and not template.is_verified:
                         messages.error(
                             request,
@@ -1594,6 +1603,7 @@ def step_3_discover(request, team_slug):
                         or template.name
                     )
                     device_port = str(candidate.get("interface") or candidate.get("port") or "")
+                    previous_template_id = item.device.template_id if item.device else None
                     if item.device:
                         device = item.device
                         device.port = device_port
@@ -1624,10 +1634,22 @@ def step_3_discover(request, team_slug):
                     item.device = device
                     item.connection = connection
                     item.save(update_fields=["device", "connection", "updated_at"])
+                    if template.source == "novena_assisted":
+                        EquipmentTemplateRequest.objects.filter(
+                            team=request.team, delivered_template=template,
+                            status=EquipmentTemplateRequest.Status.READY_TO_TEST,
+                            setup_item__isnull=True,
+                        ).update(setup_item=item)
                     if template.mapping_strategy == "site_defined":
-                        from apps.devices.datapoint_maps import ensure_device_datapoint_map
+                        from apps.devices.datapoint_maps import (
+                            ensure_device_datapoint_map,
+                            reset_device_datapoint_map_for_template,
+                        )
 
-                        mapping = ensure_device_datapoint_map(device)
+                        if previous_template_id and previous_template_id != template.pk:
+                            mapping = reset_device_datapoint_map_for_template(device=device, team=request.team)
+                        else:
+                            mapping = ensure_device_datapoint_map(device)
                         item.selected_template = template
                         item.datapoints = mapping.datapoints
                         item.state = DeploymentSetupItem.State.TEMPLATE_SELECTED
@@ -1773,9 +1795,33 @@ def step_3_discover(request, team_slug):
             if not name:
                 messages.error(request, "Equipment name is required.")
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            raw_draft_index = request.POST.get("draft_index", "").strip()
+            try:
+                discovered_candidate, draft_index, draft_item = (
+                    _candidate_for_ref(
+                        discovered_devices, run, raw_draft_index,
+                        request.POST.get("draft_candidate_key", ""),
+                    ) if raw_draft_index else ({}, None, None)
+                )
+            except (IndexError, TypeError, ValueError) as exc:
+                messages.error(request, f"Review this equipment again before saving: {exc}")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            from apps.devices.deployment_setup import equipment_candidate_key
+
+            target_key = equipment_candidate_key(
+                {"connection": protocol, "interface": port_key}, connection,
+            )
+            existing_item = draft_item or run.items.filter(
+                candidate_key=target_key, removed_at__isnull=True,
+            ).first()
+            if run.items.filter(candidate_key=target_key).exclude(
+                pk=existing_item.pk if existing_item else None
+            ).exists():
+                messages.error(request, "Another saved equipment row already uses this connection.")
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             from apps.subscriptions.enforcement import can_add_device, get_device_limit_for_team
 
-            if not can_add_device(request.team):
+            if not (existing_item and existing_item.device_id) and not can_add_device(request.team):
                 limit = get_device_limit_for_team(request.team)
                 messages.error(
                     request,
@@ -1786,47 +1832,39 @@ def step_3_discover(request, team_slug):
             device_type = request.POST.get("manual_device_type", "other")
             if device_type not in {choice[0] for choice in DeviceTemplate.DEVICE_TYPE_CHOICES}:
                 device_type = "other"
-            template = DeviceTemplate.objects.create(
-                name=f"{manufacturer} {model_number}".strip() or f"{name} template",
-                manufacturer=manufacturer,
-                model_number=model_number,
-                device_type=device_type,
-                protocol=protocol,
-                mapping_strategy="site_defined",
-                register_map={},
-                source="user_created",
-                created_by_team=request.team,
-                is_verified=False,
-            )
-            device = Device.objects.create(
-                team=request.team,
-                gateway=gateway,
-                site=gateway.site,
-                port=port_key,
-                name=name,
-                template=template,
-                device_type=template.device_type,
-                protocol=protocol,
-                connection_config=connection,
-                discovery_meta={"connection": protocol, "interface": port_key},
-                metadata={"guided_setup_validation": "pending"},
-            )
-            raw_draft_index = request.POST.get("draft_index", "").strip()
-            try:
-                discovered_candidate, draft_index, draft_item = (
-                    _candidate_for_ref(
-                        discovered_devices,
-                        run,
-                        raw_draft_index,
-                        request.POST.get("draft_candidate_key", ""),
-                    )
-                    if raw_draft_index
-                    else ({}, None, None)
+            device = existing_item.device if existing_item and existing_item.device_id else None
+            template = device.template if device and device.template and (
+                device.template.created_by_team_id == request.team.pk
+                and device.template.source == "user_created"
+                and not device.template.catalog_key
+                and not device.template.register_map
+            ) else None
+            if not template:
+                template = DeviceTemplate.objects.create(
+                    name=f"{manufacturer} {model_number}".strip() or f"{name} template",
+                    manufacturer=manufacturer, model_number=model_number,
+                    device_type=device_type, protocol=protocol,
+                    mapping_strategy="site_defined", register_map={},
+                    source="user_created", created_by_team=request.team, is_verified=False,
                 )
-            except (IndexError, TypeError, ValueError):
-                draft_index = None
-                draft_item = None
-                discovered_candidate = {}
+            if device:
+                device.name = name
+                device.port = port_key
+                device.template = template
+                device.device_type = device_type
+                device.protocol = protocol
+                device.connection_config = connection
+                device.discovery_meta = {"connection": protocol, "interface": port_key}
+                device.metadata = {**(device.metadata or {}), "guided_setup_validation": "pending"}
+                device.save()
+            else:
+                device = Device.objects.create(
+                    team=request.team, gateway=gateway, site=gateway.site, port=port_key,
+                    name=name, template=template, device_type=device_type, protocol=protocol,
+                    connection_config=connection,
+                    discovery_meta={"connection": protocol, "interface": port_key},
+                    metadata={"guided_setup_validation": "pending"},
+                )
             candidate_data = {
                 **discovered_candidate,
                 "signature": discovered_candidate.get("signature") or name,
@@ -1838,12 +1876,22 @@ def step_3_discover(request, team_slug):
                 ),
                 "slave_id": connection.get("slave_id"),
             }
-            if draft_index is not None or draft_item is not None:
-                item = create_or_update_candidate_item(
-                    run=run,
-                    index=draft_index,
-                    candidate=candidate_data,
-                )
+            if draft_index is not None or existing_item is not None:
+                if existing_item and existing_item.device_id:
+                    from apps.devices.deployment_setup import equipment_candidate_key
+
+                    item = existing_item
+                    new_key = equipment_candidate_key(candidate_data, connection)
+                    if run.items.filter(candidate_key=new_key).exclude(pk=item.pk).exists():
+                        messages.error(request, "Another saved equipment row already uses this connection.")
+                        return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+                    item.candidate_key = new_key
+                    item.discovery_index = draft_index
+                else:
+                    item = create_or_update_candidate_item(
+                        run=run, index=draft_index, candidate=candidate_data,
+                        existing_item=existing_item,
+                    )
                 item.device = device
                 item.candidate_data = candidate_data
                 item.selected_template = template
@@ -1894,39 +1942,12 @@ def step_3_discover(request, team_slug):
             except (IndexError, TypeError, ValueError) as exc:
                 messages.error(request, f"Review this equipment again before requesting a template: {exc}")
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
-            documentation_file = request.FILES.get("documentation_file")
-            if documentation_file and (
-                not documentation_file.name.lower().endswith(".pdf")
-                or documentation_file.size > 10 * 1024 * 1024
-                or documentation_file.content_type not in {"application/pdf", "application/x-pdf"}
-            ):
-                messages.error(request, "Equipment documentation must be a PDF no larger than 10 MB.")
+            from apps.devices.template_help import TemplateHelpRequestForm, create_help_request
+
+            form = TemplateHelpRequestForm(request.POST, request.FILES)
+            if not form.is_valid():
+                messages.error(request, form.errors.as_text())
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
-            if documentation_file:
-                signature = documentation_file.read(5)
-                documentation_file.seek(0)
-                if signature != b"%PDF-":
-                    messages.error(request, "The uploaded file is not a valid PDF document.")
-                    return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
-            request_manufacturer = request.POST.get("request_manufacturer", "").strip()
-            request_model = request.POST.get("request_model", "").strip()
-            request_protocol = request.POST.get("request_protocol", "modbus_tcp")
-            if not request_manufacturer or not request_model:
-                messages.error(request, "Manufacturer and model are required for a template request.")
-                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
-            if request_protocol not in {"modbus_tcp", "modbus_rtu"}:
-                messages.error(request, "Choose Modbus TCP or Modbus RTU.")
-                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
-            equipment_request = EquipmentTemplateRequest.objects.create(
-                team=request.team,
-                run=run,
-                manufacturer=request_manufacturer,
-                model_number=request_model,
-                protocol=request_protocol,
-                documentation_url=request.POST.get("request_documentation_url", "").strip(),
-                documentation_file=documentation_file,
-                discovery_evidence=gateway.discovery_data,
-            )
             if raw_draft_index:
                 try:
                     requested_candidate = dict(requested_candidate)
@@ -1938,36 +1959,46 @@ def step_3_discover(request, team_slug):
                         existing_item=draft_item,
                     )
                 except ValueError as exc:
-                    equipment_request.delete()
                     messages.error(request, f"This template request could not be linked to the equipment: {exc}")
                     return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            evidence = {
+                key: requested_candidate[key]
+                for key in ("signature", "connection", "slave_id", "manufacturer", "model", "firmware")
+                if key in requested_candidate
+            }
+            try:
+                equipment_request, created = create_help_request(
+                    team=request.team, actor=request.user, form=form, run=run,
+                    setup_item=draft_item if raw_draft_index else None,
+                    discovery_evidence=evidence,
+                )
+            except ValidationError as exc:
+                messages.error(request, "; ".join(exc.messages))
+                return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            if raw_draft_index:
                 candidate_data = dict(draft_item.candidate_data or {})
                 candidate_data.update(
                     {
                         "template_request_reference": str(equipment_request.support_reference),
-                        "template_request_manufacturer": request_manufacturer,
-                        "template_request_model": request_model,
+                        "template_request_id": equipment_request.pk,
+                        "template_request_manufacturer": equipment_request.manufacturer,
+                        "template_request_model": equipment_request.model_number,
                     }
                 )
                 draft_item.candidate_data = candidate_data
                 draft_item.save(update_fields=["candidate_data", "updated_at"])
-            append_setup_event(
-                run,
-                "template_requested",
-                "A Novena equipment-template request was submitted.",
-                actor=request.user,
-                evidence={"support_reference": str(equipment_request.support_reference)},
-            )
+            if created:
+                append_setup_event(
+                    run, "template_requested", "A Novena equipment-template request was submitted.",
+                    actor=request.user,
+                    evidence={"support_reference": str(equipment_request.support_reference)},
+                )
             messages.success(
                 request,
-                f"Template request submitted. Support reference: {equipment_request.support_reference}",
+                "Free assessment requested. Novena will quote before work starts. "
+                f"Reference: {equipment_request.support_reference}",
             )
-            if raw_draft_index:
-                return redirect(
-                    f"{reverse('web_team:onboarding:step_3_discover', args=[team_slug])}"
-                    f"?candidate={raw_draft_index}&workflow=request#template-request-panel-{raw_draft_index}"
-                )
-            return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            return redirect("web_team:devices:template_help_detail", team_slug=team_slug, pk=equipment_request.pk)
 
         if action == "deploy":
             if not guided_capable:

@@ -9,6 +9,7 @@ This index separates current source-of-truth material from historical records. H
 - [Business plan](business_plan_2026-07-18.md) — current commercial and product strategy.
 - [Physical Operations Platform roadmap](physical_operations_platform_roadmap_2026-08-11.md) — staged CTO/CPO roadmap from current narrow wedges to mature APJC physical operations platform.
 - [Customer template sharing and review](product/customer_template_review.md) — private map consent, Novena qualification, publication and first-time setup fallback.
+- [Template system v2](product/template_system_v2.md) — team library maps, paid setup-help requests, staff delivery and private-document release procedure.
 - [Pilot launch checklist](20_customer_pilot_launch_checklist_2026-07-31.md) — controlled pilot gates and evidence requirements.
 
 ## Architecture and protocol

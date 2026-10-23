@@ -1109,6 +1109,19 @@ def device_datapoint_mapping(request, team_slug, pk):
                 item.datapoints = mapping.datapoints
                 item.validation_result = mapping.last_validation
                 item.save(update_fields=["state", "trust_level", "datapoints", "validation_result", "updated_at"])
+                from .models import EquipmentTemplateRequest
+                from .template_help import _send_help_email
+
+                for help_request in EquipmentTemplateRequest.objects.filter(
+                    team=request.team, delivered_template=device.template,
+                    setup_item=item, status=EquipmentTemplateRequest.Status.READY_TO_TEST,
+                ):
+                    help_request.customer_update = (
+                        "Live readings were confirmed on this equipment. "
+                        "Novena will review the comparison and close the request."
+                    )
+                    help_request.save(update_fields=["customer_update", "updated_at"])
+                    transaction.on_commit(lambda request_row=help_request: _send_help_email(help_request=request_row))
                 append_setup_event(
                     run,
                     "mapping_confirmed",
@@ -1133,6 +1146,20 @@ def device_datapoint_mapping(request, team_slug, pk):
                     f"Revision {submission.revision.revision_number} sent to Novena for review. "
                     "Your map remains private.",
                 )
+            elif action == "save_team_map":
+                from .team_maps import save_confirmed_team_map
+
+                saved = save_confirmed_team_map(
+                    device=device, team=request.team,
+                    name=request.POST.get("map_name", ""),
+                    manufacturer=request.POST.get("manufacturer", ""),
+                    model_number=request.POST.get("model_number", ""),
+                    firmware_scope=request.POST.get("firmware_scope", ""),
+                    program_scope=request.POST.get("program_scope", ""),
+                    source_url=request.POST.get("source_url", ""),
+                    configuration_notes=request.POST.get("configuration_notes", ""),
+                )
+                messages.success(request, f"{saved.name} revision {saved.catalog_revision} is in your team library.")
             elif action == "clone":
                 source = get_object_or_404(
                     Device.objects.select_related("template"),
@@ -1237,6 +1264,10 @@ def device_datapoint_mapping(request, team_slug, pk):
             "current_revision_shared": share_submissions.filter(
                 revision__confirmed_checksum=mapping.confirmed_checksum
             ).exists(),
+            "saved_team_template": DeviceTemplate.objects.filter(
+                source_mapping_revision__mapping=mapping,
+                source_mapping_revision__confirmed_checksum=mapping.confirmed_checksum,
+            ).first() if mapping.confirmed_checksum else None,
             "connection": device.connection_config or {},
         },
     )
@@ -1522,7 +1553,7 @@ def gateway_discovery_api(request, team_slug):
             return JsonResponse({"error": "This Gateway is being securely released."}, status=409)
         from .discovery_matching import enrich_discovered_device
 
-        discovered = [enrich_discovered_device(device) for device in discovered]
+        discovered = [enrich_discovered_device(device, team=request.team) for device in discovered]
 
         # Store for the UI to display
         gateway.discovery_data = {"last_discovered_at": str(timezone.now()), "devices": discovered}

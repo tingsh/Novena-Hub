@@ -1,0 +1,24 @@
+{% extends "web/app/app_base.html" %}
+{% block app %}
+<div class="mx-auto max-w-5xl space-y-7 px-4 py-8 sm:px-6">
+  <div><a class="text-sm text-primary underline" href="{% url 'web_team:devices:template_library' request.team.slug %}">← Template library</a><h1 class="mt-3 text-3xl font-black">Get Novena setup help</h1><p class="mt-2 text-sm text-base-content/60">Send us the equipment details. Assessment is free; Novena will scope and quote the mapping work before starting. This add-on is available on every plan. Gateway installation and wiring are quoted separately.</p></div>
+  <section class="rounded-2xl border border-base-content/10 bg-base-100 p-6">
+    <h2 class="text-lg font-bold">Request a private equipment map</h2>
+    {% if form.errors %}<div class="alert alert-error my-4">{{ form.errors }}</div>{% endif %}
+    <form method="post" enctype="multipart/form-data" class="mt-4 grid gap-4 md:grid-cols-2">{% csrf_token %}
+      <label class="form-control"><span class="label-text">Manufacturer</span><input class="input input-bordered" name="manufacturer" maxlength="200" value="{{ form.manufacturer.value|default:'' }}"></label>
+      <label class="form-control"><span class="label-text">Exact model or variant</span><input class="input input-bordered" name="model_number" maxlength="200" value="{{ form.model_number.value|default:'' }}"><span class="text-xs text-base-content/50">If unsure, attach a nameplate photo below.</span></label>
+      <label class="form-control"><span class="label-text">Connection protocol</span><select class="select select-bordered" name="protocol"><option value="">Not sure</option><option value="modbus_tcp">Modbus TCP</option><option value="modbus_rtu">Modbus RTU</option></select></label>
+      <label class="form-control"><span class="label-text">Equipment type</span><select class="select select-bordered" name="device_type"><option value="power_meter">Power meter</option><option value="solar_inverter">Solar inverter</option><option value="plc">PLC</option><option value="vfd">Drive</option><option value="other" selected>Other</option></select></label>
+      <label class="form-control"><span class="label-text">Firmware or PLC program, if known</span><input class="input input-bordered" name="firmware_or_program" maxlength="200"></label>
+      <label class="form-control md:col-span-2"><span class="label-text">What is this equipment used for?</span><textarea required class="textarea textarea-bordered" name="equipment_purpose" maxlength="2000" rows="2"></textarea></label>
+      <label class="form-control md:col-span-2"><span class="label-text">Which readings do you need?</span><textarea required class="textarea textarea-bordered" name="desired_signals" maxlength="2000" rows="2" placeholder="For example: total power, voltage, imported energy"></textarea></label>
+      <label class="form-control md:col-span-2"><span class="label-text">Manufacturer manual URL, if available</span><input class="input input-bordered" type="url" name="documentation_url" placeholder="https://"></label>
+      <label class="form-control"><span class="label-text">Manual PDF, optional · 10 MB max</span><input class="file-input file-input-bordered" type="file" name="documentation_file" accept="application/pdf,.pdf"></label>
+      <label class="form-control"><span class="label-text">Nameplate photo · 5 MB max</span><input class="file-input file-input-bordered" type="file" name="nameplate_photo" accept="image/jpeg,image/png,image/webp"></label>
+      <div class="md:col-span-2"><button class="btn btn-primary" type="submit">Send free assessment request</button></div>
+    </form>
+  </section>
+  <section><h2 class="text-lg font-bold">Your requests</h2><div class="mt-3 overflow-x-auto rounded-xl border border-base-content/10"><table class="table"><thead><tr><th>Reference</th><th>Equipment</th><th>Status</th><th></th></tr></thead><tbody>{% for item in help_requests %}<tr><td class="font-mono text-xs">{{ item.support_reference }}</td><td>{{ item.manufacturer }} {{ item.model_number|default:"Model to confirm" }}</td><td><span class="badge badge-outline">{{ item.get_status_display }}</span></td><td><a class="link link-primary" href="{% url 'web_team:devices:template_help_detail' request.team.slug item.pk %}">View</a></td></tr>{% empty %}<tr><td colspan="4" class="text-base-content/50">No requests yet.</td></tr>{% endfor %}</tbody></table></div></section>
+</div>
+{% endblock %}

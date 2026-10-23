@@ -450,6 +450,10 @@ STORAGES["impact_reports"] = {
         "base_url": None,
     },
 }
+STORAGES["template_request_documents"] = {
+    "BACKEND": "django.core.files.storage.FileSystemStorage",
+    "OPTIONS": {"location": PRIVATE_MEDIA_ROOT / "template_requests", "base_url": None},
+}
 
 USE_S3_MEDIA = env.bool("USE_S3_MEDIA", default=False)
 if USE_S3_MEDIA:
@@ -467,6 +471,10 @@ if USE_S3_MEDIA:
     }
     STORAGES["impact_reports"] = {
         "BACKEND": "apps.web.storage_backends.PrivateMediaStorage",
+    }
+    STORAGES["template_request_documents"] = {
+        "BACKEND": "apps.web.storage_backends.PrivateMediaStorage",
+        "OPTIONS": {"location": "private/template_requests"},
     }
 
 # Vite Integration

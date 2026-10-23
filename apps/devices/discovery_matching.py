@@ -36,6 +36,10 @@ def rank_templates_for_discovery(discovery: dict, limit: int = 5, team=None) -> 
     model = _norm(identification.get("model") or discovery.get("model"))
     signature = _norm(discovery.get("signature"))
     protocol = _norm(discovery.get("protocol") or discovery.get("connection")).replace("modbus_", "modbus_")
+    program = _norm(identification.get("program") or discovery.get("program_signature"))
+
+    if not (vendor or model or signature):
+        return []
 
     qs = DeviceTemplate.objects.filter(is_current=True).exclude(evidence_status="retired")
     if team is not None:
@@ -54,6 +58,14 @@ def rank_templates_for_discovery(discovery: dict, limit: int = 5, team=None) -> 
 
     matches: list[TemplateMatch] = []
     for template in qs[:100]:
+        if template.device_type == "plc" and template.mapping_strategy == "site_defined":
+            if not model or model != _norm(template.model_number):
+                continue
+            if not template.program_scope or program != _norm(template.program_scope):
+                continue
+        elif template.created_by_team_id and template.catalog_key:
+            if not model or model != _norm(template.model_number):
+                continue
         score = 0
         reasons = []
         manufacturer = _norm(template.manufacturer)
