@@ -954,7 +954,7 @@ def device_datapoint_mapping(request, team_slug, pk):
         start_validation,
         sync_setup_run,
     )
-    from .models import DeploymentSetupItem, DeviceDatapointMap, DeviceDatapointMapRevision
+    from .models import DeploymentSetupItem, DeviceDatapointMap, DeviceDatapointMapRevision, TemplateShareSubmission
 
     device = get_object_or_404(
         Device.objects.select_related("template", "gateway", "site"),
@@ -1118,6 +1118,21 @@ def device_datapoint_mapping(request, team_slug, pk):
                     evidence={"checksum": mapping.confirmed_checksum, "signal_count": len(mapping.datapoints)},
                 )
                 messages.success(request, "Live readings confirmed. This equipment is ready for deployment.")
+            elif action == "share_with_novena":
+                from .template_sharing import submit_mapping_for_review
+
+                submission = submit_mapping_for_review(
+                    device=device,
+                    team=request.team,
+                    actor=request.user,
+                    consent=request.POST.get("share_consent") == "on",
+                    source_document_url=request.POST.get("source_document_url", ""),
+                )
+                messages.success(
+                    request,
+                    f"Revision {submission.revision.revision_number} sent to Novena for review. "
+                    "Your map remains private.",
+                )
             elif action == "clone":
                 source = get_object_or_404(
                     Device.objects.select_related("template"),
@@ -1200,6 +1215,9 @@ def device_datapoint_mapping(request, team_slug, pk):
         .exclude(pk=device.pk)
         .order_by("name")
     )
+    share_submissions = TemplateShareSubmission.objects.filter(
+        team=request.team, revision__mapping=mapping
+    ).select_related("revision", "published_template")
     return render(
         request,
         "devices/device_datapoint_mapping.html",
@@ -1210,6 +1228,15 @@ def device_datapoint_mapping(request, team_slug, pk):
             "setup_run": run,
             "clone_sources": clone_sources,
             "revisions": mapping.revisions.select_related("validated_by", "confirmed_by").all(),
+            "share_submissions": share_submissions,
+            "can_share_mapping": (
+                mapping.status == DeviceDatapointMap.Status.CONFIRMED
+                and device.template.created_by_team_id == request.team.pk
+                and device.template.source != "curated"
+            ),
+            "current_revision_shared": share_submissions.filter(
+                revision__confirmed_checksum=mapping.confirmed_checksum
+            ).exists(),
             "connection": device.connection_config or {},
         },
     )
@@ -1671,7 +1698,7 @@ class TemplateLibraryView(PermissionRequiredMixin, ListView):
         if category:
             qs = qs.filter(category=category)
         if verified_only:
-            qs = qs.filter(is_verified=True)
+            qs = qs.filter(evidence_status="field_verified")
 
         if profile_key:
             return rank_templates_for_profile(qs, get_profile(profile_key))

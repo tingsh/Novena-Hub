@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from django.db.models import Q
 
 from .models import DeviceTemplate
+from .services import visible_templates_for_team
 
 
 @dataclass
@@ -36,9 +37,11 @@ def rank_templates_for_discovery(discovery: dict, limit: int = 5, team=None) -> 
     signature = _norm(discovery.get("signature"))
     protocol = _norm(discovery.get("protocol") or discovery.get("connection")).replace("modbus_", "modbus_")
 
-    qs = DeviceTemplate.objects.all()
+    qs = DeviceTemplate.objects.filter(is_current=True).exclude(evidence_status="retired")
     if team is not None:
-        qs = qs.filter(Q(created_by_team__isnull=True) | Q(created_by_team=team))
+        qs = visible_templates_for_team(team)
+    else:
+        qs = qs.filter(created_by_team__isnull=True, source="curated")
     query = Q()
     if vendor:
         query |= Q(manufacturer__icontains=vendor)

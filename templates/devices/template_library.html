@@ -123,6 +123,7 @@
                             <i class="fa fa-robot text-[7px]"></i> AI Draft
                         </span>
                         {% endif %}
+                        {% if template.created_by_team %}<span class="badge badge-outline text-[9px]">Team private</span>{% endif %}
                         {% if template.catalog_revision %}<span class="text-[10px] text-base-content/50 font-mono">Revision {{ template.catalog_revision }}</span>{% endif %}
                         <span class="badge badge-outline border-base-content/10 font-mono uppercase text-[8px] py-2 px-3">
                             {{ template.protocol|upper }}

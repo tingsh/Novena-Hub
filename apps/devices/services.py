@@ -58,7 +58,7 @@ def gateways_for_team(team):
 def visible_templates_for_team(team):
     """Selectable current templates; retired revisions remain on assigned devices."""
     return DeviceTemplate.objects.filter(
-        Q(created_by_team__isnull=True) | Q(created_by_team=team),
+        Q(created_by_team=team) | Q(created_by_team__isnull=True, source="curated"),
         is_current=True,
     ).exclude(evidence_status="retired")
 

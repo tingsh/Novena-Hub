@@ -149,6 +149,24 @@ function datapointMapping() {
         {% endif %}
     </section>
 
+    {% if can_share_mapping %}
+    <section class="rounded-2xl border border-base-content/10 bg-base-100 p-6 shadow-sm">
+        <h2 class="text-lg font-black">Share this mapping with Novena</h2>
+        <p class="mt-1 max-w-3xl text-sm text-base-content/60">This mapping belongs to your team. Sharing lets Novena review the confirmed signal definitions, equipment model and source equipment reference. The shared map omits connection settings and live readings. Novena may publish a separate verified catalog template after checking documentation and equipment readings. Your original mapping stays private.</p>
+        {% if current_revision_shared %}
+        <p class="mt-4 text-sm font-bold text-info">This confirmed revision has already been submitted.</p>
+        {% else %}
+        <form method="post" class="mt-4 space-y-3">
+            {% csrf_token %}<input type="hidden" name="action" value="share_with_novena">
+            <label class="form-control max-w-xl"><span class="label-text mb-1 font-bold">Manufacturer register document URL (if available)</span><input type="url" name="source_document_url" value="{{ device.template.source_url }}" class="input input-bordered rounded-lg" placeholder="https://manufacturer.example/manual"></label>
+            <label class="flex max-w-3xl items-start gap-3 text-sm"><input required type="checkbox" name="share_consent" class="checkbox checkbox-primary mt-0.5"><span>I choose to share this confirmed signal map and equipment model with Novena for review and possible publication.</span></label>
+            <button class="btn btn-outline btn-sm" type="submit">Send to Novena for review</button>
+        </form>
+        {% endif %}
+        {% if share_submissions %}<div class="mt-4 space-y-1 text-xs text-base-content/60">{% for submission in share_submissions %}<p>Revision {{ submission.revision.revision_number }} · {{ submission.get_status_display }}{% if submission.published_template %} · Novena catalog revision {{ submission.published_template.catalog_revision }}{% endif %}</p>{% endfor %}</div>{% endif %}
+    </section>
+    {% endif %}
+
     {% if revisions %}
     <section class="rounded-xl border border-base-content/10 bg-base-100 p-5 shadow-sm">
         <h2 class="text-lg font-black">Mapping revisions</h2><p class="mt-1 text-sm text-base-content/55">Confirmed versions are preserved. Restoring one creates an unvalidated draft.</p>

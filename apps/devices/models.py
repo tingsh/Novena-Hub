@@ -355,8 +355,8 @@ class DeviceTemplate(models.Model):
         "teams.Team",
         null=True,
         blank=True,
-        on_delete=models.SET_NULL,
-        help_text=_("Team that originally created this template"),
+        on_delete=models.CASCADE,
+        help_text=_("Owning team; team templates are removed with their team."),
     )
     usage_count = models.PositiveIntegerField(default=0, help_text=_("Number of devices using this template"))
     created_at = models.DateTimeField(auto_now_add=True, null=True)
@@ -519,6 +519,56 @@ class DeviceDatapointMapRevision(BaseTeamModel):
 
     def __str__(self):
         return f"{self.mapping.device.name} mapping revision {self.revision_number}"
+
+
+class TemplateShareSubmission(BaseTeamModel):
+    """Explicit customer consent to let Novena review one confirmed map revision."""
+
+    class Status(models.TextChoices):
+        SUBMITTED = "submitted", _("Submitted")
+        REVIEWING = "reviewing", _("Reviewing")
+        REJECTED = "rejected", _("Not publishable")
+        PUBLISHED = "published", _("Published")
+
+    template = models.ForeignKey(DeviceTemplate, on_delete=models.PROTECT)
+    revision = models.OneToOneField(DeviceDatapointMapRevision, on_delete=models.PROTECT)
+    register_map_snapshot = models.JSONField()
+    manufacturer = models.CharField(max_length=200)
+    model_number = models.CharField(max_length=200)
+    protocol = models.CharField(max_length=20, choices=DeviceTemplate.PROTOCOL_CHOICES)
+    device_type = models.CharField(max_length=30, choices=DeviceTemplate.DEVICE_TYPE_CHOICES)
+    category = models.CharField(max_length=20, choices=DeviceTemplate.VERTICAL_CHOICES)
+    source_document_url = models.URLField(blank=True, max_length=500)
+    submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.SUBMITTED)
+    review_notes = models.TextField(blank=True)
+    public_compatibility_notes = models.TextField(
+        blank=True,
+        help_text=_("Customer-facing exact model, firmware and configuration limits. Do not include customer details."),
+    )
+    portability_evidence = models.TextField(
+        blank=True,
+        help_text=_("Why this register map applies to other equipment of this exact model and firmware."),
+    )
+    field_verification_evidence = models.TextField(
+        blank=True,
+        help_text=_("Hardware readings compared with the equipment display or an independent reference."),
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_template_shares",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    published_template = models.OneToOneField(
+        DeviceTemplate, null=True, blank=True, on_delete=models.PROTECT, related_name="share_submission"
+    )
+
+    class Meta:
+        ordering = ["-submitted_at"]
 
 
 class GatewayConfig(BaseTeamModel):

@@ -1,4 +1,6 @@
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from .models import (
     DeploymentSetupEvent,
@@ -17,6 +19,7 @@ from .models import (
     GatewayInventory,
     RpcCommand,
     Site,
+    TemplateShareSubmission,
 )
 
 
@@ -195,7 +198,6 @@ class DeviceDatapointMapRevisionAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-
 @admin.register(DeploymentSetupEvent)
 class DeploymentSetupEventAdmin(admin.ModelAdmin):
     list_display = ("run", "sequence_number", "event_type", "message", "created_at")
@@ -216,6 +218,65 @@ class EquipmentTemplateRequestAdmin(admin.ModelAdmin):
     list_display = ("support_reference", "team", "manufacturer", "model_number", "protocol", "status")
     list_filter = ("status", "protocol")
     search_fields = ("support_reference", "manufacturer", "model_number", "team__name")
+
+
+@admin.register(TemplateShareSubmission)
+class TemplateShareSubmissionAdmin(admin.ModelAdmin):
+    list_display = ("id", "team", "manufacturer", "model_number", "protocol", "status", "submitted_at")
+    list_filter = ("status", "protocol", "submitted_at")
+    search_fields = ("manufacturer", "model_number", "team__name")
+    readonly_fields = (
+        "team", "template", "revision", "register_map_snapshot", "protocol", "device_type",
+        "category", "submitted_by", "submitted_at", "status", "reviewed_by", "reviewed_at",
+        "published_template",
+    )
+    actions = ["mark_reviewing", "reject_submission", "publish_verified"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        if obj and obj.status == TemplateShareSubmission.Status.PUBLISHED:
+            return (
+                *fields,
+                "manufacturer", "model_number", "source_document_url", "review_notes",
+                "public_compatibility_notes", "portability_evidence", "field_verification_evidence",
+            )
+        return fields
+
+    @admin.action(description="Mark selected submissions as reviewing")
+    def mark_reviewing(self, request, queryset):
+        count = queryset.filter(status=TemplateShareSubmission.Status.SUBMITTED).update(
+            status=TemplateShareSubmission.Status.REVIEWING
+        )
+        self.message_user(request, f"{count} submissions moved to review.")
+
+    @admin.action(description="Reject selected submissions with review notes")
+    def reject_submission(self, request, queryset):
+        for submission in queryset.exclude(status=TemplateShareSubmission.Status.PUBLISHED):
+            if not submission.review_notes.strip():
+                self.message_user(request, f"Submission {submission.pk} needs review notes.", level=messages.ERROR)
+                continue
+            submission.status = TemplateShareSubmission.Status.REJECTED
+            submission.reviewed_by = request.user
+            submission.reviewed_at = timezone.now()
+            submission.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+
+    @admin.action(description="Publish selected maps as field verified after evidence review")
+    def publish_verified(self, request, queryset):
+        from .template_sharing import publish_verified_submission
+
+        for submission in queryset:
+            try:
+                published = publish_verified_submission(submission=submission, reviewer=request.user)
+            except ValidationError as exc:
+                self.message_user(request, f"Submission {submission.pk}: {exc}", level=messages.ERROR)
+            else:
+                self.message_user(request, f"Published {published.name} revision {published.catalog_revision}.")
 
 
 @admin.register(GatewayActivation)
