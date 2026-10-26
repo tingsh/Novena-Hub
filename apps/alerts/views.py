@@ -88,8 +88,12 @@ def _suggestion_display(device, preset):
     if key == "compressor_status" and condition == "eq":
         return f"{label} turns {'on' if float(threshold) else 'off'}"
     comparison = {
-        "gt": "above", "gte": "at or above", "lt": "below", "lte": "at or below",
-        "eq": "equal to", "neq": "not equal to",
+        "gt": "above",
+        "gte": "at or above",
+        "lt": "below",
+        "lte": "at or below",
+        "eq": "equal to",
+        "neq": "not equal to",
     }.get(condition, condition)
     unit = {"degC": "°C", "degF": "°F"}.get(config.get("unit"), config.get("unit", ""))
     number = f"{float(threshold):g}"
@@ -112,12 +116,14 @@ class AlertRuleListView(PermissionRequiredMixin, ListView):
         create_url = reverse("web_team:alerts:rule_create", args=[self.request.team.slug])
         for device in Device.objects.filter(team=self.request.team).select_related("site", "template"):
             for index, preset in enumerate(_suggestions_for_device(device)):
-                suggestions.append({
-                    "device": device,
-                    "preset": preset,
-                    "display": _suggestion_display(device, preset),
-                    "url": f"{create_url}?{urlencode({'device': device.pk, 'preset': index})}",
-                })
+                suggestions.append(
+                    {
+                        "device": device,
+                        "preset": preset,
+                        "display": _suggestion_display(device, preset),
+                        "url": f"{create_url}?{urlencode({'device': device.pk, 'preset': index})}",
+                    }
+                )
         context["suggestions"] = suggestions
         return context
 
@@ -136,9 +142,7 @@ class AlertRuleCreateView(PermissionRequiredMixin, CreateView):
             return initial
         try:
             device = (
-                Device.objects.filter(team=self.request.team, pk=device_id)
-                .select_related("site", "template")
-                .first()
+                Device.objects.filter(team=self.request.team, pk=device_id).select_related("site", "template").first()
             )
         except (ValueError, TypeError):
             return initial

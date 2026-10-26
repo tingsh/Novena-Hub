@@ -26,17 +26,24 @@ def reusable_signals(signals):
 
 
 @transaction.atomic
-def save_confirmed_team_map(*, device, team, name, manufacturer, model_number,
-                            firmware_scope="", program_scope="", source_url="",
-                            configuration_notes=""):
+def save_confirmed_team_map(
+    *,
+    device,
+    team,
+    name,
+    manufacturer,
+    model_number,
+    firmware_scope="",
+    program_scope="",
+    source_url="",
+    configuration_notes="",
+):
     if device.team_id != team.pk or not device.template_id:
         raise ValidationError("Choose equipment belonging to this team.")
     name, manufacturer, model_number = (value.strip() for value in (name, manufacturer, model_number))
     if not all((name, manufacturer, model_number)):
         raise ValidationError("Map name, manufacturer, and exact model are required.")
-    firmware_scope, program_scope, source_url = (
-        value.strip() for value in (firmware_scope, program_scope, source_url)
-    )
+    firmware_scope, program_scope, source_url = (value.strip() for value in (firmware_scope, program_scope, source_url))
     configuration_notes = configuration_notes.strip()[:2000]
     if device.device_type == "plc" and not program_scope:
         raise ValidationError("Identify the PLC program or register assignment before team reuse.")
@@ -55,33 +62,51 @@ def save_confirmed_team_map(*, device, team, name, manufacturer, model_number,
         return existing
     points = reusable_signals(revision.datapoints)
     prior = device.template
-    previous_snapshot = DeviceTemplate.objects.filter(
-        created_by_team=team, source_mapping_revision__mapping=mapping,
-        catalog_key__isnull=False,
-    ).order_by("-catalog_revision").first()
+    previous_snapshot = (
+        DeviceTemplate.objects.filter(
+            created_by_team=team,
+            source_mapping_revision__mapping=mapping,
+            catalog_key__isnull=False,
+        )
+        .order_by("-catalog_revision")
+        .first()
+    )
     family = previous_snapshot or (prior if prior.created_by_team_id == team.pk and prior.catalog_key else None)
     same_family = bool(family)
     if same_family:
-        current = DeviceTemplate.objects.select_for_update().filter(
-            created_by_team=team, catalog_key=family.catalog_key, is_current=True
-        ).first()
+        current = (
+            DeviceTemplate.objects.select_for_update()
+            .filter(created_by_team=team, catalog_key=family.catalog_key, is_current=True)
+            .first()
+        )
         key = family.catalog_key
-        next_revision = max(
-            DeviceTemplate.objects.filter(catalog_key=key).values_list("catalog_revision", flat=True)
-        ) + 1
+        next_revision = (
+            max(DeviceTemplate.objects.filter(catalog_key=key).values_list("catalog_revision", flat=True)) + 1
+        )
     else:
         current = None
         key = f"team-{uuid.uuid4()}"
         next_revision = 1
     snapshot = DeviceTemplate.objects.create(
-        name=name, manufacturer=manufacturer, model_number=model_number,
-        device_type=device.device_type, protocol=device.protocol,
-        mapping_strategy="site_defined", register_map=datapoints_to_register_map(points),
+        name=name,
+        manufacturer=manufacturer,
+        model_number=model_number,
+        device_type=device.device_type,
+        protocol=device.protocol,
+        mapping_strategy="site_defined",
+        register_map=datapoints_to_register_map(points),
         default_polling_interval=prior.default_polling_interval,
-        category=prior.category, source="user_created", source_url=source_url,
-        created_by_team=team, catalog_key=key, catalog_revision=next_revision,
-        source_mapping_revision=revision, firmware_scope=firmware_scope,
-        program_scope=program_scope, evidence_status="legacy_unreviewed", is_verified=False,
+        category=prior.category,
+        source="user_created",
+        source_url=source_url,
+        created_by_team=team,
+        catalog_key=key,
+        catalog_revision=next_revision,
+        source_mapping_revision=revision,
+        firmware_scope=firmware_scope,
+        program_scope=program_scope,
+        evidence_status="legacy_unreviewed",
+        is_verified=False,
         compatibility_notes=(
             (f"PLC program/register assignment: {program_scope}. " if program_scope else "")
             + "Confirm model, firmware, and readings on each device. "

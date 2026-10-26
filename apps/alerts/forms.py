@@ -88,28 +88,32 @@ class AlertRuleForm(forms.ModelForm):
                         selected = False
                     unit = _display_unit(config.get("unit"))
                     site_key_units.setdefault((device.site_id, key), set()).add(unit)
-                    self.available_signals.append({
-                        "device_id": device.pk,
-                        "site_id": device.site_id,
-                        "key": key,
-                        "label": config.get("label") or key.replace("_", " ").title(),
-                        "unit": unit,
-                        "device_name": device.name,
-                        "selected": selected,
-                    })
+                    self.available_signals.append(
+                        {
+                            "device_id": device.pk,
+                            "site_id": device.site_id,
+                            "key": key,
+                            "label": config.get("label") or key.replace("_", " ").title(),
+                            "unit": unit,
+                            "device_name": device.name,
+                            "selected": selected,
+                        }
+                    )
             for signal in self.available_signals:
                 signal["site_wide_safe"] = len(site_key_units[(signal["site_id"], signal["key"])]) == 1
             if selected_key and not selected_found:
-                self.available_signals.append({
-                    "device_id": selected_device_id,
-                    "site_id": selected_site_id,
-                    "key": selected_key,
-                    "label": f"Previously saved: {selected_key} (unverified)",
-                    "unit": "",
-                    "device_name": "",
-                    "selected": True,
-                    "site_wide_safe": False,
-                })
+                self.available_signals.append(
+                    {
+                        "device_id": selected_device_id,
+                        "site_id": selected_site_id,
+                        "key": selected_key,
+                        "label": f"Previously saved: {selected_key} (unverified)",
+                        "unit": "",
+                        "device_name": "",
+                        "selected": True,
+                        "site_wide_safe": False,
+                    }
+                )
 
     def clean(self):
         cleaned_data = super().clean()

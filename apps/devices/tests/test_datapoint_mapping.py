@@ -153,7 +153,10 @@ class DeviceDatapointMappingTest(TestCase):
         self._private_starter()
         self._save_and_confirm()
         submission = submit_mapping_for_review(
-            device=self.device, team=self.team, actor=self.user, consent=True,
+            device=self.device,
+            team=self.team,
+            actor=self.user,
+            consent=True,
             source_document_url="https://manufacturer.example/manual",
         )
         with self.assertRaises(ValidationError):
@@ -189,8 +192,12 @@ class DeviceDatapointMappingTest(TestCase):
     def test_deleting_team_removes_private_curated_starter_instead_of_exposing_it(self):
         owner = Team.objects.create(name="Demo owner", slug="demo-owner")
         private = DeviceTemplate.objects.create(
-            name="Demo starter", created_by_team=owner, device_type="plc",
-            protocol="modbus_tcp", mapping_strategy="site_defined", register_map={},
+            name="Demo starter",
+            created_by_team=owner,
+            device_type="plc",
+            protocol="modbus_tcp",
+            mapping_strategy="site_defined",
+            register_map={},
         )
         owner.delete()
         self.assertFalse(DeviceTemplate.objects.filter(pk=private.pk).exists())
@@ -205,10 +212,14 @@ class DeviceDatapointMappingTest(TestCase):
         self.assertContains(page, "Share this mapping with Novena")
         self.client.post(url, {"action": "share_with_novena"})
         self.assertFalse(TemplateShareSubmission.objects.exists())
-        response = self.client.post(url, {
-            "action": "share_with_novena", "share_consent": "on",
-            "source_document_url": "https://manufacturer.example/manual",
-        })
+        response = self.client.post(
+            url,
+            {
+                "action": "share_with_novena",
+                "share_consent": "on",
+                "source_document_url": "https://manufacturer.example/manual",
+            },
+        )
         self.assertEqual(response.status_code, 302)
         self.assertEqual(TemplateShareSubmission.objects.count(), 1)
         page = self.client.get(url)

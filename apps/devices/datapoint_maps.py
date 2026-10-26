@@ -150,8 +150,7 @@ def normalize_datapoints(datapoints) -> list[dict]:
             raise ValidationError(f"Signal '{key}' has too many invalid-value codes.")
         try:
             invalid_values = [
-                int(value) if str(value).lstrip("+-").isdigit() else float(value)
-                for value in raw_invalid
+                int(value) if str(value).lstrip("+-").isdigit() else float(value) for value in raw_invalid
             ]
         except (TypeError, ValueError) as exc:
             raise ValidationError(f"Signal '{key}' has an invalid-value code that is not a number.") from exc

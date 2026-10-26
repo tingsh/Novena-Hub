@@ -30,7 +30,9 @@ class TemplateHelpRequestForm(forms.Form):
         required=False,
     )
     device_type = forms.ChoiceField(
-        choices=DeviceTemplate.DEVICE_TYPE_CHOICES, initial="other", required=False,
+        choices=DeviceTemplate.DEVICE_TYPE_CHOICES,
+        initial="other",
+        required=False,
     )
     equipment_purpose = forms.CharField(max_length=2000)
     desired_signals = forms.CharField(max_length=2000)
@@ -80,7 +82,8 @@ class TemplateHelpRequestForm(forms.Form):
 
 def _send_help_email(*, help_request, to_customer=False):
     recipient = (
-        help_request.requested_by.email if to_customer and help_request.requested_by
+        help_request.requested_by.email
+        if to_customer and help_request.requested_by
         else settings.PROJECT_METADATA.get("CONTACT_EMAIL", settings.DEFAULT_FROM_EMAIL)
     )
     if not recipient:
@@ -88,7 +91,8 @@ def _send_help_email(*, help_request, to_customer=False):
     try:
         url = (
             reverse("web_team:devices:template_help_detail", args=[help_request.team.slug, help_request.pk])
-            if to_customer else reverse("admin:devices_equipmenttemplaterequest_change", args=[help_request.pk])
+            if to_customer
+            else reverse("admin:devices_equipmenttemplaterequest_change", args=[help_request.pk])
         )
         absolute_url = settings.PROJECT_METADATA.get("URL", "").rstrip("/") + url
         reply_line = f"Customer reply: {help_request.customer_reply}\n" if not to_customer else ""
@@ -102,8 +106,7 @@ def _send_help_email(*, help_request, to_customer=False):
                 f"Reference: {help_request.support_reference}\n"
                 f"Update: {help_request.customer_update}\n"
                 + reply_line
-                +
-                f"Open the request in Novena Hub: {absolute_url}\n"
+                + f"Open the request in Novena Hub: {absolute_url}\n"
             ),
             from_email=settings.DEFAULT_FROM_EMAIL,
             recipients=[recipient],
@@ -120,33 +123,60 @@ def create_help_request(*, team, actor, form, run=None, setup_item=None, discove
     if setup_item and (setup_item.team_id != team.pk or (run and setup_item.run_id != run.pk)):
         raise ValidationError("The selected equipment does not belong to this setup.")
     if setup_item:
-        existing = EquipmentTemplateRequest.objects.select_for_update().filter(
-            team=team, setup_item=setup_item,
-        ).exclude(status__in=[
-            EquipmentTemplateRequest.Status.CLOSED, EquipmentTemplateRequest.Status.COMPLETED,
-        ]).first()
+        existing = (
+            EquipmentTemplateRequest.objects.select_for_update()
+            .filter(
+                team=team,
+                setup_item=setup_item,
+            )
+            .exclude(
+                status__in=[
+                    EquipmentTemplateRequest.Status.CLOSED,
+                    EquipmentTemplateRequest.Status.COMPLETED,
+                ]
+            )
+            .first()
+        )
         if existing:
             return existing, False
     data = form.cleaned_data
     if not setup_item:
-        duplicate = EquipmentTemplateRequest.objects.filter(
-            team=team, requested_by=actor,
-            manufacturer=data["manufacturer"], model_number=data["model_number"],
-            equipment_purpose=data["equipment_purpose"], desired_signals=data["desired_signals"],
-            created_at__gte=timezone.now() - timedelta(minutes=5),
-        ).exclude(status__in=[
-            EquipmentTemplateRequest.Status.CLOSED, EquipmentTemplateRequest.Status.COMPLETED,
-        ]).first()
+        duplicate = (
+            EquipmentTemplateRequest.objects.filter(
+                team=team,
+                requested_by=actor,
+                manufacturer=data["manufacturer"],
+                model_number=data["model_number"],
+                equipment_purpose=data["equipment_purpose"],
+                desired_signals=data["desired_signals"],
+                created_at__gte=timezone.now() - timedelta(minutes=5),
+            )
+            .exclude(
+                status__in=[
+                    EquipmentTemplateRequest.Status.CLOSED,
+                    EquipmentTemplateRequest.Status.COMPLETED,
+                ]
+            )
+            .first()
+        )
         if duplicate:
             return duplicate, False
     help_request = EquipmentTemplateRequest.objects.create(
-        team=team, run=run, setup_item=setup_item, requested_by=actor,
-        manufacturer=data["manufacturer"], model_number=data["model_number"],
-        protocol=data["protocol"], device_type=data["device_type"] or "other",
+        team=team,
+        run=run,
+        setup_item=setup_item,
+        requested_by=actor,
+        manufacturer=data["manufacturer"],
+        model_number=data["model_number"],
+        protocol=data["protocol"],
+        device_type=data["device_type"] or "other",
         equipment_purpose=data["equipment_purpose"],
-        desired_signals=data["desired_signals"], firmware_or_program=data["firmware_or_program"],
-        documentation_url=data["documentation_url"], documentation_file=data["documentation_file"],
-        nameplate_photo=data["nameplate_photo"], discovery_evidence=discovery_evidence or {},
+        desired_signals=data["desired_signals"],
+        firmware_or_program=data["firmware_or_program"],
+        documentation_url=data["documentation_url"],
+        documentation_file=data["documentation_file"],
+        nameplate_photo=data["nameplate_photo"],
+        discovery_evidence=discovery_evidence or {},
     )
     transaction.on_commit(lambda: _send_help_email(help_request=help_request))
     return help_request, True
@@ -166,7 +196,8 @@ def deliver_help_map(*, help_request, actor):
     ):
         raise ValidationError("Record accepted quote and payment or a waiver first.")
     if not all((help_request.manufacturer, help_request.model_number)) or help_request.protocol not in {
-        "modbus_tcp", "modbus_rtu",
+        "modbus_tcp",
+        "modbus_rtu",
     }:
         raise ValidationError("Identify the exact manufacturer, model, and Modbus protocol first.")
     points = reusable_signals(help_request.proposed_signals)
@@ -174,13 +205,18 @@ def deliver_help_map(*, help_request, actor):
         raise ValidationError("Identify the PLC program/register assignment before delivery.")
     template = DeviceTemplate.objects.create(
         name=f"{help_request.manufacturer} {help_request.model_number} · Novena assisted",
-        manufacturer=help_request.manufacturer, model_number=help_request.model_number,
+        manufacturer=help_request.manufacturer,
+        model_number=help_request.model_number,
         device_type=help_request.device_type,
-        protocol=help_request.protocol, mapping_strategy="site_defined",
+        protocol=help_request.protocol,
+        mapping_strategy="site_defined",
         register_map=datapoints_to_register_map(points),
-        category="energy", source="novena_assisted", created_by_team=help_request.team,
+        category="energy",
+        source="novena_assisted",
+        created_by_team=help_request.team,
         source_url=help_request.documentation_url,
-        catalog_key=f"team-{uuid.uuid4()}", catalog_revision=1,
+        catalog_key=f"team-{uuid.uuid4()}",
+        catalog_revision=1,
         evidence_status="legacy_unreviewed",
         is_verified=False,
         compatibility_notes=(

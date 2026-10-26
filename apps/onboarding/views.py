@@ -625,8 +625,7 @@ def _gateway_wait_context(request, gateway):
     activation = gateway.activations.order_by("-created_at").first()
     freshness = gateway.freshness
     awaiting_first_heartbeat = freshness.status != "live" and (
-        gateway.last_seen is None
-        or (activation is not None and gateway.last_seen < activation.created_at)
+        gateway.last_seen is None or (activation is not None and gateway.last_seen < activation.created_at)
     )
     wait_started_at = activation.created_at if activation else run.created_at
     wait_seconds = (timezone.now() - wait_started_at).total_seconds()
@@ -634,11 +633,7 @@ def _gateway_wait_context(request, gateway):
     blocking_failures = {
         check["key"] for check in readiness["checks"] if check["blocking"] and check["status"] == "fail"
     }
-    clock_settling = (
-        freshness.status == "live"
-        and blocking_failures == {"clock"}
-        and wait_seconds < 180
-    )
+    clock_settling = freshness.status == "live" and blocking_failures == {"clock"} and wait_seconds < 180
     display_checks = readiness["checks"]
     if awaiting_first_heartbeat:
         display_checks = [
@@ -828,14 +823,12 @@ def _equipment_progress(run, commissioning, scan_state, can_deploy):
     """Summarize only the milestones a customer can complete on the Equipment step."""
     listed = bool(commissioning["equipment_count"])
     template_selected = bool(
-        can_deploy
-        or run.items.filter(selected_template__isnull=False, removed_at__isnull=True).exists()
+        can_deploy or run.items.filter(selected_template__isnull=False, removed_at__isnull=True).exists()
     )
     tested = bool(can_deploy or commissioning["confirmation_equipment_count"])
     if can_deploy:
         message = (
-            "At least one equipment template and its live readings were confirmed. "
-            "Deploy it or review more equipment."
+            "At least one equipment template and its live readings were confirmed. Deploy it or review more equipment."
         )
     elif commissioning["confirmation_equipment_count"]:
         message = "Live readings are ready. Review their values and confirm the template for each equipment item."
@@ -864,11 +857,15 @@ def _already_configured_devices(gateway, scan_state):
     """Keep previously deployed equipment visible outside a new setup run."""
     if not gateway or not scan_state.get("configured_count"):
         return Device.objects.none()
-    return Device.objects.filter(
-        gateway=gateway,
-        deployment_setup_items__state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
-        deployment_setup_items__removed_at__isnull=True,
-    ).distinct().order_by("name")
+    return (
+        Device.objects.filter(
+            gateway=gateway,
+            deployment_setup_items__state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
+            deployment_setup_items__removed_at__isnull=True,
+        )
+        .distinct()
+        .order_by("name")
+    )
 
 
 @require_permission("view_devices")
@@ -896,9 +893,7 @@ def equipment_template_preview(request, team_slug):
         for point in normalized_datapoints(template)
         if point.get("access") in {"read", "read_only", "read_write"}
     ]
-    signals.sort(
-        key=lambda point: _signal_display_order(template.register_map, point["key"], point["label"])
-    )
+    signals.sort(key=lambda point: _signal_display_order(template.register_map, point["key"], point["label"]))
     return JsonResponse(
         {
             "manufacturer": template.manufacturer,
@@ -938,9 +933,7 @@ def _attach_equipment_readings(commissioning):
             for signal in (item.validation_result or {}).get("signals", [])
         ]
         roles = (item.selected_template.register_map or {}) if item.selected_template else {}
-        item.reading_rows.sort(
-            key=lambda row: _signal_display_order(roles, row["key"], row["label"])
-        )
+        item.reading_rows.sort(key=lambda row: _signal_display_order(roles, row["key"], row["label"]))
 
 
 def _require_customer_confirmation_for_predeployment(run):
@@ -949,16 +942,17 @@ def _require_customer_confirmation_for_predeployment(run):
         return
     from apps.devices.deployment_setup import append_setup_event
 
-    for item in run.items.filter(
-        state=DeploymentSetupItem.State.VALIDATED, removed_at__isnull=True
-    ).select_related("device"):
+    for item in run.items.filter(state=DeploymentSetupItem.State.VALIDATED, removed_at__isnull=True).select_related(
+        "device"
+    ):
         result = dict(item.validation_result or {})
         if result.get("customer_confirmed_at"):
             continue
         has_readings = result.get("status") == "success" and bool(result.get("signals"))
         item.state = (
             DeploymentSetupItem.State.AWAITING_CONFIRMATION
-            if has_readings else DeploymentSetupItem.State.NEEDS_ATTENTION
+            if has_readings
+            else DeploymentSetupItem.State.NEEDS_ATTENTION
         )
         item.trust_level = DeploymentSetupItem.Trust.UNVALIDATED
         if not has_readings:
@@ -971,8 +965,10 @@ def _require_customer_confirmation_for_predeployment(run):
             item.device.metadata = metadata
             item.device.save(update_fields=["metadata", "updated_at"])
         append_setup_event(
-            run, "customer_confirmation_required",
-            "Earlier live check needs customer confirmation before deployment.", item=item,
+            run,
+            "customer_confirmation_required",
+            "Earlier live check needs customer confirmation before deployment.",
+            item=item,
         )
 
 
@@ -1023,7 +1019,9 @@ def step_3_discover(request, team_slug):
         with transaction.atomic():
             item = get_object_or_404(
                 run.items.select_related("device", "selected_template").select_for_update(of=("self",)),
-                pk=request.POST.get("item_id"), removed_at__isnull=True, device__isnull=False,
+                pk=request.POST.get("item_id"),
+                removed_at__isnull=True,
+                device__isnull=False,
             )
             result = dict(item.validation_result or {})
             signals = result.get("signals") or []
@@ -1042,7 +1040,8 @@ def step_3_discover(request, team_slug):
             item.state = DeploymentSetupItem.State.VALIDATED
             item.trust_level = (
                 DeploymentSetupItem.Trust.NOVENA_VERIFIED
-                if item.selected_template.is_verified else DeploymentSetupItem.Trust.CUSTOMER_VALIDATED
+                if item.selected_template.is_verified
+                else DeploymentSetupItem.Trust.CUSTOMER_VALIDATED
             )
             result["customer_confirmed_at"] = timezone.now().isoformat()
             result["customer_confirmed_by"] = request.user.pk
@@ -1066,10 +1065,13 @@ def step_3_discover(request, team_slug):
         with transaction.atomic():
             item = get_object_or_404(
                 run.items.select_related("device").select_for_update(of=("self",)),
-                pk=request.POST.get("item_id"), removed_at__isnull=True, device__isnull=False,
+                pk=request.POST.get("item_id"),
+                removed_at__isnull=True,
+                device__isnull=False,
             )
             if (
-                item.state not in {
+                item.state
+                not in {
                     DeploymentSetupItem.State.DISCOVERED,
                     DeploymentSetupItem.State.TEMPLATE_SELECTED,
                     DeploymentSetupItem.State.NEEDS_ATTENTION,
@@ -1560,8 +1562,10 @@ def step_3_discover(request, team_slug):
                     template = visible_templates_for_team(request.team).filter(pk=template_id).first()
                     if not template:
                         raise ValueError("Choose an equipment template before validation.")
-                    if template.created_by_team_id and template.catalog_key and (
-                        request.POST.get(f"confirm_private_map_{raw_index}") != "on"
+                    if (
+                        template.created_by_team_id
+                        and template.catalog_key
+                        and (request.POST.get(f"confirm_private_map_{raw_index}") != "on")
                     ):
                         raise ValueError(
                             "Confirm the private map matches this model, firmware and PLC program before testing."
@@ -1636,7 +1640,8 @@ def step_3_discover(request, team_slug):
                     item.save(update_fields=["device", "connection", "updated_at"])
                     if template.source == "novena_assisted":
                         EquipmentTemplateRequest.objects.filter(
-                            team=request.team, delivered_template=template,
+                            team=request.team,
+                            delivered_template=template,
                             status=EquipmentTemplateRequest.Status.READY_TO_TEST,
                             setup_item__isnull=True,
                         ).update(setup_item=item)
@@ -1799,9 +1804,13 @@ def step_3_discover(request, team_slug):
             try:
                 discovered_candidate, draft_index, draft_item = (
                     _candidate_for_ref(
-                        discovered_devices, run, raw_draft_index,
+                        discovered_devices,
+                        run,
+                        raw_draft_index,
                         request.POST.get("draft_candidate_key", ""),
-                    ) if raw_draft_index else ({}, None, None)
+                    )
+                    if raw_draft_index
+                    else ({}, None, None)
                 )
             except (IndexError, TypeError, ValueError) as exc:
                 messages.error(request, f"Review this equipment again before saving: {exc}")
@@ -1809,14 +1818,21 @@ def step_3_discover(request, team_slug):
             from apps.devices.deployment_setup import equipment_candidate_key
 
             target_key = equipment_candidate_key(
-                {"connection": protocol, "interface": port_key}, connection,
+                {"connection": protocol, "interface": port_key},
+                connection,
             )
-            existing_item = draft_item or run.items.filter(
-                candidate_key=target_key, removed_at__isnull=True,
-            ).first()
-            if run.items.filter(candidate_key=target_key).exclude(
-                pk=existing_item.pk if existing_item else None
-            ).exists():
+            existing_item = (
+                draft_item
+                or run.items.filter(
+                    candidate_key=target_key,
+                    removed_at__isnull=True,
+                ).first()
+            )
+            if (
+                run.items.filter(candidate_key=target_key)
+                .exclude(pk=existing_item.pk if existing_item else None)
+                .exists()
+            ):
                 messages.error(request, "Another saved equipment row already uses this connection.")
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
             from apps.subscriptions.enforcement import can_add_device, get_device_limit_for_team
@@ -1833,19 +1849,30 @@ def step_3_discover(request, team_slug):
             if device_type not in {choice[0] for choice in DeviceTemplate.DEVICE_TYPE_CHOICES}:
                 device_type = "other"
             device = existing_item.device if existing_item and existing_item.device_id else None
-            template = device.template if device and device.template and (
-                device.template.created_by_team_id == request.team.pk
-                and device.template.source == "user_created"
-                and not device.template.catalog_key
-                and not device.template.register_map
-            ) else None
+            template = (
+                device.template
+                if device
+                and device.template
+                and (
+                    device.template.created_by_team_id == request.team.pk
+                    and device.template.source == "user_created"
+                    and not device.template.catalog_key
+                    and not device.template.register_map
+                )
+                else None
+            )
             if not template:
                 template = DeviceTemplate.objects.create(
                     name=f"{manufacturer} {model_number}".strip() or f"{name} template",
-                    manufacturer=manufacturer, model_number=model_number,
-                    device_type=device_type, protocol=protocol,
-                    mapping_strategy="site_defined", register_map={},
-                    source="user_created", created_by_team=request.team, is_verified=False,
+                    manufacturer=manufacturer,
+                    model_number=model_number,
+                    device_type=device_type,
+                    protocol=protocol,
+                    mapping_strategy="site_defined",
+                    register_map={},
+                    source="user_created",
+                    created_by_team=request.team,
+                    is_verified=False,
                 )
             if device:
                 device.name = name
@@ -1859,8 +1886,14 @@ def step_3_discover(request, team_slug):
                 device.save()
             else:
                 device = Device.objects.create(
-                    team=request.team, gateway=gateway, site=gateway.site, port=port_key,
-                    name=name, template=template, device_type=device_type, protocol=protocol,
+                    team=request.team,
+                    gateway=gateway,
+                    site=gateway.site,
+                    port=port_key,
+                    name=name,
+                    template=template,
+                    device_type=device_type,
+                    protocol=protocol,
                     connection_config=connection,
                     discovery_meta={"connection": protocol, "interface": port_key},
                     metadata={"guided_setup_validation": "pending"},
@@ -1889,7 +1922,9 @@ def step_3_discover(request, team_slug):
                     item.discovery_index = draft_index
                 else:
                     item = create_or_update_candidate_item(
-                        run=run, index=draft_index, candidate=candidate_data,
+                        run=run,
+                        index=draft_index,
+                        candidate=candidate_data,
                         existing_item=existing_item,
                     )
                 item.device = device
@@ -1968,7 +2003,10 @@ def step_3_discover(request, team_slug):
             }
             try:
                 equipment_request, created = create_help_request(
-                    team=request.team, actor=request.user, form=form, run=run,
+                    team=request.team,
+                    actor=request.user,
+                    form=form,
+                    run=run,
                     setup_item=draft_item if raw_draft_index else None,
                     discovery_evidence=evidence,
                 )
@@ -1989,7 +2027,9 @@ def step_3_discover(request, team_slug):
                 draft_item.save(update_fields=["candidate_data", "updated_at"])
             if created:
                 append_setup_event(
-                    run, "template_requested", "A Novena equipment-template request was submitted.",
+                    run,
+                    "template_requested",
+                    "A Novena equipment-template request was submitted.",
                     actor=request.user,
                     evidence={"support_reference": str(equipment_request.support_reference)},
                 )
@@ -2053,11 +2093,13 @@ def step_3_discover(request, team_slug):
             return redirect("web_team:onboarding:step_4_alert", team_slug=team_slug)
 
     scan_state = discovery_scan_state(run)
-    deployable_items = list(run.items.filter(
-        state__in=[DeploymentSetupItem.State.VALIDATED, DeploymentSetupItem.State.TELEMETRY_CONFIRMED],
-        device__isnull=False,
-        removed_at__isnull=True,
-    ).select_related("device"))
+    deployable_items = list(
+        run.items.filter(
+            state__in=[DeploymentSetupItem.State.VALIDATED, DeploymentSetupItem.State.TELEMETRY_CONFIRMED],
+            device__isnull=False,
+            removed_at__isnull=True,
+        ).select_related("device")
+    )
     can_deploy = bool(deployable_items)
     commissioning = build_commissioning_context(request.team, gateway=gateway, session=request.session, setup_run=run)
     _attach_equipment_readings(commissioning)
@@ -2133,13 +2175,17 @@ def discovery_poll(request, team_slug):
             "title": "Ready to scan",
             "message": "Connect your equipment to the Gateway, then start a scan.",
         }
-    deployable_items = list(
-        setup_run.items.filter(
-            state__in=[DeploymentSetupItem.State.VALIDATED, DeploymentSetupItem.State.TELEMETRY_CONFIRMED],
-            device__isnull=False,
-            removed_at__isnull=True,
-        ).select_related("device")
-    ) if setup_run else []
+    deployable_items = (
+        list(
+            setup_run.items.filter(
+                state__in=[DeploymentSetupItem.State.VALIDATED, DeploymentSetupItem.State.TELEMETRY_CONFIRMED],
+                device__isnull=False,
+                removed_at__isnull=True,
+            ).select_related("device")
+        )
+        if setup_run
+        else []
+    )
     can_deploy = bool(deployable_items)
     commissioning = build_commissioning_context(
         request.team, gateway=gateway, session=request.session, setup_run=setup_run
@@ -2205,10 +2251,7 @@ def step_4_alert(request, team_slug):
     if historical_review:
         setup_run = _completed_setup_run(request.team, request.GET["run"])
         setup_item = (
-            setup_run.items.filter(device__isnull=False)
-            .select_related("device")
-            .order_by("created_at")
-            .first()
+            setup_run.items.filter(device__isnull=False).select_related("device").order_by("created_at").first()
         )
         if setup_item is None:
             raise Http404("Setup equipment not found")

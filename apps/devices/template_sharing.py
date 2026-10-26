@@ -64,17 +64,28 @@ def publish_reviewed_submission(*, submission, reviewer, evidence_status):
                 raise ValidationError("Record representative hardware evidence before field verification.")
             previous = DeviceTemplate.objects.select_for_update().get(pk=submission.published_template_id)
             promoted = DeviceTemplate.objects.create(
-                name=previous.name, manufacturer=previous.manufacturer, model_number=previous.model_number,
-                model_aliases=previous.model_aliases, variant=previous.variant,
-                device_type=previous.device_type, protocol=previous.protocol,
-                mapping_strategy=previous.mapping_strategy, register_map=previous.register_map,
+                name=previous.name,
+                manufacturer=previous.manufacturer,
+                model_number=previous.model_number,
+                model_aliases=previous.model_aliases,
+                variant=previous.variant,
+                device_type=previous.device_type,
+                protocol=previous.protocol,
+                mapping_strategy=previous.mapping_strategy,
+                register_map=previous.register_map,
                 discovery_hints=previous.discovery_hints,
                 default_polling_interval=previous.default_polling_interval,
-                category=previous.category, alert_presets=[], source=previous.source,
-                source_url=previous.source_url, firmware_scope=previous.firmware_scope,
-                program_scope=previous.program_scope, compatibility_notes=previous.compatibility_notes,
-                catalog_key=previous.catalog_key, catalog_revision=previous.catalog_revision + 1,
-                evidence_status="field_verified", is_verified=True,
+                category=previous.category,
+                alert_presets=[],
+                source=previous.source,
+                source_url=previous.source_url,
+                firmware_scope=previous.firmware_scope,
+                program_scope=previous.program_scope,
+                compatibility_notes=previous.compatibility_notes,
+                catalog_key=previous.catalog_key,
+                catalog_revision=previous.catalog_revision + 1,
+                evidence_status="field_verified",
+                is_verified=True,
             )
             previous.is_current = False
             previous.save(update_fields=["is_current"])
@@ -109,18 +120,21 @@ def publish_reviewed_submission(*, submission, reviewer, evidence_status):
         raise ValidationError("Complete the review first: " + ", ".join(missing) + ".")
     URLValidator(schemes=["https"])(submission.source_document_url)
     if any(
-        point.get("writable") or point.get("writeFunctionCode")
-        for point in submission.register_map_snapshot.values()
+        point.get("writable") or point.get("writeFunctionCode") for point in submission.register_map_snapshot.values()
     ):
         raise ValidationError("Remove write-capable signals before publishing a read-only catalog map.")
-    current = DeviceTemplate.objects.select_for_update().filter(
-        source__in=["curated", "community"],
-        is_current=True,
-        manufacturer__iexact=submission.manufacturer,
-        model_number__iexact=submission.model_number,
-        protocol=submission.protocol,
-        variant__iexact=submission.template.variant,
-    ).first()
+    current = (
+        DeviceTemplate.objects.select_for_update()
+        .filter(
+            source__in=["curated", "community"],
+            is_current=True,
+            manufacturer__iexact=submission.manufacturer,
+            model_number__iexact=submission.model_number,
+            protocol=submission.protocol,
+            variant__iexact=submission.template.variant,
+        )
+        .first()
+    )
     # A site's alert and safety bands are not portable OEM signal definitions.
     register_map = {
         key: {
@@ -149,7 +163,8 @@ def publish_reviewed_submission(*, submission, reviewer, evidence_status):
         compatibility_notes=submission.public_compatibility_notes,
         variant=submission.template.variant,
         program_scope=(submission.template.program_scope or submission.public_compatibility_notes)[:200]
-        if submission.device_type == "plc" else "",
+        if submission.device_type == "plc"
+        else "",
         firmware_scope=submission.template.firmware_scope,
         alert_presets=[],
     )
@@ -166,6 +181,4 @@ def publish_reviewed_submission(*, submission, reviewer, evidence_status):
 
 def publish_verified_submission(*, submission, reviewer):
     """Keep the established staff action for representative hardware evidence."""
-    return publish_reviewed_submission(
-        submission=submission, reviewer=reviewer, evidence_status="field_verified"
-    )
+    return publish_reviewed_submission(submission=submission, reviewer=reviewer, evidence_status="field_verified")

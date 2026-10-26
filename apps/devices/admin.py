@@ -223,6 +223,7 @@ class DeviceDatapointMapRevisionAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
+
 @admin.register(DeploymentSetupEvent)
 class DeploymentSetupEventAdmin(admin.ModelAdmin):
     list_display = ("run", "sequence_number", "event_type", "message", "created_at")
@@ -270,8 +271,15 @@ class EquipmentTemplateRequestAdmin(admin.ModelAdmin):
     list_filter = ("status", "protocol")
     search_fields = ("support_reference", "manufacturer", "model_number", "team__name")
     readonly_fields = (
-        "team", "run", "requested_by", "support_reference", "discovery_evidence",
-        "document_links", "delivered_template", "created_at", "updated_at",
+        "team",
+        "run",
+        "requested_by",
+        "support_reference",
+        "discovery_evidence",
+        "document_links",
+        "delivered_template",
+        "created_at",
+        "updated_at",
     )
     exclude = ("documentation_file", "nameplate_photo")
     actions = ["deliver_private_maps"]
@@ -284,8 +292,11 @@ class EquipmentTemplateRequestAdmin(admin.ModelAdmin):
 
     def get_urls(self):
         custom = [
-            path("<int:pk>/private-file/<str:kind>/", self.admin_site.admin_view(self.private_file),
-                 name="devices_equipmenttemplaterequest_private_file"),
+            path(
+                "<int:pk>/private-file/<str:kind>/",
+                self.admin_site.admin_view(self.private_file),
+                name="devices_equipmenttemplaterequest_private_file",
+            ),
         ]
         return custom + super().get_urls()
 
@@ -341,8 +352,18 @@ class TemplateShareSubmissionAdmin(admin.ModelAdmin):
     list_filter = ("status", "protocol", "submitted_at")
     search_fields = ("manufacturer", "model_number", "team__name")
     readonly_fields = (
-        "team", "template", "revision", "register_map_snapshot", "protocol", "device_type",
-        "category", "submitted_by", "submitted_at", "status", "reviewed_by", "reviewed_at",
+        "team",
+        "template",
+        "revision",
+        "register_map_snapshot",
+        "protocol",
+        "device_type",
+        "category",
+        "submitted_by",
+        "submitted_at",
+        "status",
+        "reviewed_by",
+        "reviewed_at",
         "published_template",
     )
     actions = ["mark_reviewing", "reject_submission", "publish_documented", "publish_verified"]
@@ -358,8 +379,12 @@ class TemplateShareSubmissionAdmin(admin.ModelAdmin):
         if obj and obj.status == TemplateShareSubmission.Status.PUBLISHED:
             published_fields = (
                 *fields,
-                "manufacturer", "model_number", "source_document_url", "review_notes",
-                "public_compatibility_notes", "portability_evidence",
+                "manufacturer",
+                "model_number",
+                "source_document_url",
+                "review_notes",
+                "public_compatibility_notes",
+                "portability_evidence",
             )
             if obj.published_template.evidence_status == "field_verified":
                 return (*published_fields, "field_verification_evidence")

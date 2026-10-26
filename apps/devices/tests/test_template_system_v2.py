@@ -36,34 +36,58 @@ class TemplateSystemV2Test(TestCase):
         Membership.objects.create(team=self.team, user=self.user, role=ROLE_ADMIN)
         self.site = Site.objects.create(team=self.team, name="Plant")
         self.gateway = Gateway.objects.create(
-            team=self.team, site=self.site, name="Gateway", serial_number="NF-ENERGY-1",
+            team=self.team,
+            site=self.site,
+            name="Gateway",
+            serial_number="NF-ENERGY-1",
             access_token="energy-token",
         )
         self.starter = DeviceTemplate.objects.create(
-            name="Meter starter", manufacturer="Example", model_number="M1",
-            device_type="power_meter", protocol="modbus_tcp", mapping_strategy="site_defined",
-            register_map={}, source="user_created", created_by_team=self.team,
+            name="Meter starter",
+            manufacturer="Example",
+            model_number="M1",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            mapping_strategy="site_defined",
+            register_map={},
+            source="user_created",
+            created_by_team=self.team,
         )
         self.device = Device.objects.create(
-            team=self.team, site=self.site, gateway=self.gateway, template=self.starter,
-            name="Main meter", device_type="power_meter", protocol="modbus_tcp",
-            port="10.1.1.2:502", connection_config={"host": "10.1.1.2", "port": 502, "slave_id": 1},
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
+            template=self.starter,
+            name="Main meter",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            port="10.1.1.2:502",
+            connection_config={"host": "10.1.1.2", "port": 502, "slave_id": 1},
         )
         self.point = {
-            "key": "active_power", "label": "Active power", "address": 101,
-            "read_function_code": 3, "data_type": "float32", "objects_count": 2,
-            "unit": "W", "multiplier": 1, "access": "read_only",
+            "key": "active_power",
+            "label": "Active power",
+            "address": 101,
+            "read_function_code": 3,
+            "data_type": "float32",
+            "objects_count": 2,
+            "unit": "W",
+            "multiplier": 1,
+            "access": "read_only",
         }
 
     def confirm(self, points=None):
         mapping = save_device_datapoint_map(
-            device=self.device, team=self.team, datapoints=points or [self.point],
+            device=self.device,
+            team=self.team,
+            datapoints=points or [self.point],
         )
         checksum = mapping_checksum(self.device, mapping.datapoints)
         record_device_datapoint_validation(
             device=self.device,
             result={
-                "status": "success", "mapping_checksum": checksum,
+                "status": "success",
+                "mapping_checksum": checksum,
                 "signals": [
                     {"key": point["key"], "status": "success", "address": point["address"], "value": 50}
                     for point in mapping.datapoints
@@ -75,21 +99,37 @@ class TemplateSystemV2Test(TestCase):
     def test_confirmed_map_becomes_private_revision_and_reuse_is_draft(self):
         self.confirm()
         first = save_confirmed_team_map(
-            device=self.device, team=self.team, name="M1 power", manufacturer="Example",
-            model_number="M1", configuration_notes="CT ratio 100:5",
+            device=self.device,
+            team=self.team,
+            name="M1 power",
+            manufacturer="Example",
+            model_number="M1",
+            configuration_notes="CT ratio 100:5",
         )
         self.assertEqual(first.catalog_revision, 1)
         self.assertIn("CT ratio", first.compatibility_notes)
         self.assertNotIn("10.1.1.2", str(first.register_map))
-        self.assertEqual(save_confirmed_team_map(
-            device=self.device, team=self.team, name="M1 power", manufacturer="Example", model_number="M1",
-        ).pk, first.pk)
+        self.assertEqual(
+            save_confirmed_team_map(
+                device=self.device,
+                team=self.team,
+                name="M1 power",
+                manufacturer="Example",
+                model_number="M1",
+            ).pk,
+            first.pk,
+        )
         other_team = Team.objects.create(name="Other", slug="other-template-team")
         self.assertFalse(visible_templates_for_team(other_team).filter(pk=first.pk).exists())
 
         second_device = Device.objects.create(
-            team=self.team, site=self.site, gateway=self.gateway, template=first,
-            name="Second meter", device_type="power_meter", protocol="modbus_tcp",
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
+            template=first,
+            name="Second meter",
+            device_type="power_meter",
+            protocol="modbus_tcp",
             connection_config={"host": "10.1.1.3", "port": 502, "slave_id": 1},
         )
         seeded = ensure_device_datapoint_map(second_device)
@@ -99,7 +139,11 @@ class TemplateSystemV2Test(TestCase):
 
         self.confirm([{**self.point, "address": 102}])
         revised = save_confirmed_team_map(
-            device=self.device, team=self.team, name="M1 power", manufacturer="Example", model_number="M1",
+            device=self.device,
+            team=self.team,
+            name="M1 power",
+            manufacturer="Example",
+            model_number="M1",
         )
         first.refresh_from_db()
         self.assertEqual(revised.catalog_revision, 2)
@@ -112,7 +156,11 @@ class TemplateSystemV2Test(TestCase):
     def test_switching_team_map_clears_old_confirmation_and_writes_cannot_be_shared(self):
         self.confirm()
         saved = save_confirmed_team_map(
-            device=self.device, team=self.team, name="M1", manufacturer="Example", model_number="M1",
+            device=self.device,
+            team=self.team,
+            name="M1",
+            manufacturer="Example",
+            model_number="M1",
         )
         self.device.template = saved
         self.device.save(update_fields=["template"])
@@ -122,7 +170,11 @@ class TemplateSystemV2Test(TestCase):
         self.confirm([{**self.point, "access": "read_write"}])
         with self.assertRaises(ValidationError):
             save_confirmed_team_map(
-                device=self.device, team=self.team, name="M1", manufacturer="Example", model_number="M1",
+                device=self.device,
+                team=self.team,
+                name="M1",
+                manufacturer="Example",
+                model_number="M1",
             )
 
     def test_invalid_codes_and_energy_direction_survive_gateway_config(self):
@@ -131,16 +183,25 @@ class TemplateSystemV2Test(TestCase):
         point = config[0]["config"]["master"]["slaves"][0]["timeseries"][0]
         self.assertEqual(point["invalidValues"], [65535])
         saved = save_confirmed_team_map(
-            device=self.device, team=self.team, name="M1 import", manufacturer="Example", model_number="M1",
+            device=self.device,
+            team=self.team,
+            name="M1 import",
+            manufacturer="Example",
+            model_number="M1",
         )
         self.assertEqual(saved.register_map["active_power"]["energy_direction"], "import")
 
     def test_paid_request_requires_quote_payment_and_private_delivery(self):
-        form = TemplateHelpRequestForm({
-            "manufacturer": "Example", "model_number": "M2", "protocol": "modbus_tcp",
-            "device_type": "power_meter", "equipment_purpose": "Main energy meter",
-            "desired_signals": "Active power",
-        })
+        form = TemplateHelpRequestForm(
+            {
+                "manufacturer": "Example",
+                "model_number": "M2",
+                "protocol": "modbus_tcp",
+                "device_type": "power_meter",
+                "equipment_purpose": "Main energy meter",
+                "desired_signals": "Active power",
+            }
+        )
         help_request, created = create_help_request(team=self.team, actor=self.user, form=form)
         self.assertTrue(created)
         self.assertEqual(help_request.status, "submitted")
@@ -184,11 +245,17 @@ class TemplateSystemV2Test(TestCase):
     def test_request_pages_are_team_scoped(self):
         self.client.force_login(self.user)
         url = reverse("web_team:devices:template_help_list", args=[self.team.slug])
-        response = self.client.post(url, {
-            "manufacturer": "Example", "model_number": "M2", "protocol": "modbus_tcp",
-            "device_type": "power_meter", "equipment_purpose": "Energy metering",
-            "desired_signals": "Power and energy",
-        })
+        response = self.client.post(
+            url,
+            {
+                "manufacturer": "Example",
+                "model_number": "M2",
+                "protocol": "modbus_tcp",
+                "device_type": "power_meter",
+                "equipment_purpose": "Energy metering",
+                "desired_signals": "Power and energy",
+            },
+        )
         self.assertEqual(response.status_code, 302)
         help_request = EquipmentTemplateRequest.objects.get(team=self.team)
         detail = reverse("web_team:devices:template_help_detail", args=[self.team.slug, help_request.pk])
@@ -217,24 +284,34 @@ class TemplateSystemV2Test(TestCase):
                 with patch.object(field, "storage", storages["template_request_documents"]):
                     self.client.force_login(self.user)
                     url = reverse("web_team:devices:template_help_list", args=[self.team.slug])
-                    response = self.client.post(url, {
-                        "manufacturer": "Example", "model_number": "M2", "protocol": "modbus_tcp",
-                        "device_type": "power_meter", "equipment_purpose": "Energy metering",
-                        "desired_signals": "Power and energy",
-                        "documentation_file": SimpleUploadedFile("manual.pdf", b"%PDF-1.4\nprivate", "application/pdf"),
-                    })
+                    response = self.client.post(
+                        url,
+                        {
+                            "manufacturer": "Example",
+                            "model_number": "M2",
+                            "protocol": "modbus_tcp",
+                            "device_type": "power_meter",
+                            "equipment_purpose": "Energy metering",
+                            "desired_signals": "Power and energy",
+                            "documentation_file": SimpleUploadedFile(
+                                "manual.pdf", b"%PDF-1.4\nprivate", "application/pdf"
+                            ),
+                        },
+                    )
                 self.assertEqual(response.status_code, 302)
                 help_request = EquipmentTemplateRequest.objects.get(team=self.team)
                 self.assertTrue(storages["template_request_documents"].exists(help_request.documentation_file.name))
                 self.assertFalse(storages["default"].exists(help_request.documentation_file.name))
                 download = reverse(
-                    "web_team:devices:template_help_file", args=[self.team.slug, help_request.pk, "manual"],
+                    "web_team:devices:template_help_file",
+                    args=[self.team.slug, help_request.pk, "manual"],
                 )
                 self.assertEqual(self.client.get(download).status_code, 200)
                 other = Team.objects.create(name="Other", slug="other-private-docs")
                 Membership.objects.create(team=other, user=self.user, role=ROLE_ADMIN)
                 other_download = reverse(
-                    "web_team:devices:template_help_file", args=[other.slug, help_request.pk, "manual"],
+                    "web_team:devices:template_help_file",
+                    args=[other.slug, help_request.pk, "manual"],
                 )
                 self.assertEqual(self.client.get(other_download).status_code, 404)
 
@@ -256,8 +333,12 @@ class TemplateSystemV2Test(TestCase):
                 path = "equipment-template-requests/legacy.pdf"
                 default_storage.save(path, ContentFile(b"%PDF-1.4\nold"))
                 help_request = EquipmentTemplateRequest.objects.create(
-                    team=self.team, requested_by=self.user, manufacturer="Example",
-                    model_number="M1", protocol="modbus_tcp", documentation_file=path,
+                    team=self.team,
+                    requested_by=self.user,
+                    manufacturer="Example",
+                    model_number="M1",
+                    protocol="modbus_tcp",
+                    documentation_file=path,
                 )
                 self.assertEqual(help_request.documentation_file.name, path)
                 call_command("migrate_template_request_files")

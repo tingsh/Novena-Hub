@@ -217,16 +217,26 @@ class DeviceCommandTest(TestCase):
             params={"device_name": self.device.name},
         )
         command = DeviceCommand.objects.create(
-            team=self.team, device=self.device, command_type="read",
-            command_key="motor_speed", transaction_id="test-tx-read-completed",
-            rpc_command=rpc, status="sent",
+            team=self.team,
+            device=self.device,
+            command_type="read",
+            command_key="motor_speed",
+            transaction_id="test-tx-read-completed",
+            rpc_command=rpc,
+            status="sent",
         )
 
-        process_command_response(json.dumps({
-            "request_id": str(rpc.request_id), "method": "read_device",
-            "status": "success", "stage": "diagnostic_completed",
-            "result": {"operation": "read", "read_value": 42, "device_accepted": True},
-        }))
+        process_command_response(
+            json.dumps(
+                {
+                    "request_id": str(rpc.request_id),
+                    "method": "read_device",
+                    "status": "success",
+                    "stage": "diagnostic_completed",
+                    "result": {"operation": "read", "read_value": 42, "device_accepted": True},
+                }
+            )
+        )
 
         rpc.refresh_from_db()
         command.refresh_from_db()

@@ -56,16 +56,25 @@ def public_dashboard(request, token):
         stats = get_site_summary_stats(site)
         devices = list(site.devices.select_related("template", "gateway"))
         offline_count = sum(device.freshness.status != "live" for device in devices)
-        monitoring_active = AlertRule.objects.filter(team=link.team, is_active=True).filter(
-            Q(site=site) | Q(device__site=site) | Q(site__isnull=True, device__isnull=True)
-        ).exists()
+        monitoring_active = (
+            AlertRule.objects.filter(team=link.team, is_active=True)
+            .filter(Q(site=site) | Q(device__site=site) | Q(site__isnull=True, device__isnull=True))
+            .exists()
+        )
         energy_keys = {"energy", "energy_kwh", "total_energy", "active_power", "power"}
         energy_available = any(
             device.energy_category != "none" or energy_keys.intersection(effective_register_map(device))
             for device in devices
         )
-        site_stats.append({"site": site, "stats": stats, "offline_count": offline_count,
-                           "monitoring_active": monitoring_active, "energy_available": energy_available})
+        site_stats.append(
+            {
+                "site": site,
+                "stats": stats,
+                "offline_count": offline_count,
+                "monitoring_active": monitoring_active,
+                "energy_available": energy_available,
+            }
+        )
 
     active_alerts = Alert.objects.filter(device__team=link.team, status="active").order_by("-triggered_at")[:10]
 

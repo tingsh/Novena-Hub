@@ -232,7 +232,8 @@ def human_config_preview(gateway):
 
     connectors = generate_connector_config(gateway)
     devices = [
-        device for device in gateway.devices.select_related("template").all()
+        device
+        for device in gateway.devices.select_related("template").all()
         if not (device.metadata or {}).get("guided_setup_validation")
         or (device.metadata or {}).get("guided_setup_validation") == "validated"
     ]

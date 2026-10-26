@@ -44,8 +44,7 @@ def evaluate_condition(rule, device, key, value):
     # Check historical values in duration window
     window_start = timezone.now() - timedelta(seconds=rule.duration_seconds)
     points = list(
-        TelemetryData.objects.filter(device=device, key=key, timestamp__gte=window_start)
-        .order_by("timestamp")
+        TelemetryData.objects.filter(device=device, key=key, timestamp__gte=window_start).order_by("timestamp")
     )
 
     if not points:

@@ -214,8 +214,12 @@ class GatewayActivationRecoveryTest(ManagedGatewayFixture):
     @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
     def test_acknowledged_activation_with_stale_pending_status_is_not_retried(self, provision, publish):
         activation = GatewayActivation.objects.create(
-            team=self.team, gateway=self.gateway, generation=1, status="pending",
-            acknowledged_at=timezone.now(), expires_at=timezone.now() + timedelta(hours=1),
+            team=self.team,
+            gateway=self.gateway,
+            generation=1,
+            status="pending",
+            acknowledged_at=timezone.now(),
+            expires_at=timezone.now() + timedelta(hours=1),
         )
 
         self.assertIsNone(latest_retryable_activation(self.gateway))
@@ -236,13 +240,20 @@ class GatewayActivationRecoveryTest(ManagedGatewayFixture):
     @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
     def test_stale_generation_is_not_reprovisioned(self, provision):
         old = GatewayActivation.objects.create(
-            team=self.team, gateway=self.gateway, generation=1, status="pending",
+            team=self.team,
+            gateway=self.gateway,
+            generation=1,
+            status="pending",
             expires_at=timezone.now() + timedelta(hours=1),
             encrypted_mqtt_password=encrypt_activation_secret("old-secret"),
         )
         GatewayActivation.objects.create(
-            team=self.team, gateway=self.gateway, generation=2, status="acknowledged",
-            acknowledged_at=timezone.now(), expires_at=timezone.now() + timedelta(hours=1),
+            team=self.team,
+            gateway=self.gateway,
+            generation=2,
+            status="acknowledged",
+            acknowledged_at=timezone.now(),
+            expires_at=timezone.now() + timedelta(hours=1),
         )
 
         self.assertFalse(provision_gateway_activation(old.pk))

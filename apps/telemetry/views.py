@@ -108,7 +108,9 @@ def telemetry_analyzer(request, team_slug, device_id):
     device = get_object_or_404(Device, id=device_id, team__slug=team_slug)
 
     context = {
-        "device": device, "team": request.team, "active_tab": "devices",
+        "device": device,
+        "team": request.team,
+        "active_tab": "devices",
         "page_title": f"Analyze: {device.name}",
         "retention_days": get_retention_limit_days(request.team),
     }

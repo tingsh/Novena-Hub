@@ -601,9 +601,7 @@ def _commissioning_candidates(gateway, setup_run=None):
         )
         ready_for_validation = bool(matched_template and connection_ready and not skipped_for_now)
         status = "ready" if ready_for_validation else "needs_template"
-        row_status = (
-            "Ready to test" if ready_for_validation else "Saved as draft" if draft_saved else "Needs template"
-        )
+        row_status = "Ready to test" if ready_for_validation else "Saved as draft" if draft_saved else "Needs template"
         template_requested = bool(draft_data.get("template_request_reference"))
         candidates.append(
             {
@@ -739,9 +737,8 @@ def build_commissioning_context(team, gateway=None, session=None, setup_run=None
     site = _site_from_context(team, gateway=gateway, session=session)
     devices = list(gateway.devices.select_related("template", "site") if gateway else [])
     candidates = _commissioning_candidates(gateway, setup_run=setup_run)
-    latest_config = (
-        (setup_run.configurations.first() if setup_run else None)
-        or (gateway.config_history.first() if gateway else None)
+    latest_config = (setup_run.configurations.first() if setup_run else None) or (
+        gateway.config_history.first() if gateway else None
     )
     first_live_device = next((device for device in devices if device.last_telemetry_at), None)
     readiness = None

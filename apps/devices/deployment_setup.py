@@ -489,7 +489,8 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
     status = matching_report.get("status")
     devices = matching_report.get("devices") or []
     skipped_configured = [
-        item for item in matching_report.get("skipped_configured") or []
+        item
+        for item in matching_report.get("skipped_configured") or []
         if isinstance(item, dict) and item.get("reason") in {"already_configured", "configured_or_busy"}
     ]
     progress = matching_report.get("progress") or {"completed": 0, "total": 0}
@@ -542,7 +543,8 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
                     else (
                         f"Select new equipment to configure. {len(skipped_configured)} already configured "
                         f"device{'s were' if len(skipped_configured) != 1 else ' was'} skipped."
-                        if skipped_configured else "Select the equipment you want to configure."
+                        if skipped_configured
+                        else "Select the equipment you want to configure."
                     )
                 ),
             }
@@ -1062,14 +1064,18 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
         run.state = DeploymentSetupRun.State.COMPLETED_ATTENTION
         run.current_step = "go_live"
         run.completed_at = timezone.now()
-    elif latest_config and states and all(
-        state
-        in {
-            DeploymentSetupItem.State.NEEDS_ATTENTION,
-            DeploymentSetupItem.State.FAILED,
-            DeploymentSetupItem.State.ROLLED_BACK,
-        }
-        for state in states
+    elif (
+        latest_config
+        and states
+        and all(
+            state
+            in {
+                DeploymentSetupItem.State.NEEDS_ATTENTION,
+                DeploymentSetupItem.State.FAILED,
+                DeploymentSetupItem.State.ROLLED_BACK,
+            }
+            for state in states
+        )
     ):
         run.state = DeploymentSetupRun.State.FAILED
         run.current_step = "verify"
@@ -1143,9 +1149,12 @@ def verification_progress(run: DeploymentSetupRun) -> list[dict]:
         {
             "label": label,
             "status": (
-                "complete" if completed[index]
-                else "attention" if index == current_step and needs_attention
-                else "current" if index == current_step
+                "complete"
+                if completed[index]
+                else "attention"
+                if index == current_step and needs_attention
+                else "current"
+                if index == current_step
                 else "pending"
             ),
         }

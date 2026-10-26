@@ -816,8 +816,13 @@ class SolutionProfileOnboardingTest(TestCase):
         )
         for metadata in ({}, {"guided_setup_validation": "pending"}):
             device = Device.objects.create(
-                team=self.team, site=site, name="Meter", template=template,
-                device_type="power_meter", protocol="modbus_tcp", metadata=metadata,
+                team=self.team,
+                site=site,
+                name="Meter",
+                template=template,
+                device_type="power_meter",
+                protocol="modbus_tcp",
+                metadata=metadata,
             )
             self.assertFalse(AlertRule.objects.filter(device=device).exists())
             self.assertTrue(recommended_alerts_for_device(device))

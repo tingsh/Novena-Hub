@@ -89,10 +89,7 @@ def provision_gateway_activation(activation_id) -> bool:
         return False
     Gateway.objects.select_for_update().get(pk=gateway_id)
     activation = (
-        GatewayActivation.objects.select_for_update()
-        .select_related("gateway")
-        .filter(pk=activation_id)
-        .first()
+        GatewayActivation.objects.select_for_update().select_related("gateway").filter(pk=activation_id).first()
     )
     if not activation or activation.acknowledged_at or activation.status in {"acknowledged", "expired", "superseded"}:
         return False

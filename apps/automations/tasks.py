@@ -22,10 +22,7 @@ def dispatch_automation_email_task(self, action_id, event_id, trigger_device_id=
         return
 
     automation = action.automation
-    device = (
-        Device.objects.filter(pk=trigger_device_id, team=automation.team).first()
-        if trigger_device_id else None
-    )
+    device = Device.objects.filter(pk=trigger_device_id, team=automation.team).first() if trigger_device_id else None
     recipients = [email.strip() for email in action.notify_emails.split(",") if email.strip()]
     metadata = {
         "idempotency_key": f"automation:{event_id}:action:{action.pk}",
@@ -35,7 +32,8 @@ def dispatch_automation_email_task(self, action_id, event_id, trigger_device_id=
     }
     if not recipients:
         record_no_email_recipients(
-            team=automation.team, notification_type=EmailDelivery.NotificationType.AUTOMATION,
+            team=automation.team,
+            notification_type=EmailDelivery.NotificationType.AUTOMATION,
             metadata=metadata,
         )
         return

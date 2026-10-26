@@ -55,12 +55,15 @@ class PostOnboardingCustomerAuditTest(TestCase):
 
         original_status = self.device.status
         original_connection = self.device.connection_config
-        response = self.client.post(url, {
-            "name": "Cold Room A",
-            "status": "online",
-            "connection_config": '{"host":"wrong-server"}',
-            "protocol": "modbus_rtu",
-        })
+        response = self.client.post(
+            url,
+            {
+                "name": "Cold Room A",
+                "status": "online",
+                "connection_config": '{"host":"wrong-server"}',
+                "protocol": "modbus_rtu",
+            },
+        )
         self.assertRedirects(response, reverse("web_team:devices:device_detail", args=[self.team.slug, self.device.pk]))
         self.device.refresh_from_db()
         self.assertEqual(self.device.name, "Cold Room A")

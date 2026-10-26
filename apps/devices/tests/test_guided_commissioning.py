@@ -829,7 +829,8 @@ class GuidedSetupViewTest(TestCase):
             ),
             (
                 {
-                    "scan_id": "scan-current", "status": "complete",
+                    "scan_id": "scan-current",
+                    "status": "complete",
                     "devices": [{"interface": "10.0.0.21:502"}],
                     "skipped_configured": [
                         {"interface": "10.0.0.20:502", "reason": "already_configured"},
@@ -879,21 +880,30 @@ class GuidedSetupViewTest(TestCase):
         self._enable_guided_setup()
         run = self._scan_run()
         completed_run = DeploymentSetupRun.objects.create(
-            team=self.team, site=self.site, gateway=self.gateway,
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
             state=DeploymentSetupRun.State.COMPLETED,
         )
         device = Device.objects.create(
-            team=self.team, site=self.site, gateway=self.gateway,
-            name="Cold room sensor", protocol="modbus_tcp",
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
+            name="Cold room sensor",
+            protocol="modbus_tcp",
             last_telemetry_at=timezone.now(),
         )
         DeploymentSetupItem.objects.create(
-            team=self.team, run=completed_run, device=device,
+            team=self.team,
+            run=completed_run,
+            device=device,
             state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
             connection={"host": "10.0.0.20", "port": 502},
         )
         self.gateway.discovery_data = {
-            "scan_id": "scan-current", "status": "complete", "devices": [],
+            "scan_id": "scan-current",
+            "status": "complete",
+            "devices": [],
             "skipped_configured": [
                 {"interface": "10.0.0.20:502", "reason": "already_configured"},
             ],
@@ -1137,32 +1147,50 @@ class GuidedSetupViewTest(TestCase):
         self._enable_guided_setup()
         self.gateway.discovery_data = {
             "status": "complete",
-            "devices": [{
-                "interface": "10.0.0.20:502", "connection": "modbus_tcp",
-                "host": "10.0.0.20", "port": 502, "slave_id": 1,
-                "signature": "Unknown Modbus Device",
-            }],
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "slave_id": 1,
+                    "signature": "Unknown Modbus Device",
+                }
+            ],
         }
         self.gateway.save(update_fields=["discovery_data"])
         first_template = DeviceTemplate.objects.create(
-            name="First meter", device_type="power_meter", protocol="modbus_tcp",
+            name="First meter",
+            device_type="power_meter",
+            protocol="modbus_tcp",
             register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
             is_verified=True,
         )
         replacement = DeviceTemplate.objects.create(
-            name="Replacement meter", device_type="power_meter", protocol="modbus_tcp",
+            name="Replacement meter",
+            device_type="power_meter",
+            protocol="modbus_tcp",
             register_map={"voltage": {"address": 2, "functionCode": 3, "type": "uint16"}},
             is_verified=True,
         )
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="Cold room meter",
-            template=first_template, device_type="power_meter", protocol="modbus_tcp",
-            port="10.0.0.20:502", connection_config={"host": "10.0.0.20", "port": 502, "slave_id": 1},
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Cold room meter",
+            template=first_template,
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            port="10.0.0.20:502",
+            connection_config={"host": "10.0.0.20", "port": 502, "slave_id": 1},
             metadata={"guided_setup_validation": "failed"},
         )
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=first_template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=first_template,
             state=DeploymentSetupItem.State.NEEDS_ATTENTION,
             candidate_key="modbus_tcp|10.0.0.20|502",
             candidate_data={"connection": "modbus_tcp", "interface": "10.0.0.20:502"},
@@ -1181,16 +1209,26 @@ class GuidedSetupViewTest(TestCase):
         run.state = run.State.FAILED
         run.save(update_fields=["state", "updated_at"])
         empty_run = DeploymentSetupRun.objects.create(
-            team=self.team, site=self.site, gateway=self.gateway,
-            state=DeploymentSetupRun.State.GATEWAY_CHECK, current_step="gateway",
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
+            state=DeploymentSetupRun.State.GATEWAY_CHECK,
+            current_step="gateway",
         )
         append_setup_event(empty_run, "setup_started", "Guided Setup started.")
 
-        cleared = self.client.post(self.url, {
-            "action": "clear_setup_template", "item_id": item.pk, "equipment_name": "Cold room meter",
-            "template_id": str(first_template.pk), "host_setup": "10.0.0.20", "port_setup": "502",
-            "slave_id_setup": "1",
-        })
+        cleared = self.client.post(
+            self.url,
+            {
+                "action": "clear_setup_template",
+                "item_id": item.pk,
+                "equipment_name": "Cold room meter",
+                "template_id": str(first_template.pk),
+                "host_setup": "10.0.0.20",
+                "port_setup": "502",
+                "slave_id_setup": "1",
+            },
+        )
         self.assertEqual(cleared.status_code, 302)
         empty_run.refresh_from_db()
         self.assertEqual(empty_run.state, DeploymentSetupRun.State.CANCELLED)
@@ -1210,11 +1248,18 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(returned_to_review, "Map signals with a register list")
 
         with patch("apps.devices.deployment_setup.start_validation") as validation:
-            retry = self.client.post(self.url, {
-                "save_and_validate": "0", "candidate_key_0": item.candidate_key,
-                "name_0": "Cold room meter", "template_0": str(replacement.pk),
-                "host_0": "10.0.0.20", "port_0": "502", "slave_id_0": "1",
-            })
+            retry = self.client.post(
+                self.url,
+                {
+                    "save_and_validate": "0",
+                    "candidate_key_0": item.candidate_key,
+                    "name_0": "Cold room meter",
+                    "template_0": str(replacement.pk),
+                    "host_0": "10.0.0.20",
+                    "port_0": "502",
+                    "slave_id_0": "1",
+                },
+            )
         self.assertEqual(retry.status_code, 302)
         item.refresh_from_db()
         self.assertEqual(item.device.template, replacement)
@@ -1224,36 +1269,63 @@ class GuidedSetupViewTest(TestCase):
     def test_setup_item_rejects_incompatible_template(self):
         self._enable_guided_setup()
         tcp_template = DeviceTemplate.objects.create(
-            name="TCP meter", device_type="power_meter", protocol="modbus_tcp", register_map={},
+            name="TCP meter",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            register_map={},
         )
         rtu_template = DeviceTemplate.objects.create(
-            name="RTU meter", device_type="power_meter", protocol="modbus_rtu", register_map={},
+            name="RTU meter",
+            device_type="power_meter",
+            protocol="modbus_rtu",
+            register_map={},
         )
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="Meter", template=tcp_template,
-            device_type="power_meter", protocol="modbus_tcp", port="10.0.0.20:502",
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Meter",
+            template=tcp_template,
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            port="10.0.0.20:502",
         )
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=tcp_template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=tcp_template,
             state=DeploymentSetupItem.State.NEEDS_ATTENTION,
             connection={"host": "10.0.0.20", "port": 502, "slave_id": 1},
         )
 
-        response = self.client.post(self.url, {
-            "action": "save_setup_item", "item_id": item.pk, "template_id": str(rtu_template.pk),
-        })
+        response = self.client.post(
+            self.url,
+            {
+                "action": "save_setup_item",
+                "item_id": item.pk,
+                "template_id": str(rtu_template.pk),
+            },
+        )
 
         self.assertEqual(response.status_code, 302)
         item.refresh_from_db()
         self.assertEqual(item.selected_template, tcp_template)
 
         with patch("apps.devices.deployment_setup.start_validation") as validation:
-            retry = self.client.post(self.url, {
-                "action": "retry_setup_item", "item_id": item.pk, "equipment_name": "Meter",
-                "template_id": str(tcp_template.pk), "host_setup": "10.0.0.20",
-                "port_setup": "502", "slave_id_setup": "1",
-            })
+            retry = self.client.post(
+                self.url,
+                {
+                    "action": "retry_setup_item",
+                    "item_id": item.pk,
+                    "equipment_name": "Meter",
+                    "template_id": str(tcp_template.pk),
+                    "host_setup": "10.0.0.20",
+                    "port_setup": "502",
+                    "slave_id_setup": "1",
+                },
+            )
         self.assertEqual(retry.status_code, 302)
         validation.assert_called_once()
 
@@ -1333,8 +1405,11 @@ class GuidedSetupViewTest(TestCase):
         from apps.devices.config_generator import generate_connector_config, human_config_preview
 
         template = DeviceTemplate.objects.create(
-            name="Cold room test map", manufacturer="Novena", model_number="NCS-100",
-            device_type="temp_sensor", protocol="modbus_tcp",
+            name="Cold room test map",
+            manufacturer="Novena",
+            model_number="NCS-100",
+            device_type="temp_sensor",
+            protocol="modbus_tcp",
             register_map={"temperature": {"address": 3000, "functionCode": 3, "type": "float32", "unit": "degC"}},
         )
         preview_url = reverse("web_team:onboarding:equipment_template_preview", args=[self.team.slug])
@@ -1345,23 +1420,45 @@ class GuidedSetupViewTest(TestCase):
 
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="Cold room",
-            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Cold room",
+            template=template,
+            device_type=template.device_type,
+            protocol="modbus_tcp",
             connection_config={"host": "10.0.0.20", "port": 502, "slave_id": 1},
             metadata={"guided_setup_validation": "awaiting_confirmation"},
         )
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=template,
             state=DeploymentSetupItem.State.AWAITING_CONFIRMATION,
             connection={"host": "10.0.0.20", "port": 502, "slave_id": 1},
-            datapoints=[{
-                "key": "temperature", "label": "Temperature", "address": 3000,
-                "functionCode": 3, "unit": "degC",
-            }],
-            validation_result={"status": "success", "signals": [
-                {"key": "temperature", "address": 3000, "status": "success", "decoded_value": 2.5,
-                 "raw_value": [0, 0], "unit": "degC"}
-            ]},
+            datapoints=[
+                {
+                    "key": "temperature",
+                    "label": "Temperature",
+                    "address": 3000,
+                    "functionCode": 3,
+                    "unit": "degC",
+                }
+            ],
+            validation_result={
+                "status": "success",
+                "signals": [
+                    {
+                        "key": "temperature",
+                        "address": 3000,
+                        "status": "success",
+                        "decoded_value": 2.5,
+                        "raw_value": [0, 0],
+                        "unit": "degC",
+                    }
+                ],
+            },
         )
         before = self.client.get(self.url)
         self.assertFalse(before.context["can_deploy"])
@@ -1389,33 +1486,56 @@ class GuidedSetupViewTest(TestCase):
 
     def test_verify_step_uses_deployed_run_when_newer_run_was_cancelled(self):
         template = DeviceTemplate.objects.create(
-            name="Cold room map", device_type="temp_sensor", protocol="modbus_tcp",
+            name="Cold room map",
+            device_type="temp_sensor",
+            protocol="modbus_tcp",
             register_map={"temperature": {"address": 3000, "functionCode": 3, "type": "float32"}},
         )
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="Cold room",
-            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Cold room",
+            template=template,
+            device_type=template.device_type,
+            protocol="modbus_tcp",
             last_telemetry_at=timezone.now(),
         )
         deployed_run = DeploymentSetupRun.objects.create(
-            team=self.team, site=self.site, gateway=self.gateway,
-            state=DeploymentSetupRun.State.COMPLETED, current_step="go_live",
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
+            state=DeploymentSetupRun.State.COMPLETED,
+            current_step="go_live",
         )
         DeploymentSetupItem.objects.create(
-            team=self.team, run=deployed_run, device=device, selected_template=template,
+            team=self.team,
+            run=deployed_run,
+            device=device,
+            selected_template=template,
             state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
         )
         GatewayConfig.objects.create(
-            team=self.team, gateway=self.gateway, setup_run=deployed_run,
-            config_json={"connectors": []}, request_id=uuid.uuid4(), status="active",
+            team=self.team,
+            gateway=self.gateway,
+            setup_run=deployed_run,
+            config_json={"connectors": []},
+            request_id=uuid.uuid4(),
+            status="active",
         )
         newer_run = DeploymentSetupRun.objects.create(
-            team=self.team, site=self.site, gateway=self.gateway,
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
             state=DeploymentSetupRun.State.CANCELLED,
         )
         GatewayConfig.objects.create(
-            team=self.team, gateway=self.gateway, setup_run=newer_run,
-            config_json={"connectors": []}, request_id=uuid.uuid4(), status="failed",
+            team=self.team,
+            gateway=self.gateway,
+            setup_run=newer_run,
+            config_json={"connectors": []},
+            request_id=uuid.uuid4(),
+            status="failed",
         )
         session = self.client.session
         session["onboarding_device_id"] = device.pk
@@ -1429,9 +1549,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertTrue(all(step["status"] == "complete" for step in page.context["deployment_progress"]))
         self.assertContains(page, "Back to equipment")
         self.assertContains(page, f"?run={deployed_run.run_id}")
-        self.assertContains(
-            page, reverse("web_team:onboarding:complete", args=[self.team.slug]) + "?next=dashboard"
-        )
+        self.assertContains(page, reverse("web_team:onboarding:complete", args=[self.team.slug]) + "?next=dashboard")
         self.assertContains(page, "Applying configuration")
         self.assertContains(page, "Settings published securely")
         self.assertNotContains(page, "Guided Setup progress")
@@ -1454,15 +1572,23 @@ class GuidedSetupViewTest(TestCase):
 
     def test_completed_verify_result_can_be_reopened_without_onboarding_session(self):
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site,
-            name="Main Gateway", protocol="modbus_tcp",
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Main Gateway",
+            protocol="modbus_tcp",
         )
         completed_run = DeploymentSetupRun.objects.create(
-            team=self.team, site=self.site, gateway=self.gateway,
-            state=DeploymentSetupRun.State.COMPLETED, current_step="go_live",
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
+            state=DeploymentSetupRun.State.COMPLETED,
+            current_step="go_live",
         )
         DeploymentSetupItem.objects.create(
-            team=self.team, run=completed_run, device=device,
+            team=self.team,
+            run=completed_run,
+            device=device,
             state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED,
         )
         url = reverse("web_team:onboarding:step_4_alert", args=[self.team.slug])
@@ -1484,8 +1610,12 @@ class GuidedSetupViewTest(TestCase):
         self.assertEqual(DeploymentSetupRun.objects.filter(team=self.team, gateway=self.gateway).count(), 1)
         self.assertEqual(self.client.get(f"{url}?run=not-a-uuid").status_code, 404)
         GatewayConfig.objects.create(
-            team=self.team, gateway=self.gateway, setup_run=completed_run,
-            config_json={"connectors": []}, request_id=uuid.uuid4(), status="failed",
+            team=self.team,
+            gateway=self.gateway,
+            setup_run=completed_run,
+            config_json={"connectors": []},
+            request_id=uuid.uuid4(),
+            status="failed",
         )
         self.assertNotContains(self.client.get(f"{url}?run={completed_run.run_id}"), "Retry these settings")
         completed_run.state = DeploymentSetupRun.State.DRAFT
@@ -1494,16 +1624,26 @@ class GuidedSetupViewTest(TestCase):
 
     def test_customer_cannot_confirm_failed_or_unread_template(self):
         template = DeviceTemplate.objects.create(
-            name="Unread map", device_type="power_meter", protocol="modbus_tcp",
+            name="Unread map",
+            device_type="power_meter",
+            protocol="modbus_tcp",
             register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
         )
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="Meter",
-            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Meter",
+            template=template,
+            device_type=template.device_type,
+            protocol="modbus_tcp",
         )
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=template,
             state=DeploymentSetupItem.State.AWAITING_CONFIRMATION,
             validation_result={"status": "success", "signals": []},
         )
@@ -1514,29 +1654,56 @@ class GuidedSetupViewTest(TestCase):
 
     def test_customer_can_start_confirmed_equipment_over_from_scan(self):
         template = DeviceTemplate.objects.create(
-            name="Cold room test map", manufacturer="Novena", model_number="NCS-100",
-            device_type="temp_sensor", protocol="modbus_tcp",
+            name="Cold room test map",
+            manufacturer="Novena",
+            model_number="NCS-100",
+            device_type="temp_sensor",
+            protocol="modbus_tcp",
             register_map={"temperature": {"address": 3000, "functionCode": 3, "type": "float32"}},
         )
-        self.gateway.discovery_data = {"status": "complete", "devices": [{
-            "connection": "modbus_tcp", "interface": "10.0.0.20:502",
-            "host": "10.0.0.20", "port": 502, "signature": "Unknown Modbus Device",
-        }]}
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "connection": "modbus_tcp",
+                    "interface": "10.0.0.20:502",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Unknown Modbus Device",
+                }
+            ],
+        }
         self.gateway.save(update_fields=["discovery_data"])
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="My cold room",
-            template=template, device_type=template.device_type, protocol="modbus_tcp",
-            port="10.0.0.20:502", connection_config={"host": "10.0.0.20", "port": 502},
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="My cold room",
+            template=template,
+            device_type=template.device_type,
+            protocol="modbus_tcp",
+            port="10.0.0.20:502",
+            connection_config={"host": "10.0.0.20", "port": 502},
         )
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=template,
             candidate_key="modbus_tcp|10.0.0.20|502",
-            candidate_data={"connection": "modbus_tcp", "interface": "10.0.0.20:502",
-                            "customer_name": "My cold room", "customer_draft_saved": True},
+            candidate_data={
+                "connection": "modbus_tcp",
+                "interface": "10.0.0.20:502",
+                "customer_name": "My cold room",
+                "customer_draft_saved": True,
+            },
             state=DeploymentSetupItem.State.VALIDATED,
-            validation_result={"status": "success", "customer_confirmed_at": timezone.now().isoformat(),
-                               "signals": [{"key": "temperature", "status": "success", "decoded_value": 2.5}]},
+            validation_result={
+                "status": "success",
+                "customer_confirmed_at": timezone.now().isoformat(),
+                "signals": [{"key": "temperature", "status": "success", "decoded_value": 2.5}],
+            },
         )
         self.assertContains(self.client.get(self.url), "Start over")
 
@@ -1559,16 +1726,26 @@ class GuidedSetupViewTest(TestCase):
 
     def test_customer_cannot_restart_equipment_after_deployment_begins(self):
         template = DeviceTemplate.objects.create(
-            name="Meter map", device_type="power_meter", protocol="modbus_tcp",
+            name="Meter map",
+            device_type="power_meter",
+            protocol="modbus_tcp",
             register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
         )
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="Meter",
-            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Meter",
+            template=template,
+            device_type=template.device_type,
+            protocol="modbus_tcp",
         )
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=template,
             state=DeploymentSetupItem.State.QUEUED,
         )
 
@@ -1582,29 +1759,46 @@ class GuidedSetupViewTest(TestCase):
 
     def test_editing_confirmed_equipment_clears_customer_validated_label(self):
         template = DeviceTemplate.objects.create(
-            name="Cold room map", device_type="temp_sensor", protocol="modbus_tcp",
+            name="Cold room map",
+            device_type="temp_sensor",
+            protocol="modbus_tcp",
             register_map={"temperature": {"address": 3000, "functionCode": 3, "type": "float32"}},
         )
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="Cold room",
-            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Cold room",
+            template=template,
+            device_type=template.device_type,
+            protocol="modbus_tcp",
             connection_config={"host": "10.0.0.20", "port": 502, "slave_id": 1},
             metadata={"guided_setup_validation": "validated"},
         )
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=template,
             state=DeploymentSetupItem.State.VALIDATED,
             trust_level=DeploymentSetupItem.Trust.CUSTOMER_VALIDATED,
             connection={"host": "10.0.0.20", "port": 502, "slave_id": 1},
             validation_result={"status": "success", "customer_confirmed_at": timezone.now().isoformat()},
         )
 
-        response = self.client.post(self.url, {
-            "action": "save_setup_item", "item_id": item.pk, "template_id": template.pk,
-            "equipment_name": "Cold room", "host_setup": "10.0.0.20",
-            "port_setup": "502", "slave_id_setup": "1",
-        })
+        response = self.client.post(
+            self.url,
+            {
+                "action": "save_setup_item",
+                "item_id": item.pk,
+                "template_id": template.pk,
+                "equipment_name": "Cold room",
+                "host_setup": "10.0.0.20",
+                "port_setup": "502",
+                "slave_id_setup": "1",
+            },
+        )
 
         self.assertEqual(response.status_code, 302)
         item.refresh_from_db()
@@ -1617,21 +1811,32 @@ class GuidedSetupViewTest(TestCase):
 
     def test_older_technical_pass_requires_customer_confirmation(self):
         template = DeviceTemplate.objects.create(
-            name="Older meter", device_type="power_meter", protocol="modbus_tcp",
+            name="Older meter",
+            device_type="power_meter",
+            protocol="modbus_tcp",
             register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16", "unit": "V"}},
         )
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="Meter",
-            template=template, device_type=template.device_type, protocol="modbus_tcp",
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Meter",
+            template=template,
+            device_type=template.device_type,
+            protocol="modbus_tcp",
             metadata={"guided_setup_validation": "validated"},
         )
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=template,
             state=DeploymentSetupItem.State.VALIDATED,
-            validation_result={"status": "success", "signals": [
-                {"key": "voltage", "status": "success", "value": 230, "unit": "V"}
-            ]},
+            validation_result={
+                "status": "success",
+                "signals": [{"key": "voltage", "status": "success", "value": 230, "unit": "V"}],
+            },
         )
 
         page = self.client.get(self.url)
@@ -1944,13 +2149,24 @@ class GuidedSetupViewTest(TestCase):
             DeploymentSetupItem.objects.filter(run__gateway=self.gateway, discovery_index=0).count(),
             1,
         )
-        retry = self.client.post(self.url, {
-            "action": "manual", "draft_index": "0", "manual_name": "Main incomer meter",
-            "manual_protocol": "modbus_tcp", "manual_manufacturer": "Omron",
-            "manual_model": "KM-N2-FLK", "manual_device_type": "power_meter",
-            "manual_host": "10.0.0.20", "manual_port": "1502", "manual_slave_id": "7",
-            "point_key_1": "voltage", "point_address_1": "0", "point_type_1": "uint16",
-        })
+        retry = self.client.post(
+            self.url,
+            {
+                "action": "manual",
+                "draft_index": "0",
+                "manual_name": "Main incomer meter",
+                "manual_protocol": "modbus_tcp",
+                "manual_manufacturer": "Omron",
+                "manual_model": "KM-N2-FLK",
+                "manual_device_type": "power_meter",
+                "manual_host": "10.0.0.20",
+                "manual_port": "1502",
+                "manual_slave_id": "7",
+                "point_key_1": "voltage",
+                "point_address_1": "0",
+                "point_type_1": "uint16",
+            },
+        )
         self.assertEqual(retry.status_code, 302)
         self.assertEqual(Device.objects.filter(gateway=self.gateway, name="Main incomer meter").count(), 1)
         self.assertEqual(DeviceTemplate.objects.filter(created_by_team=self.team, manufacturer="Omron").count(), 1)
@@ -1999,24 +2215,45 @@ class GuidedSetupViewTest(TestCase):
         self._enable_guided_setup()
         self.gateway.discovery_data = {
             "status": "complete",
-            "devices": [{
-                "interface": "10.0.0.20:502", "connection": "modbus_tcp",
-                "host": "10.0.0.20", "port": 502, "signature": "Example M1",
-            }],
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Example M1",
+                }
+            ],
         }
         self.gateway.save(update_fields=["discovery_data"])
         private = DeviceTemplate.objects.create(
-            name="Example M1 team map", manufacturer="Example", model_number="M1",
-            device_type="power_meter", protocol="modbus_tcp", mapping_strategy="site_defined",
-            register_map={"voltage": {
-                "address": 100, "functionCode": 3, "type": "uint16", "unit": "V",
-            }}, source="user_created", created_by_team=self.team,
-            catalog_key="team-guided-test", catalog_revision=1,
+            name="Example M1 team map",
+            manufacturer="Example",
+            model_number="M1",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            mapping_strategy="site_defined",
+            register_map={
+                "voltage": {
+                    "address": 100,
+                    "functionCode": 3,
+                    "type": "uint16",
+                    "unit": "V",
+                }
+            },
+            source="user_created",
+            created_by_team=self.team,
+            catalog_key="team-guided-test",
+            catalog_revision=1,
         )
         payload = {
-            "action": "validate_selected", "device_index": ["0"],
-            "name_0": "Main meter", "template_0": str(private.pk),
-            "host_0": "10.0.0.20", "port_0": "502", "slave_id_0": "1",
+            "action": "validate_selected",
+            "device_index": ["0"],
+            "name_0": "Main meter",
+            "template_0": str(private.pk),
+            "host_0": "10.0.0.20",
+            "port_0": "502",
+            "slave_id_0": "1",
         }
         self.client.post(self.url, payload)
         self.assertFalse(Device.objects.filter(gateway=self.gateway, template=private).exists())
@@ -2069,7 +2306,8 @@ class GuidedSetupViewTest(TestCase):
 
         item.state = DeploymentSetupItem.State.VALIDATED
         item.validation_result = {
-            "status": "success", "message": "Selected signals were read successfully.",
+            "status": "success",
+            "message": "Selected signals were read successfully.",
             "customer_confirmed_at": timezone.now().isoformat(),
         }
         item.save(update_fields=["state", "validation_result", "updated_at"])

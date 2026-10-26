@@ -266,15 +266,21 @@ def _check_template_help_storage() -> list[CheckResult]:
     backend = config.get("BACKEND", "")
     location = config.get("OPTIONS", {}).get("location", "")
     if backend == "django.core.files.storage.FileSystemStorage":
-        private = bool(location) and Path(location).resolve().is_relative_to(
-            Path(settings.PRIVATE_MEDIA_ROOT).resolve()
-        ) and not Path(location).resolve().is_relative_to(Path(settings.MEDIA_ROOT).resolve())
+        private = (
+            bool(location)
+            and Path(location).resolve().is_relative_to(Path(settings.PRIVATE_MEDIA_ROOT).resolve())
+            and not Path(location).resolve().is_relative_to(Path(settings.MEDIA_ROOT).resolve())
+        )
     else:
         private = backend == "apps.web.storage_backends.PrivateMediaStorage" and str(location).startswith("private/")
-    return [CheckResult(
-        "Template help", "Private request documents", "OK" if private else "FAIL",
-        f"backend={backend or 'missing'}; location={location or 'missing'}",
-    )]
+    return [
+        CheckResult(
+            "Template help",
+            "Private request documents",
+            "OK" if private else "FAIL",
+            f"backend={backend or 'missing'}; location={location or 'missing'}",
+        )
+    ]
 
 
 def build_checks() -> list[CheckResult]:

@@ -341,9 +341,7 @@ class DeviceTemplate(models.Model):
     catalog_key = models.CharField(max_length=120, blank=True, null=True)
     catalog_revision = models.PositiveIntegerField(blank=True, null=True)
     is_current = models.BooleanField(default=True)
-    evidence_status = models.CharField(
-        max_length=20, choices=EVIDENCE_STATUS_CHOICES, default="legacy_unreviewed"
-    )
+    evidence_status = models.CharField(max_length=20, choices=EVIDENCE_STATUS_CHOICES, default="legacy_unreviewed")
     document_revision = models.CharField(max_length=100, blank=True)
     compatibility_notes = models.TextField(blank=True)
     datapoint_schema_version = models.PositiveSmallIntegerField(
@@ -363,7 +361,10 @@ class DeviceTemplate(models.Model):
     firmware_scope = models.CharField(max_length=200, blank=True)
     program_scope = models.CharField(max_length=200, blank=True)
     source_mapping_revision = models.OneToOneField(
-        "DeviceDatapointMapRevision", null=True, blank=True, on_delete=models.SET_NULL,
+        "DeviceDatapointMapRevision",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="saved_team_template",
     )
     ai_confidence = models.FloatField(null=True, blank=True, help_text=_("AI confidence score 0.0-1.0"))
@@ -384,12 +385,30 @@ class DeviceTemplate(models.Model):
         if self.pk and self.catalog_key:
             previous = type(self).objects.filter(pk=self.pk).first()
             immutable = (
-                "name", "manufacturer", "model_number", "model_aliases", "variant", "device_type", "protocol",
-                "mapping_strategy", "register_map", "category", "source", "source_url",
-                "firmware_scope", "program_scope", "catalog_key", "catalog_revision",
-                "source_mapping_revision_id", "created_by_team_id",
-                "default_polling_interval", "discovery_hints", "compatibility_notes",
-                "document_revision", "datapoint_schema_version", "alert_presets",
+                "name",
+                "manufacturer",
+                "model_number",
+                "model_aliases",
+                "variant",
+                "device_type",
+                "protocol",
+                "mapping_strategy",
+                "register_map",
+                "category",
+                "source",
+                "source_url",
+                "firmware_scope",
+                "program_scope",
+                "catalog_key",
+                "catalog_revision",
+                "source_mapping_revision_id",
+                "created_by_team_id",
+                "default_polling_interval",
+                "discovery_hints",
+                "compatibility_notes",
+                "document_revision",
+                "datapoint_schema_version",
+                "alert_presets",
             )
             if previous and any(getattr(previous, field) != getattr(self, field) for field in immutable):
                 raise ValidationError("Create a new template revision instead of changing a published snapshot.")
@@ -397,9 +416,10 @@ class DeviceTemplate(models.Model):
                 raise ValidationError(
                     "An older or retired revision cannot become current again; review a new revision."
                 )
-            if previous and (
-                previous.evidence_status, previous.is_verified
-            ) != (self.evidence_status, self.is_verified):
+            if previous and (previous.evidence_status, previous.is_verified) != (
+                self.evidence_status,
+                self.is_verified,
+            ):
                 retiring = self.evidence_status == "retired" and not self.is_verified and not self.is_current
                 if not retiring:
                     raise ValidationError("Create a new reviewed revision to change template evidence.")
@@ -913,19 +933,23 @@ class EquipmentTemplateRequest(BaseTeamModel):
         related_name="template_requests",
     )
     setup_item = models.ForeignKey(
-        DeploymentSetupItem, null=True, blank=True, on_delete=models.SET_NULL,
+        DeploymentSetupItem,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="template_help_requests",
     )
     requested_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="equipment_template_requests",
     )
     manufacturer = models.CharField(max_length=200, blank=True)
     model_number = models.CharField(max_length=200, blank=True)
     protocol = models.CharField(max_length=20, choices=DeviceTemplate.PROTOCOL_CHOICES, blank=True)
-    device_type = models.CharField(
-        max_length=30, choices=DeviceTemplate.DEVICE_TYPE_CHOICES, default="other"
-    )
+    device_type = models.CharField(max_length=30, choices=DeviceTemplate.DEVICE_TYPE_CHOICES, default="other")
     equipment_purpose = models.TextField(blank=True)
     desired_signals = models.TextField(blank=True)
     firmware_or_program = models.CharField(max_length=200, blank=True)
@@ -944,7 +968,10 @@ class EquipmentTemplateRequest(BaseTeamModel):
     support_reference = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.SUBMITTED)
     assigned_to = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="assigned_template_requests",
     )
     customer_update = models.TextField(blank=True)
@@ -959,7 +986,10 @@ class EquipmentTemplateRequest(BaseTeamModel):
     proposed_signals = models.JSONField(default=list, blank=True)
     map_configuration_notes = models.TextField(blank=True)
     delivered_template = models.ForeignKey(
-        DeviceTemplate, null=True, blank=True, on_delete=models.SET_NULL,
+        DeviceTemplate,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="help_requests",
     )
     validation_evidence = models.TextField(blank=True)
@@ -977,9 +1007,8 @@ class EquipmentTemplateRequest(BaseTeamModel):
             raise ValidationError("The quoted service amount must be positive.")
         if self.status == self.Status.MORE_INFO and not self.customer_update:
             raise ValidationError("Tell the customer what information Novena needs.")
-        if (
-            self.status in {self.Status.IN_PROGRESS, self.Status.READY_TO_TEST, self.Status.COMPLETED}
-            and (not self.quote_accepted_reference or not (self.payment_reference or self.payment_waived_reason))
+        if self.status in {self.Status.IN_PROGRESS, self.Status.READY_TO_TEST, self.Status.COMPLETED} and (
+            not self.quote_accepted_reference or not (self.payment_reference or self.payment_waived_reason)
         ):
             raise ValidationError("Record quote acceptance and payment or a waiver before starting work.")
         if self.status in {self.Status.READY_TO_TEST, self.Status.COMPLETED} and not self.delivered_template_id:

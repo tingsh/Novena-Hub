@@ -146,9 +146,7 @@ def execute_automation(automation, trigger_device=None):
             elif action.action_type == "notify_email":
                 from .tasks import dispatch_automation_email_task
 
-                dispatch_automation_email_task.delay(
-                    action.pk, event_id, trigger_device.pk if trigger_device else None
-                )
+                dispatch_automation_email_task.delay(action.pk, event_id, trigger_device.pk if trigger_device else None)
                 log_details.append(f"Email queued for {action.notify_emails}; delivery is tracked separately.")
             elif action.action_type == "create_ticket":
                 from apps.maintenance.models import MaintenanceTicket

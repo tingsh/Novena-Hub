@@ -55,14 +55,19 @@ class AutomationsEngineTests(TestCase):
 
     def test_condition_requires_a_saved_mapped_reading(self):
         template = DeviceTemplate.objects.create(
-            name="Cold Sensor", device_type="temperature_sensor", protocol="modbus_tcp",
+            name="Cold Sensor",
+            device_type="temperature_sensor",
+            protocol="modbus_tcp",
             register_map={"temperature": {"address": 0, "type": "float32", "unit": "degC"}},
         )
         self.device.template = template
         self.device.save(update_fields=["template"])
         data = {
-            "device": self.device.pk, "telemetry_key": "temperatur", "operator": "gt",
-            "threshold": "4", "duration_seconds": "60",
+            "device": self.device.pk,
+            "telemetry_key": "temperatur",
+            "operator": "gt",
+            "threshold": "4",
+            "duration_seconds": "60",
         }
         form = AutomationConditionForm(team=self.team, data=data)
         self.assertFalse(form.is_valid())
@@ -73,8 +78,12 @@ class AutomationsEngineTests(TestCase):
         form = AutomationConditionForm(team=self.team, data=data)
         self.assertTrue(form.is_valid(), form.errors)
         condition = AutomationCondition.objects.create(
-            team=self.team, automation=self.automation, device=self.device,
-            telemetry_key="temperature", operator="gt", threshold="4",
+            team=self.team,
+            automation=self.automation,
+            device=self.device,
+            telemetry_key="temperature",
+            operator="gt",
+            threshold="4",
         )
         self.assertEqual(condition.reading_label, "Temperature")
         self.assertEqual(condition.reading_unit, "°C")
@@ -86,10 +95,15 @@ class AutomationsEngineTests(TestCase):
 
     def test_unfilled_added_condition_does_not_block_saving(self):
         form = AutomationConditionForm(
-            team=self.team, prefix="conditions-1", empty_permitted=True, use_required_attribute=False,
+            team=self.team,
+            prefix="conditions-1",
+            empty_permitted=True,
+            use_required_attribute=False,
             data={
-                "conditions-1-device": "", "conditions-1-telemetry_key": "",
-                "conditions-1-operator": "gt", "conditions-1-threshold": "",
+                "conditions-1-device": "",
+                "conditions-1-telemetry_key": "",
+                "conditions-1-operator": "gt",
+                "conditions-1-threshold": "",
                 "conditions-1-duration_seconds": "0",
             },
         )
@@ -98,14 +112,19 @@ class AutomationsEngineTests(TestCase):
 
     def test_status_readings_require_on_off_comparisons(self):
         template = DeviceTemplate.objects.create(
-            name="Cold Status", device_type="temperature_sensor", protocol="modbus_tcp",
+            name="Cold Status",
+            device_type="temperature_sensor",
+            protocol="modbus_tcp",
             register_map={"door_open": {"address": 10, "type": "bool"}},
         )
         self.device.template = template
         self.device.save(update_fields=["template"])
         data = {
-            "device": self.device.pk, "telemetry_key": "door_open", "operator": "gt",
-            "threshold": "1", "duration_seconds": "0",
+            "device": self.device.pk,
+            "telemetry_key": "door_open",
+            "operator": "gt",
+            "threshold": "1",
+            "duration_seconds": "0",
         }
         form = AutomationConditionForm(team=self.team, data=data)
         self.assertFalse(form.is_valid())
@@ -133,8 +152,10 @@ class AutomationsEngineTests(TestCase):
     @patch("apps.automations.tasks.dispatch_automation_email_task.delay")
     def test_email_action_is_queued_not_reported_as_sent(self, delay):
         action = AutomationAction.objects.create(
-            team=self.team, automation=self.automation,
-            action_type="notify_email", notify_emails="ops@example.com",
+            team=self.team,
+            automation=self.automation,
+            action_type="notify_email",
+            notify_emails="ops@example.com",
         )
         execute_automation(self.automation, trigger_device=self.device)
         self.assertEqual(delay.call_args.args[0], action.pk)
@@ -144,8 +165,10 @@ class AutomationsEngineTests(TestCase):
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_automation_email_is_tracked_and_idempotent(self):
         action = AutomationAction.objects.create(
-            team=self.team, automation=self.automation,
-            action_type="notify_email", notify_emails="ops@example.com",
+            team=self.team,
+            automation=self.automation,
+            action_type="notify_email",
+            notify_emails="ops@example.com",
         )
         dispatch_automation_email_task(action.pk, "test-event-1", self.device.pk)
         delivery = EmailDelivery.objects.get(
@@ -160,7 +183,9 @@ class AutomationsEngineTests(TestCase):
 
     def test_customer_builder_saves_mapped_condition_and_action_with_team(self):
         template = DeviceTemplate.objects.create(
-            name="Cold Sensor", device_type="temperature_sensor", protocol="modbus_tcp",
+            name="Cold Sensor",
+            device_type="temperature_sensor",
+            protocol="modbus_tcp",
             register_map={"temperature": {"address": 0, "type": "float32", "unit": "degC"}},
         )
         self.device.template = template
@@ -170,14 +195,25 @@ class AutomationsEngineTests(TestCase):
         client = Client()
         client.force_login(user)
         payload = {
-            "name": "Warm room ticket", "is_active": "on", "trigger_logic": "and", "cooldown_minutes": "5",
-            "conditions-TOTAL_FORMS": "1", "conditions-INITIAL_FORMS": "0",
-            "conditions-MIN_NUM_FORMS": "0", "conditions-MAX_NUM_FORMS": "1000",
-            "conditions-0-device": str(self.device.pk), "conditions-0-telemetry_key": "temperature",
-            "conditions-0-operator": "gt", "conditions-0-threshold": "4", "conditions-0-duration_seconds": "60",
-            "actions-TOTAL_FORMS": "1", "actions-INITIAL_FORMS": "0",
-            "actions-MIN_NUM_FORMS": "0", "actions-MAX_NUM_FORMS": "1000",
-            "actions-0-action_type": "create_ticket", "actions-0-target_device": str(self.device.pk),
+            "name": "Warm room ticket",
+            "is_active": "on",
+            "trigger_logic": "and",
+            "cooldown_minutes": "5",
+            "conditions-TOTAL_FORMS": "1",
+            "conditions-INITIAL_FORMS": "0",
+            "conditions-MIN_NUM_FORMS": "0",
+            "conditions-MAX_NUM_FORMS": "1000",
+            "conditions-0-device": str(self.device.pk),
+            "conditions-0-telemetry_key": "temperature",
+            "conditions-0-operator": "gt",
+            "conditions-0-threshold": "4",
+            "conditions-0-duration_seconds": "60",
+            "actions-TOTAL_FORMS": "1",
+            "actions-INITIAL_FORMS": "0",
+            "actions-MIN_NUM_FORMS": "0",
+            "actions-MAX_NUM_FORMS": "1000",
+            "actions-0-action_type": "create_ticket",
+            "actions-0-target_device": str(self.device.pk),
         }
         url = reverse("web_team:automations:create", args=[self.team.slug])
         response = client.post(url, payload)

@@ -49,7 +49,9 @@ class AutomationConditionForm(forms.ModelForm):
         )
         self.fields["operator"].widget.attrs["data-condition-operator"] = ""
         self.fields["threshold"].label = "Limit or expected value"
-        self.fields["threshold"].help_text = "Enter a number for measured readings. Status readings use on/off comparisons."
+        self.fields[
+            "threshold"
+        ].help_text = "Enter a number for measured readings. Status readings use on/off comparisons."
         self.fields["duration_seconds"].label = "Must remain true for (seconds)"
         if team:
             devices = Device.objects.filter(team=team).select_related("template")
@@ -57,8 +59,7 @@ class AutomationConditionForm(forms.ModelForm):
             selected_device = self.data.get(self.add_prefix("device")) if self.is_bound else self.initial.get("device")
             selected_device_id = str(getattr(selected_device, "pk", selected_device) or self.instance.device_id or "")
             selected_key = (
-                self.data.get(self.add_prefix("telemetry_key"))
-                if self.is_bound else self.initial.get("telemetry_key")
+                self.data.get(self.add_prefix("telemetry_key")) if self.is_bound else self.initial.get("telemetry_key")
             )
             selected_key = str(selected_key or self.instance.telemetry_key or "")
             selected_found = False
@@ -70,20 +71,24 @@ class AutomationConditionForm(forms.ModelForm):
                     selected_found = selected_found or selected
                     unit = {"degC": "°C", "degF": "°F"}.get(config.get("unit"), config.get("unit") or "")
                     label = config.get("label") or key.replace("_", " ").title()
-                    self.signal_options.append({
-                        "device_id": device.pk,
-                        "key": key,
-                        "label": f"{label} ({unit})" if unit else label,
-                        "is_boolean": config.get("type") in {"bool", "boolean"},
-                        "selected": selected,
-                    })
+                    self.signal_options.append(
+                        {
+                            "device_id": device.pk,
+                            "key": key,
+                            "label": f"{label} ({unit})" if unit else label,
+                            "is_boolean": config.get("type") in {"bool", "boolean"},
+                            "selected": selected,
+                        }
+                    )
             if selected_key and not selected_found:
-                self.signal_options.append({
-                    "device_id": selected_device_id,
-                    "key": selected_key,
-                    "label": f"Previously saved: {selected_key} (unverified)",
-                    "selected": True,
-                })
+                self.signal_options.append(
+                    {
+                        "device_id": selected_device_id,
+                        "key": selected_key,
+                        "label": f"Previously saved: {selected_key} (unverified)",
+                        "selected": True,
+                    }
+                )
 
     def clean(self):
         cleaned_data = super().clean()

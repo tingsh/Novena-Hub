@@ -438,8 +438,7 @@ def gateway_retry_activation(request, team_slug, pk):
 
     gateway = Gateway.objects.get(pk=pk, team=request.team)
     return_to_setup = (
-        request.POST.get("return_to_setup") == "1"
-        and request.session.get("onboarding_gateway_id") == gateway.pk
+        request.POST.get("return_to_setup") == "1" and request.session.get("onboarding_gateway_id") == gateway.pk
     )
     try:
         reissue_activation_for_gateway(gateway, force=not return_to_setup)
@@ -1113,8 +1112,10 @@ def device_datapoint_mapping(request, team_slug, pk):
                 from .template_help import _send_help_email
 
                 for help_request in EquipmentTemplateRequest.objects.filter(
-                    team=request.team, delivered_template=device.template,
-                    setup_item=item, status=EquipmentTemplateRequest.Status.READY_TO_TEST,
+                    team=request.team,
+                    delivered_template=device.template,
+                    setup_item=item,
+                    status=EquipmentTemplateRequest.Status.READY_TO_TEST,
                 ):
                     help_request.customer_update = (
                         "Live readings were confirmed on this equipment. "
@@ -1150,7 +1151,8 @@ def device_datapoint_mapping(request, team_slug, pk):
                 from .team_maps import save_confirmed_team_map
 
                 saved = save_confirmed_team_map(
-                    device=device, team=request.team,
+                    device=device,
+                    team=request.team,
                     name=request.POST.get("map_name", ""),
                     manufacturer=request.POST.get("manufacturer", ""),
                     model_number=request.POST.get("model_number", ""),
@@ -1267,7 +1269,9 @@ def device_datapoint_mapping(request, team_slug, pk):
             "saved_team_template": DeviceTemplate.objects.filter(
                 source_mapping_revision__mapping=mapping,
                 source_mapping_revision__confirmed_checksum=mapping.confirmed_checksum,
-            ).first() if mapping.confirmed_checksum else None,
+            ).first()
+            if mapping.confirmed_checksum
+            else None,
             "connection": device.connection_config or {},
         },
     )
@@ -1494,17 +1498,14 @@ def template_library_search(request, team_slug):
     protocol = request.GET.get("protocol", "")
     if protocol not in dict(DeviceTemplate.PROTOCOL_CHOICES):
         protocol = ""
-    templates = (
-        visible_templates_for_team(request.team)
-        .filter(
-            Q(name__icontains=query)
-            | Q(manufacturer__icontains=query)
-            | Q(model_number__icontains=query)
-            | Q(model_aliases__icontains=query)
-            | Q(device_type__icontains=query)
-            | Q(protocol__icontains=query)
-            | Q(category__icontains=query)
-        )
+    templates = visible_templates_for_team(request.team).filter(
+        Q(name__icontains=query)
+        | Q(manufacturer__icontains=query)
+        | Q(model_number__icontains=query)
+        | Q(model_aliases__icontains=query)
+        | Q(device_type__icontains=query)
+        | Q(protocol__icontains=query)
+        | Q(category__icontains=query)
     )
     if guided_setup and protocol:
         templates = templates.filter(protocol=protocol)
