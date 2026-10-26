@@ -334,6 +334,30 @@ class Command(BaseCommand):
         ]
 
         for t_data in templates:
+            # The original energy seeds have no model-specific evidence. Keep
+            # existing rows intact for devices already assigned to them; the
+            # energy catalog importer retires them from new selection.
+            if t_data["category"] == "energy":
+                _, created = DeviceTemplate.objects.get_or_create(
+                    name=t_data["name"],
+                    defaults={
+                        "manufacturer": t_data["manufacturer"],
+                        "model_number": t_data["model_number"],
+                        "device_type": t_data["device_type"],
+                        "protocol": t_data["protocol"],
+                        "mapping_strategy": "fixed",
+                        "category": "energy",
+                        "register_map": t_data["register_map"],
+                        "alert_presets": [],
+                        "is_verified": False,
+                        "is_current": False,
+                        "evidence_status": "retired",
+                        "source": "curated",
+                    },
+                )
+                status = "Created retired" if created else "Preserved"
+                self.stdout.write(f"{status} legacy energy template: {t_data['name']}")
+                continue
             template, created = DeviceTemplate.objects.update_or_create(
                 name=t_data["name"],
                 defaults={

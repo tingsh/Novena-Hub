@@ -260,7 +260,7 @@ def _normalize_value(value):
 
 
 def resolve_device_params(device: Device, command_key: str, operation: str, value=None) -> tuple[dict, dict]:
-    from .datapoint_maps import device_requires_mapping, effective_register_map
+    from .datapoint_maps import default_register_count, device_requires_mapping, effective_register_map
 
     register_map = effective_register_map(device)
     register = register_map.get(command_key)
@@ -307,7 +307,7 @@ def resolve_device_params(device: Device, command_key: str, operation: str, valu
     if is_write:
         params["value"] = normalized
     else:
-        params["objectsCount"] = int(register.get("objectsCount", 1))
+        params["objectsCount"] = int(register.get("objectsCount", default_register_count(register.get("type"))))
 
     definition_snapshot = {
         "template_id": device.template_id,

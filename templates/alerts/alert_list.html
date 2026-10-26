@@ -43,14 +43,14 @@
         </table>
         {% else %}
         <div class="p-16 text-center">
-            <div class="inline-flex items-center justify-center p-4 bg-green-100 dark:bg-green-900/30 rounded-full mb-4">
-                <i class="fa fa-check-circle text-green-600 dark:text-green-400 text-2xl"></i>
+            <div class="inline-flex items-center justify-center p-4 {% if active_rule_count %}bg-green-100 dark:bg-green-900/30{% else %}bg-amber-100 dark:bg-amber-900/30{% endif %} rounded-full mb-4">
+                <i class="fa {% if active_rule_count %}fa-check-circle text-green-600 dark:text-green-400{% else %}fa-triangle-exclamation text-amber-600 dark:text-amber-400{% endif %} text-2xl"></i>
             </div>
             <h3 class="text-base font-semibold text-gray-900 dark:text-white mb-1">No alerts triggered</h3>
-            <p class="text-sm text-gray-500 mb-8">All devices are within their configured thresholds.</p>
+            <p class="text-sm text-gray-500 mb-8">{% if active_rule_count %}No monitoring rule has triggered an alert. Review your rules to check coverage.{% else %}Alert monitoring is not set up yet. Choose a suggested rule for your equipment and review its threshold.{% endif %}</p>
             {% if can_manage %}
-            <a href="{% url 'web_team:alerts:rule_create' request.team.slug %}" class="btn btn-primary btn-sm rounded-xl px-6">
-                <i class="fa fa-plus-circle mr-2"></i> Configure Alert Rules
+            <a href="{% url 'web_team:alerts:rule_list' request.team.slug %}" class="btn btn-primary btn-sm rounded-xl px-6">
+                <i class="fa fa-plus-circle mr-2"></i> Review Monitoring Rules
             </a>
             {% endif %}
         </div>
@@ -58,4 +58,3 @@
     </div>
 </div>
 {% endblock %}
-

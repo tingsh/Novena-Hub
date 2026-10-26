@@ -28,6 +28,12 @@
   </a>
 </li>
 <li>
+  <a href="{% url 'web_team:devices:template_library' team.slug %}" {% if active_tab == 'templates' %}class="menu-active"{% endif %}>
+    <i class="fa fa-layer-group h-4 w-4"></i>
+    {% translate "Device Template Library" %}
+  </a>
+</li>
+<li>
   <a href="{% url 'web_team:devices:gateway_list' team.slug %}" {% if active_tab == 'gateways' %}class="menu-active"{% endif %}>
     <i class="fa fa-server h-4 w-4"></i>
     {% translate "Gateways" %}

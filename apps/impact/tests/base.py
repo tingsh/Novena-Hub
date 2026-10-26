@@ -32,6 +32,7 @@ class ImpactTestCase(TestCase):
             register_map=register_map,
             default_polling_interval=300,
             is_verified=True,
+            evidence_status="field_verified",
         )
 
     def create_device(

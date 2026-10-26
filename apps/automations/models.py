@@ -57,10 +57,20 @@ class AutomationCondition(BaseTeamModel):
         return f"{self.device.name}.{self.telemetry_key} {self.operator} {self.threshold}"
 
     @property
+    def reading_config(self):
+        from apps.devices.datapoint_maps import effective_register_map
+
+        config = effective_register_map(self.device).get(self.telemetry_key, {})
+        return config if isinstance(config, dict) else {}
+
+    @property
     def reading_label(self):
-        register_map = getattr(getattr(self.device, "template", None), "register_map", None) or {}
-        config = register_map.get(self.telemetry_key, {})
-        return config.get("label") or self.telemetry_key.replace("_", " ").title()
+        return self.reading_config.get("label") or self.telemetry_key.replace("_", " ").title()
+
+    @property
+    def reading_unit(self):
+        unit = self.reading_config.get("unit", "")
+        return {"degC": "°C", "degF": "°F"}.get(unit, unit)
 
     @property
     def operator_label(self):

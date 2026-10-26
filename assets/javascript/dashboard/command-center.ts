@@ -507,6 +507,12 @@ export class CommandCenterController {
     });
     const restoreAll = document.getElementById('command-center-restore-all') as HTMLButtonElement | null;
     if (restoreAll) restoreAll.disabled = hidden.length === 0;
+    document.getElementById('command-center-no-hidden-panels')?.classList.toggle('hidden', hidden.length !== 0);
+    const addPanels = document.getElementById('command-center-add-panels') as HTMLButtonElement | null;
+    if (addPanels) {
+      addPanels.disabled = hidden.length === 0;
+      addPanels.title = hidden.length === 0 ? 'All available panels are visible' : 'Restore hidden panels';
+    }
     document.getElementById('command-center-empty')?.classList.toggle('hidden', hidden.length !== this.panels.size);
   }
 
@@ -610,8 +616,8 @@ export class CommandCenterController {
     if (!canvas || !labels || !values || !window.Chart) return;
     this.trendChart = new window.Chart(canvas.getContext('2d'), {
       type: 'line',
-      data: {labels: JSON.parse(labels.textContent || '[]'), datasets: [{data: JSON.parse(values.textContent || '[]'), borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,.08)', borderWidth: 2, fill: true, tension: .35, pointRadius: 0}]},
-      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}, scales: {x: {grid: {display: false}, ticks: {maxTicksLimit: 8, color: '#94a3b8', font: {size: 10}}}, y: {beginAtZero: true, grid: {color: 'rgba(148,163,184,.18)'}, ticks: {color: '#94a3b8', font: {size: 10}}}}},
+      data: {labels: JSON.parse(labels.textContent || '[]'), datasets: [{data: JSON.parse(values.textContent || '[]'), borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,.08)', borderWidth: 2, fill: true, tension: .35, pointRadius: 2, spanGaps: false}]},
+      options: {responsive: true, maintainAspectRatio: false, plugins: {legend: {display: false}}, scales: {x: {grid: {display: false}, ticks: {maxTicksLimit: 8, color: '#94a3b8', font: {size: 10}}}, y: {beginAtZero: false, grid: {color: 'rgba(148,163,184,.18)'}, ticks: {color: '#94a3b8', font: {size: 10}}}}},
     });
   }
 

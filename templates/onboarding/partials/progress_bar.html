@@ -1,14 +1,14 @@
 <div class="mb-12">
     <div class="flex items-center justify-between">
         {% for s in steps %}
-        <div class="flex-1 text-center relative">
+        <div class="flex-1 text-center relative" aria-label="Step {{ s.num }}: {{ s.label }}">
             <div class="w-10 h-10 mx-auto rounded-full flex items-center justify-center font-bold text-sm
                 {% if s.num < current_step %}bg-green-500 text-white
                 {% elif s.num == current_step %}bg-indigo-600 text-white
                 {% else %}bg-gray-200 dark:bg-gray-700 text-gray-500{% endif %}">
                 {% if s.num < current_step %}<i class="fa fa-check"></i>{% else %}{{ s.num }}{% endif %}
             </div>
-            <div class="mt-2 text-xs font-semibold
+            <div class="mt-2 text-xs font-semibold {% if s.num != current_step %}hidden sm:block{% endif %}
                 {% if s.num == current_step %}text-indigo-600 dark:text-indigo-400{% else %}text-gray-500{% endif %}">
                 {{ s.label }}
             </div>

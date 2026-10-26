@@ -10,7 +10,8 @@ function datapointMapping() {
         key: '', label: '', address: 0, read_function_code: 3, data_type: 'uint16',
         objects_count: 1, unit: '', multiplier: 1, offset: 0, access: 'read_only',
         write_function_code: null, display_type: 'value', normal_min: null, normal_max: null,
-        safety_min: null, safety_max: null, alert_suggestion: ''
+        safety_min: null, safety_max: null, alert_suggestion: '',
+        invalid_values: [], energy_direction: 'none'
     });
     return {
         rows: initial.length ? initial : [blank()],
@@ -101,6 +102,8 @@ function datapointMapping() {
                                     <label class="form-control"><span class="label-text text-xs">Unit</span><input x-model="row.unit" class="input input-bordered input-sm" placeholder="°C"></label>
                                     <label class="form-control"><span class="label-text text-xs">Multiplier</span><input type="number" step="any" x-model.number="row.multiplier" class="input input-bordered input-sm"></label>
                                     <label class="form-control"><span class="label-text text-xs">Offset</span><input type="number" step="any" x-model.number="row.offset" class="input input-bordered input-sm"></label>
+                                    <label class="form-control"><span class="label-text text-xs">Invalid raw codes</span><input x-model="row.invalid_values" class="input input-bordered input-sm" placeholder="65535, 32767"></label>
+                                    <label class="form-control"><span class="label-text text-xs">Energy direction</span><select x-model="row.energy_direction" class="select select-bordered select-sm"><option value="none">Not an energy counter</option><option value="import">Import</option><option value="export">Export</option><option value="net">Net</option></select></label>
                                     <label class="form-control"><span class="label-text text-xs">Access</span><select x-model="row.access" class="select select-bordered select-sm"><option value="read_only">Read only</option><option value="read_write">Writable intent</option></select></label>
                                     <label x-show="row.access === 'read_write'" class="form-control"><span class="label-text text-xs">Write function</span><select x-model.number="row.write_function_code" class="select select-bordered select-sm"><option :value="null">Automatic</option><option :value="5">5 · Single coil</option><option :value="6">6 · Single register</option><option :value="15">15 · Multiple coils</option><option :value="16">16 · Multiple registers</option></select></label>
                                     <label class="form-control"><span class="label-text text-xs">Normal minimum</span><input type="number" step="any" x-model.number="row.normal_min" class="input input-bordered input-sm"></label>
@@ -148,6 +151,46 @@ function datapointMapping() {
         </form>
         {% endif %}
     </section>
+
+    {% if mapping.status == "confirmed" %}
+    <section class="rounded-2xl border border-base-content/10 bg-base-100 p-6 shadow-sm">
+        <h2 class="text-lg font-black">Save to your team library</h2>
+        <p class="mt-1 text-sm text-base-content/60">Save these confirmed read signals for another device. Connection addresses and live readings stay with this equipment. Each new device must pass its own live test.</p>
+        {% if saved_team_template %}
+        <p class="mt-3 text-sm font-bold text-success">Saved as {{ saved_team_template.name }} · revision {{ saved_team_template.catalog_revision }}</p>
+        {% else %}
+        <form method="post" class="mt-4 grid gap-3 md:grid-cols-2">
+            {% csrf_token %}<input type="hidden" name="action" value="save_team_map">
+            <label class="form-control"><span class="label-text mb-1">Map name</span><input required maxlength="200" name="map_name" class="input input-bordered" value="{{ device.template.name }}"></label>
+            <label class="form-control"><span class="label-text mb-1">Manufacturer</span><input required maxlength="200" name="manufacturer" class="input input-bordered" value="{{ device.template.manufacturer }}"></label>
+            <label class="form-control"><span class="label-text mb-1">Exact model or variant</span><input required maxlength="200" name="model_number" class="input input-bordered" value="{{ device.template.model_number }}"></label>
+            <label class="form-control"><span class="label-text mb-1">Firmware compatibility, if known</span><input maxlength="200" name="firmware_scope" class="input input-bordered"></label>
+            {% if device.device_type == "plc" %}<label class="form-control md:col-span-2"><span class="label-text mb-1">PLC program or register assignment</span><input required maxlength="200" name="program_scope" class="input input-bordered" placeholder="Program name and version"></label>{% endif %}
+            <label class="form-control md:col-span-2"><span class="label-text mb-1">Manufacturer register document URL, if available</span><input type="url" name="source_url" class="input input-bordered" value="{{ device.template.source_url }}"></label>
+            <label class="form-control md:col-span-2"><span class="label-text mb-1">Configuration requirements</span><textarea name="configuration_notes" maxlength="2000" class="textarea textarea-bordered" rows="2" placeholder="CT/PT ratio, wiring, energy direction or other model settings"></textarea></label>
+            <div class="md:col-span-2"><button class="btn btn-outline" type="submit">Save private team map</button></div>
+        </form>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {% if can_share_mapping %}
+    <section class="rounded-2xl border border-base-content/10 bg-base-100 p-6 shadow-sm">
+        <h2 class="text-lg font-black">Share this mapping with Novena</h2>
+        <p class="mt-1 max-w-3xl text-sm text-base-content/60">This mapping belongs to your team. Sharing lets Novena review the confirmed signal definitions, equipment model and source equipment reference. The shared map omits connection settings and live readings. Novena may publish a separate verified catalog template after checking documentation and equipment readings. Your original mapping stays private.</p>
+        {% if current_revision_shared %}
+        <p class="mt-4 text-sm font-bold text-info">This confirmed revision has already been submitted.</p>
+        {% else %}
+        <form method="post" class="mt-4 space-y-3">
+            {% csrf_token %}<input type="hidden" name="action" value="share_with_novena">
+            <label class="form-control max-w-xl"><span class="label-text mb-1 font-bold">Manufacturer register document URL (if available)</span><input type="url" name="source_document_url" value="{{ device.template.source_url }}" class="input input-bordered rounded-lg" placeholder="https://manufacturer.example/manual"></label>
+            <label class="flex max-w-3xl items-start gap-3 text-sm"><input required type="checkbox" name="share_consent" class="checkbox checkbox-primary mt-0.5"><span>I choose to share this confirmed signal map and equipment model with Novena for review and possible publication.</span></label>
+            <button class="btn btn-outline btn-sm" type="submit">Send to Novena for review</button>
+        </form>
+        {% endif %}
+        {% if share_submissions %}<div class="mt-4 space-y-1 text-xs text-base-content/60">{% for submission in share_submissions %}<p>Revision {{ submission.revision.revision_number }} · {{ submission.get_status_display }}{% if submission.published_template %} · Novena catalog revision {{ submission.published_template.catalog_revision }}{% endif %}</p>{% endfor %}</div>{% endif %}
+    </section>
+    {% endif %}
 
     {% if revisions %}
     <section class="rounded-xl border border-base-content/10 bg-base-100 p-5 shadow-sm">

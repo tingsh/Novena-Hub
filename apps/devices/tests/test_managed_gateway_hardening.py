@@ -8,7 +8,10 @@ from django.utils import timezone
 
 from apps.devices.activation import (
     acknowledge_gateway_activation,
+    deliver_gateway_activation,
     encrypt_activation_secret,
+    expire_gateway_activation,
+    latest_retryable_activation,
     provision_gateway_activation,
 )
 from apps.devices.config_generator import generate_connector_config
@@ -206,6 +209,56 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
 
 @override_settings(GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
 class GatewayActivationRecoveryTest(ManagedGatewayFixture):
+    @override_settings(MQTT_PROVISIONING_REQUIRED=True)
+    @patch("apps.telemetry.mqtt_publisher.publish_gateway_activation")
+    @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
+    def test_acknowledged_activation_with_stale_pending_status_is_not_retried(self, provision, publish):
+        activation = GatewayActivation.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            generation=1,
+            status="pending",
+            acknowledged_at=timezone.now(),
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+
+        self.assertIsNone(latest_retryable_activation(self.gateway))
+        self.assertFalse(provision_gateway_activation(activation.pk))
+        self.assertFalse(deliver_gateway_activation(activation, retry=True))
+        provision.assert_not_called()
+        publish.assert_not_called()
+        acknowledge_gateway_activation(self.gateway, str(activation.request_id), 1, "success")
+        activation.refresh_from_db()
+        self.assertEqual(activation.status, "acknowledged")
+
+        GatewayActivation.objects.filter(pk=activation.pk).update(status="pending")
+        self.assertFalse(expire_gateway_activation(activation))
+        activation.refresh_from_db()
+        self.assertEqual(activation.status, "acknowledged")
+
+    @override_settings(MQTT_PROVISIONING_REQUIRED=True)
+    @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
+    def test_stale_generation_is_not_reprovisioned(self, provision):
+        old = GatewayActivation.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            generation=1,
+            status="pending",
+            expires_at=timezone.now() + timedelta(hours=1),
+            encrypted_mqtt_password=encrypt_activation_secret("old-secret"),
+        )
+        GatewayActivation.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            generation=2,
+            status="acknowledged",
+            acknowledged_at=timezone.now(),
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+
+        self.assertFalse(provision_gateway_activation(old.pk))
+        provision.assert_not_called()
+
     @override_settings(MQTT_PROVISIONING_REQUIRED=True)
     @patch("apps.telemetry.mqtt_publisher.publish_gateway_activation")
     @patch("apps.devices.mqtt_provisioning.provision_gateway_mqtt")
@@ -449,6 +502,7 @@ class PlanPollingHardeningTest(ManagedGatewayFixture):
             slow_equipment = generate_connector_config(self.gateway)[0]["config"]["master"]["slaves"][0]
 
         self.assertEqual(starter["pollPeriod"], 10000)
+        self.assertEqual(starter["waitAfterFailedAttemptsMs"], 30000)
         self.assertEqual(business["pollPeriod"], 5000)
         self.assertEqual(enterprise["pollPeriod"], 2000)
         self.assertEqual(slow_equipment["pollPeriod"], 30000)

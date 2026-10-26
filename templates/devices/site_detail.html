@@ -49,7 +49,7 @@
     </div>
 
     <!-- Site Overview KPIs -->
-    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-12" id="site-kpis">
+    {% if has_energy_readings %}<div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-12" id="site-kpis">
         <div class="bg-base-100 p-6 rounded-3xl border border-base-content/5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.2)]">
             <div class="flex items-center">
                 <div class="flex-shrink-0 bg-blue-50 dark:bg-blue-500/10 rounded-2xl p-4">
@@ -73,7 +73,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </div>{% endif %}
 
     {% if ai_insights or recent_alerts %}
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
@@ -138,7 +138,7 @@
              hx-get="{% url 'web_team:devices:site_detail' request.team.slug site.pk %}"
              hx-trigger="infrastructureChanged from:body"
              hx-select="#gateways-container">
-            {% for gateway in site.gateways.all %}
+            {% for gateway in gateway_sections %}
                 {% include "devices/partials/gateway_section.html" with gateway=gateway %}
             {% empty %}
             <div class="bg-base-100 rounded-[2.5rem] border-2 border-dashed border-base-content/10 p-16 text-center">
@@ -155,7 +155,6 @@
         </div>
 
         <!-- Direct Connections (Handled in Phase 1 as promised) -->
-        {% with direct_devices=site.devices.all|dictsort:"gateway_id" %}
         {% if direct_devices %}
             <div class="pt-8" id="direct-connections-section">
                 <h3 class="text-xl font-extrabold text-base-content font-heading tracking-tight mb-6 flex items-center">
@@ -164,7 +163,6 @@
                 </h3>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     {% for device in direct_devices %}
-                        {% if not device.gateway %}
                         <a href="{% url 'web_team:devices:device_detail' request.team.slug device.pk %}" class="group bg-base-100 p-5 rounded-3xl border border-base-content/5 hover:shadow-xl transition-all">
                              <div class="flex items-center justify-between mb-4">
                                 <span class="text-[10px] font-black uppercase tracking-widest text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 px-2 py-0.5 rounded-lg">Cloud-Native</span>
@@ -173,12 +171,10 @@
                              <h5 class="text-sm font-bold text-base-content">{{ device.name }}</h5>
                              <p class='text-[10px] text-base-content/40 uppercase tracking-widest font-mono mt-1'>{{ device.freshness.display }}</p>
                         </a>
-                        {% endif %}
                     {% endfor %}
                 </div>
             </div>
         {% endif %}
-        {% endwith %}
     </div>
 </div>
 {% endblock %}

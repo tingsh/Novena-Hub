@@ -210,59 +210,26 @@ class SiteDetailView(PermissionRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "sites"
         from apps.alerts.models import Alert
+        from apps.devices.datapoint_maps import effective_register_map
         from apps.telemetry.anomaly import get_ai_insights
         from apps.telemetry.services import get_site_summary_stats
 
         context["stats"] = get_site_summary_stats(self.object)
+        site_devices = list(self.object.devices.select_related("template", "gateway"))
+        context["direct_devices"] = [device for device in site_devices if device.gateway_id is None]
+        energy_keys = {"active_power", "power", "energy", "total_energy", "energy_kwh"}
+        context["has_energy_readings"] = any(
+            device.energy_category != "none" or energy_keys.intersection(effective_register_map(device))
+            for device in site_devices
+        )
 
-        # Process discovery and conflicts for UI
-        for gateway in self.object.gateways.all():
-            port_map = {}
-
-            # 1. Map registered devices by their port (interface key)
-            for device in gateway.devices.all():
-                if device.port:
-                    port_map[device.port] = {"status": "registered", "device": device}
-
-            # 2. Layer discovery data — use interface name as port key
-            discovery_data = gateway.discovery_data or {}
-            discovery_list = discovery_data.get("devices", [])
-            interfaces = discovery_data.get("interfaces", [])
-
-            for disc in discovery_list:
-                # Use interface as the port key (e.g., "/dev/ttyUSB0", "192.168.1.100:502")
-                port_key = disc.get("interface") or disc.get("port")
-                if not port_key:
-                    continue
-                port_key = str(port_key)
-
-                if port_key in port_map:
-                    # Check for conflict
-                    reg_device = port_map[port_key]["device"]
-                    sig = disc.get("signature", "")
-                    if (
-                        sig
-                        and sig.lower() not in reg_device.name.lower()
-                        and sig.lower() not in reg_device.device_type.lower()
-                    ):
-                        port_map[port_key]["status"] = "conflict"
-                        port_map[port_key]["discovered"] = disc
-                else:
-                    port_map[port_key] = {"status": "discovered", "discovered": disc}
-
-            # 3. Add empty slots for interfaces with no devices/discoveries
-            for iface in interfaces:
-                iface_name = iface.get("name", "")
-                if iface_name and iface_name not in port_map:
-                    port_map[iface_name] = {"status": "empty", "interface": iface}
-
-            # Attach to the gateway object for use in templates
-            gateway.computed_port_map = port_map
-            gateway.computed_interfaces = interfaces
+        # The site inventory shows configured equipment. Discovery snapshots are historical
+        # and must not be presented as a current scan or a live hardware conflict.
+        context["gateway_sections"] = list(self.object.gateways.prefetch_related("devices"))
 
         # Aggregate insights for all devices in the site
         site_insights = []
-        for device in self.object.devices.all():
+        for device in site_devices:
             site_insights.extend(get_ai_insights(device))
         context["ai_insights"] = site_insights[:3]  # Show top 3
 
@@ -470,12 +437,17 @@ def gateway_retry_activation(request, team_slug, pk):
     from .activation import reissue_activation_for_gateway
 
     gateway = Gateway.objects.get(pk=pk, team=request.team)
+    return_to_setup = (
+        request.POST.get("return_to_setup") == "1" and request.session.get("onboarding_gateway_id") == gateway.pk
+    )
     try:
-        reissue_activation_for_gateway(gateway, force=True)
+        reissue_activation_for_gateway(gateway, force=not return_to_setup)
     except ValueError as exc:
         messages.error(request, str(exc))
     else:
         messages.info(request, "Novena is securely retrying Gateway activation.")
+    if return_to_setup:
+        return HttpResponseRedirect(reverse_lazy("web_team:onboarding:step_2b_wait", args=[team_slug]))
     return HttpResponseRedirect(reverse_lazy("web_team:devices:gateway_detail", args=[team_slug, pk]))
 
 
@@ -756,8 +728,17 @@ class DeviceListView(PermissionRequiredMixin, ListView):
     template_name = "devices/device_list.html"
     context_object_name = "devices"
 
+    def get_queryset(self):
+        return super().get_queryset().select_related("site", "gateway", "template")
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        selected = self.request.GET.get("status", "all")
+        if selected not in {"all", "live", "delayed", "offline", "alarm"}:
+            selected = "all"
+        if selected != "all":
+            context["devices"] = [device for device in context["devices"] if device.freshness.status == selected]
+        context["status_filter"] = selected
         context["active_tab"] = "devices"
         return context
 
@@ -778,6 +759,9 @@ class DeviceDetailView(PermissionRequiredMixin, DetailView):
         context.update(dashboard_context)
         context["ai_insights"] = get_ai_insights(self.object)
         context["recent_commands"] = self.object.commands.all().order_by("-requested_at")[:10]
+        from .freshness import device_freshness_thresholds
+
+        context["device_delayed_seconds"], context["device_offline_seconds"] = device_freshness_thresholds(self.object)
         context["remote_control_enabled"] = (
             self.request.team.remote_control_mode == self.request.team.RemoteControlMode.CONTROLLED
         )
@@ -943,35 +927,11 @@ class DeviceCreateView(PermissionRequiredMixin, CreateView):
 class DeviceUpdateView(PermissionRequiredMixin, UpdateView):
     permission_required = "manage_devices"
     model = Device
-    fields = ["name", "device_type", "protocol", "energy_category", "connection_config", "status"]
+    fields = ["name"]
     template_name = "devices/device_form.html"
 
-    def form_valid(self, form):
-        response = super().form_valid(form)
-        connection_changed = "connection_config" in form.changed_data
-        if connection_changed and self.object.template and self.object.template.mapping_strategy == "site_defined":
-            from .datapoint_maps import ensure_device_datapoint_map
-
-            mapping = ensure_device_datapoint_map(self.object)
-            mapping.status = mapping.Status.DRAFT
-            mapping.last_validation = {}
-            mapping.datapoint_health = {}
-            mapping.tested_checksum = ""
-            mapping.confirmed_checksum = ""
-            mapping.last_tested_at = None
-            mapping.validated_by = None
-            mapping.validated_at = None
-            mapping.confirmed_by = None
-            mapping.confirmed_at = None
-            mapping.save()
-            metadata = dict(self.object.metadata or {})
-            metadata["guided_setup_validation"] = "pending"
-            self.object.metadata = metadata
-            self.object.save(update_fields=["metadata", "updated_at"])
-        return response
-
     def get_success_url(self):
-        return reverse_lazy("web_team:devices:device_list", args=[self.request.team.slug])
+        return reverse_lazy("web_team:devices:device_detail", args=[self.request.team.slug, self.object.pk])
 
 
 @require_permission("manage_devices")
@@ -993,7 +953,7 @@ def device_datapoint_mapping(request, team_slug, pk):
         start_validation,
         sync_setup_run,
     )
-    from .models import DeploymentSetupItem, DeviceDatapointMap, DeviceDatapointMapRevision
+    from .models import DeploymentSetupItem, DeviceDatapointMap, DeviceDatapointMapRevision, TemplateShareSubmission
 
     device = get_object_or_404(
         Device.objects.select_related("template", "gateway", "site"),
@@ -1148,6 +1108,21 @@ def device_datapoint_mapping(request, team_slug, pk):
                 item.datapoints = mapping.datapoints
                 item.validation_result = mapping.last_validation
                 item.save(update_fields=["state", "trust_level", "datapoints", "validation_result", "updated_at"])
+                from .models import EquipmentTemplateRequest
+                from .template_help import _send_help_email
+
+                for help_request in EquipmentTemplateRequest.objects.filter(
+                    team=request.team,
+                    delivered_template=device.template,
+                    setup_item=item,
+                    status=EquipmentTemplateRequest.Status.READY_TO_TEST,
+                ):
+                    help_request.customer_update = (
+                        "Live readings were confirmed on this equipment. "
+                        "Novena will review the comparison and close the request."
+                    )
+                    help_request.save(update_fields=["customer_update", "updated_at"])
+                    transaction.on_commit(lambda request_row=help_request: _send_help_email(help_request=request_row))
                 append_setup_event(
                     run,
                     "mapping_confirmed",
@@ -1157,6 +1132,36 @@ def device_datapoint_mapping(request, team_slug, pk):
                     evidence={"checksum": mapping.confirmed_checksum, "signal_count": len(mapping.datapoints)},
                 )
                 messages.success(request, "Live readings confirmed. This equipment is ready for deployment.")
+            elif action == "share_with_novena":
+                from .template_sharing import submit_mapping_for_review
+
+                submission = submit_mapping_for_review(
+                    device=device,
+                    team=request.team,
+                    actor=request.user,
+                    consent=request.POST.get("share_consent") == "on",
+                    source_document_url=request.POST.get("source_document_url", ""),
+                )
+                messages.success(
+                    request,
+                    f"Revision {submission.revision.revision_number} sent to Novena for review. "
+                    "Your map remains private.",
+                )
+            elif action == "save_team_map":
+                from .team_maps import save_confirmed_team_map
+
+                saved = save_confirmed_team_map(
+                    device=device,
+                    team=request.team,
+                    name=request.POST.get("map_name", ""),
+                    manufacturer=request.POST.get("manufacturer", ""),
+                    model_number=request.POST.get("model_number", ""),
+                    firmware_scope=request.POST.get("firmware_scope", ""),
+                    program_scope=request.POST.get("program_scope", ""),
+                    source_url=request.POST.get("source_url", ""),
+                    configuration_notes=request.POST.get("configuration_notes", ""),
+                )
+                messages.success(request, f"{saved.name} revision {saved.catalog_revision} is in your team library.")
             elif action == "clone":
                 source = get_object_or_404(
                     Device.objects.select_related("template"),
@@ -1239,6 +1244,9 @@ def device_datapoint_mapping(request, team_slug, pk):
         .exclude(pk=device.pk)
         .order_by("name")
     )
+    share_submissions = TemplateShareSubmission.objects.filter(
+        team=request.team, revision__mapping=mapping
+    ).select_related("revision", "published_template")
     return render(
         request,
         "devices/device_datapoint_mapping.html",
@@ -1249,6 +1257,21 @@ def device_datapoint_mapping(request, team_slug, pk):
             "setup_run": run,
             "clone_sources": clone_sources,
             "revisions": mapping.revisions.select_related("validated_by", "confirmed_by").all(),
+            "share_submissions": share_submissions,
+            "can_share_mapping": (
+                mapping.status == DeviceDatapointMap.Status.CONFIRMED
+                and device.template.created_by_team_id == request.team.pk
+                and device.template.source != "curated"
+            ),
+            "current_revision_shared": share_submissions.filter(
+                revision__confirmed_checksum=mapping.confirmed_checksum
+            ).exists(),
+            "saved_team_template": DeviceTemplate.objects.filter(
+                source_mapping_revision__mapping=mapping,
+                source_mapping_revision__confirmed_checksum=mapping.confirmed_checksum,
+            ).first()
+            if mapping.confirmed_checksum
+            else None,
             "connection": device.connection_config or {},
         },
     )
@@ -1463,31 +1486,49 @@ def htmx_device_create(request, team_slug):
 
 @require_permission("view_devices")
 def template_library_search(request, team_slug):
+    from django.db.models import Case, IntegerField, Value, When
+
+    from .models import SavedDeviceTemplate
+
     query = request.GET.get("q", "").strip()[:100]
     candidate_index = request.GET.get("candidate_index", "")
+    guided_setup = request.GET.get("context") == "guided_setup"
     if not re.fullmatch(r"(?:\d+|saved-\d+)", candidate_index):
         candidate_index = ""
-    templates = (
-        visible_templates_for_team(request.team)
-        .filter(
-            Q(name__icontains=query)
-            | Q(manufacturer__icontains=query)
-            | Q(model_number__icontains=query)
-            | Q(device_type__icontains=query)
-            | Q(protocol__icontains=query)
-            | Q(category__icontains=query)
-        )
-        .order_by("-is_verified", "created_by_team_id", "name")
+    protocol = request.GET.get("protocol", "")
+    if protocol not in dict(DeviceTemplate.PROTOCOL_CHOICES):
+        protocol = ""
+    templates = visible_templates_for_team(request.team).filter(
+        Q(name__icontains=query)
+        | Q(manufacturer__icontains=query)
+        | Q(model_number__icontains=query)
+        | Q(model_aliases__icontains=query)
+        | Q(device_type__icontains=query)
+        | Q(protocol__icontains=query)
+        | Q(category__icontains=query)
     )
+    if guided_setup and protocol:
+        templates = templates.filter(protocol=protocol)
+    template_count = templates.count()
+    saved_ids = set(SavedDeviceTemplate.objects.filter(team=request.team).values_list("template_id", flat=True))
+    templates = templates.annotate(
+        saved_rank=Case(When(pk__in=saved_ids, then=Value(0)), default=Value(1), output_field=IntegerField())
+    ).order_by("saved_rank", "-is_verified", "created_by_team_id", "name")[:10]
     template_name = (
         "onboarding/partials/template_search_results.html"
-        if request.GET.get("context") == "guided_setup"
+        if guided_setup
         else "devices/partials/template_search_results.html"
     )
     return render(
         request,
         template_name,
-        {"templates": templates[:10], "candidate_index": candidate_index, "query": query},
+        {
+            "templates": templates,
+            "saved_template_ids": saved_ids,
+            "template_count": template_count,
+            "candidate_index": candidate_index,
+            "query": query,
+        },
     )
 
 
@@ -1522,7 +1563,7 @@ def gateway_discovery_api(request, team_slug):
             return JsonResponse({"error": "This Gateway is being securely released."}, status=409)
         from .discovery_matching import enrich_discovered_device
 
-        discovered = [enrich_discovered_device(device) for device in discovered]
+        discovered = [enrich_discovered_device(device, team=request.team) for device in discovered]
 
         # Store for the UI to display
         gateway.discovery_data = {"last_discovered_at": str(timezone.now()), "devices": discovered}
@@ -1673,51 +1714,6 @@ def ai_template_approve(request, team_slug):
             "devices/partials/ai_template_result.html",
             {"status": "error", "error": f"Failed to save template: {e}"},
         )
-
-
-class TemplateLibraryView(PermissionRequiredMixin, ListView):
-    permission_required = "view_devices"
-    model = DeviceTemplate
-    template_name = "devices/template_library.html"
-    context_object_name = "templates"
-
-    def get_queryset(self):
-        from apps.devices.solution_profiles import get_profile, rank_templates_for_profile
-
-        qs = visible_templates_for_team(self.request.team)
-        q = self.request.GET.get("q", "").strip()
-        protocol = self.request.GET.get("protocol", "").strip()
-        category = self.request.GET.get("category", "").strip()
-        profile_key = self.request.GET.get("profile", "").strip()
-        verified_only = self.request.GET.get("verified_only", "") == "true"
-
-        if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(manufacturer__icontains=q) | Q(model_number__icontains=q))
-        if protocol:
-            qs = qs.filter(protocol=protocol)
-        if category:
-            qs = qs.filter(category=category)
-        if verified_only:
-            qs = qs.filter(is_verified=True)
-
-        if profile_key:
-            return rank_templates_for_profile(qs, get_profile(profile_key))
-        return qs.order_by("-is_verified", "-usage_count")
-
-    def get_context_data(self, **kwargs):
-        from apps.devices.solution_profiles import PROFILES
-
-        context = super().get_context_data(**kwargs)
-        context["active_tab"] = "templates"
-        context["search_query"] = self.request.GET.get("q", "")
-        context["selected_protocol"] = self.request.GET.get("protocol", "")
-        context["selected_category"] = self.request.GET.get("category", "")
-        context["selected_profile"] = self.request.GET.get("profile", "")
-        context["verified_only"] = self.request.GET.get("verified_only", "") == "true"
-        context["protocols"] = DeviceTemplate.PROTOCOL_CHOICES
-        context["categories"] = DeviceTemplate.VERTICAL_CHOICES
-        context["solution_profiles"] = PROFILES.values()
-        return context
 
 
 @require_permission("send_critical_commands")

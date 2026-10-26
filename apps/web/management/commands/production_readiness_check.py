@@ -261,6 +261,28 @@ def _check_business_impact_reporting() -> list[CheckResult]:
     ]
 
 
+def _check_template_help_storage() -> list[CheckResult]:
+    config = settings.STORAGES.get("template_request_documents", {})
+    backend = config.get("BACKEND", "")
+    location = config.get("OPTIONS", {}).get("location", "")
+    if backend == "django.core.files.storage.FileSystemStorage":
+        private = (
+            bool(location)
+            and Path(location).resolve().is_relative_to(Path(settings.PRIVATE_MEDIA_ROOT).resolve())
+            and not Path(location).resolve().is_relative_to(Path(settings.MEDIA_ROOT).resolve())
+        )
+    else:
+        private = backend == "apps.web.storage_backends.PrivateMediaStorage" and str(location).startswith("private/")
+    return [
+        CheckResult(
+            "Template help",
+            "Private request documents",
+            "OK" if private else "FAIL",
+            f"backend={backend or 'missing'}; location={location or 'missing'}",
+        )
+    ]
+
+
 def build_checks() -> list[CheckResult]:
     settings_module = os.environ.get("DJANGO_SETTINGS_MODULE", "")
     hosts = set(settings.ALLOWED_HOSTS)
@@ -426,6 +448,7 @@ def build_checks() -> list[CheckResult]:
     checks.extend([_check_legacy_shared_inbound_disabled(), _check_gateway_shared_inbound_acls()])
     checks.extend(_check_remote_control_configuration())
     checks.extend(_check_business_impact_reporting())
+    checks.extend(_check_template_help_storage())
     return checks
 
 

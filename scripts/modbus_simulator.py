@@ -13,6 +13,7 @@ Use an elevated/admin shell for port 502 on Windows, macOS, or Linux.
 
 import argparse
 import random
+import socket
 import struct
 import threading
 import time
@@ -206,10 +207,18 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
+    # The updater prints values even when the TCP server cannot bind. Fail
+    # before starting it so a stream of readings never implies a live listener.
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind((args.host, args.port))
+    except OSError as exc:
+        raise SystemExit(f"[error] Cannot bind Modbus TCP on {args.host}:{args.port}: {exc}") from exc
+
     context, hr_store, coil_store = build_context()
 
     print("Novena Modbus TCP hardware replay simulator")
-    print(f"Listening on {args.host}:{args.port}")
+    print(f"Starting Modbus TCP on {args.host}:{args.port}; confirm the listener from another shell before testing")
     print("Power meter registers: current=3000, voltage=3028, active_power=3060, frequency=3100, energy=3200")
     print("Cold-room registers/coils: temperature=3000, humidity=3002, door_open coil=10, compressor coil=11")
     print("Chiller registers/coils: temperature=100, compressor coil=101, active_power=102, run_hours=103")

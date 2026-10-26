@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
+from apps.devices.datapoint_maps import effective_register_map
 from apps.devices.models import Device
 from apps.devices.solution_profiles import recommended_alerts_for_device
 from apps.teams.decorators import require_permission
@@ -29,6 +30,7 @@ class AlertListView(PermissionRequiredMixin, ListView):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "alerts"
         context["rules"] = AlertRule.objects.filter(team=self.request.team)
+        context["active_rule_count"] = context["rules"].filter(is_active=True).count()
         return context
 
 
@@ -73,6 +75,31 @@ def _suggestions_for_device(device):
     return suggestions
 
 
+def _suggestion_display(device, preset):
+    key = preset["telemetry_key"]
+    config = effective_register_map(device).get(key, {})
+    if not isinstance(config, dict):
+        config = {}
+    label = config.get("label") or key.replace("_", " ").title()
+    condition = preset["condition"]
+    threshold = preset["threshold"]
+    if key == "door_open" and condition == "eq":
+        return "Door opens" if float(threshold) else "Door closes"
+    if key == "compressor_status" and condition == "eq":
+        return f"{label} turns {'on' if float(threshold) else 'off'}"
+    comparison = {
+        "gt": "above",
+        "gte": "at or above",
+        "lt": "below",
+        "lte": "at or below",
+        "eq": "equal to",
+        "neq": "not equal to",
+    }.get(condition, condition)
+    unit = {"degC": "°C", "degF": "°F"}.get(config.get("unit"), config.get("unit", ""))
+    number = f"{float(threshold):g}"
+    return f"{label} {comparison} {number}{' ' + unit if unit else ''}"
+
+
 class AlertRuleListView(PermissionRequiredMixin, ListView):
     permission_required = "view_dashboard"
     model = AlertRule
@@ -89,11 +116,14 @@ class AlertRuleListView(PermissionRequiredMixin, ListView):
         create_url = reverse("web_team:alerts:rule_create", args=[self.request.team.slug])
         for device in Device.objects.filter(team=self.request.team).select_related("site", "template"):
             for index, preset in enumerate(_suggestions_for_device(device)):
-                suggestions.append({
-                    "device": device,
-                    "preset": preset,
-                    "url": f"{create_url}?{urlencode({'device': device.pk, 'preset': index})}",
-                })
+                suggestions.append(
+                    {
+                        "device": device,
+                        "preset": preset,
+                        "display": _suggestion_display(device, preset),
+                        "url": f"{create_url}?{urlencode({'device': device.pk, 'preset': index})}",
+                    }
+                )
         context["suggestions"] = suggestions
         return context
 
@@ -112,9 +142,7 @@ class AlertRuleCreateView(PermissionRequiredMixin, CreateView):
             return initial
         try:
             device = (
-                Device.objects.filter(team=self.request.team, pk=device_id)
-                .select_related("site", "template")
-                .first()
+                Device.objects.filter(team=self.request.team, pk=device_id).select_related("site", "template").first()
             )
         except (ValueError, TypeError):
             return initial

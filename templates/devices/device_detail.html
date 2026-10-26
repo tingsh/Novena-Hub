@@ -35,8 +35,8 @@
             <div class='mt-1 flex flex-wrap items-center gap-x-4 gap-y-1'>
                 {% with device_freshness=device.freshness %}
                 <div class='flex items-center'>
-                    <div class='h-2.5 w-2.5 rounded-full mr-2 {% if device_freshness.status == "live" %}bg-green-500{% elif device_freshness.status == "delayed" %}bg-amber-500{% elif device_freshness.status == "alarm" %}bg-red-500{% else %}bg-gray-400{% endif %}'></div>
-                    <span class='text-sm text-gray-500 dark:text-gray-400 font-medium'>{{ device_freshness.display }}</span>
+                    <div id="device-freshness-dot" class='h-2.5 w-2.5 rounded-full mr-2 {% if device_freshness.status == "live" %}bg-green-500{% elif device_freshness.status == "delayed" %}bg-amber-500{% elif device_freshness.status == "alarm" %}bg-red-500{% else %}bg-gray-400{% endif %}'></div>
+                    <span id="device-freshness-display" data-last-sample="{{ device.last_telemetry_at|date:'c' }}" data-alarm="{% if device.status == 'alarm' %}true{% else %}false{% endif %}" class='text-sm text-gray-500 dark:text-gray-400 font-medium'>{{ device_freshness.display }}</span>
                 </div>
                 {% endwith %}
                 {% if device.gateway %}
@@ -166,9 +166,12 @@
         let telemetryReconnectTimer = null;
         let telemetryPaused = false;
         let telemetryMinIntervalSeconds = 0;
+        let deviceFreshnessTimer = null;
         const telemetryMetricTimers = {};
         const telemetryLatestTimestamps = {};
         const telemetryStaleGraceMs = 15000;
+        const deviceDelayedSeconds = {{ device_delayed_seconds }};
+        const deviceOfflineSeconds = {{ device_offline_seconds }};
         const hasDjangoWidgets = {% if widgets %}true{% else %}false{% endif %};
         const telemetryDiagnostics = {
             connectionMode: 'connecting',
@@ -192,6 +195,8 @@
 
         async function initDashboard() {
             try {
+                updateDeviceFreshness();
+                deviceFreshnessTimer = setInterval(updateDeviceFreshness, 5000);
                 initTelemetryControls();
                 await loadTelemetrySamples();
 
@@ -274,6 +279,10 @@
             return chart;
         }
 
+        function displayUnit(unit) {
+            return ({degC: '°C', degF: '°F'})[unit] || unit || '';
+        }
+
         function createMetricCard(metric) {
             const container = document.getElementById('metrics-container');
             const card = document.createElement('div');
@@ -284,7 +293,7 @@
                         <h4 class="text-sm font-black uppercase tracking-widest text-base-content/40">${metric.label}</h4>
                         <div class="flex items-baseline space-x-1 mt-1">
                             <span id="value-${metric.key}" class="text-2xl font-mono font-black text-base-content">--</span>
-                            <span class="text-xs font-bold text-base-content/30 uppercase tracking-tighter">${metric.unit}</span>
+                            <span class="text-xs font-bold text-base-content/30 uppercase tracking-tighter">${displayUnit(metric.unit)}</span>
                         </div>
                     </div>
                     <div class="p-2 bg-base-200 rounded-md">
@@ -427,7 +436,7 @@
             const headerRow = document.createElement('tr');
             headerRow.appendChild(buildHeaderCell('Time'));
             visibleColumns.forEach(column => {
-                const label = column.unit ? `${column.label} (${column.unit})` : column.label;
+                const label = column.unit ? `${column.label} (${displayUnit(column.unit)})` : column.label;
                 headerRow.appendChild(buildHeaderCell(label));
             });
             head.appendChild(headerRow);
@@ -603,7 +612,24 @@
             const currentTimestamp = Date.parse(telemetryLatestTimestamps[key]);
             if (!Number.isNaN(currentTimestamp) && nextTimestamp < currentTimestamp) return false;
             telemetryLatestTimestamps[key] = timestamp;
+            updateDeviceFreshness();
             return true;
+        }
+
+        function updateDeviceFreshness() {
+            const label = document.getElementById('device-freshness-display');
+            const dot = document.getElementById('device-freshness-dot');
+            if (!label || !dot || label.dataset.alarm === 'true') return;
+            const timestamps = [label.dataset.lastSample, ...Object.values(telemetryLatestTimestamps)]
+                .map(value => Date.parse(value)).filter(Number.isFinite);
+            if (!timestamps.length) return;
+            const latest = Math.max(...timestamps);
+            const age = Math.max(0, Math.floor((Date.now() - latest) / 1000));
+            const ageLabel = age < 60 ? `${age}s` : age < 3600 ? `${Math.floor(age / 60)}m` : age < 86400 ? `${Math.floor(age / 3600)}h` : `${Math.floor(age / 86400)}d`;
+            const status = age >= deviceOfflineSeconds ? 'Offline' : age >= deviceDelayedSeconds ? 'Delayed' : 'Live';
+            label.textContent = `${status} - ${status === 'Live' ? 'updated' : 'last sample'} ${ageLabel} ago`;
+            dot.classList.remove('bg-green-500', 'bg-amber-500', 'bg-gray-400');
+            dot.classList.add(status === 'Live' ? 'bg-green-500' : status === 'Delayed' ? 'bg-amber-500' : 'bg-gray-400');
         }
 
         function flashUpdatedElement(el) {
@@ -950,6 +976,7 @@
             clearTelemetryTimers();
             closeTelemetrySocket();
             Object.values(telemetryMetricTimers).forEach(timer => clearTimeout(timer));
+            if (deviceFreshnessTimer) clearInterval(deviceFreshnessTimer);
             Object.values(charts).forEach(chart => chart.destroy());
             charts = {};
         }
@@ -986,7 +1013,7 @@
                                         <h4 class="text-xs font-black uppercase tracking-widest text-base-content/40">{{ widget.title }}</h4>
                                         <div class="flex items-baseline space-x-1 mt-1">
                                             <span id="value-{{ widget.telemetry_key }}" class="text-2xl font-mono font-black text-base-content">--</span>
-                                            <span class="text-xs font-bold text-base-content/30 uppercase tracking-tighter">{{ widget.unit }}</span>
+                                            <span class="text-xs font-bold text-base-content/30 uppercase tracking-tighter">{{ widget.unit|display_unit }}</span>
                                         </div>
                                     </div>
                                     <div class="p-2 bg-base-200 rounded-md">
@@ -999,7 +1026,7 @@
                             {% elif widget.widget_type == 'gauge' %}
                                 <div class="flex items-center justify-between mb-2">
                                     <h4 class="text-xs font-black uppercase tracking-widest text-base-content/40">{{ widget.title }}</h4>
-                                    <span class="text-xs font-bold text-base-content/30 uppercase tracking-tighter">{{ widget.unit }}</span>
+                                    <span class="text-xs font-bold text-base-content/30 uppercase tracking-tighter">{{ widget.unit|display_unit }}</span>
                                 </div>
                                 <div class="flex flex-col items-center justify-center py-4">
                                     <div class="radial-progress text-indigo-500 font-mono font-black" 
@@ -1027,7 +1054,7 @@
                                 </div>
                                 <div class="flex flex-col items-center justify-center py-4">
                                     <span id="value-{{ widget.telemetry_key }}" class="text-3xl font-mono font-black text-base-content">--</span>
-                                    <span class="text-xs font-bold text-base-content/30 uppercase mt-1">{{ widget.unit }}</span>
+                                    <span class="text-xs font-bold text-base-content/30 uppercase mt-1">{{ widget.unit|display_unit }}</span>
                                 </div>
                             {% endif %}
                             <p id="metric-freshness-{{ widget.telemetry_key }}" class="mt-3 text-[10px] font-semibold text-base-content/40">Waiting for telemetry</p>
@@ -1134,9 +1161,9 @@
                         {% elif reg.control == 'slider' %}
                         <div class="space-y-2" x-data="{val: {{ reg.min }}}">
                             <div class="flex items-center justify-between text-[10px] text-gray-400 font-bold">
-                                <span>{{ reg.min }} {{ reg.unit }}</span>
-                                <span class="text-indigo-600 text-sm font-black" x-text="val + ' {{ reg.unit }}'"></span>
-                                <span>{{ reg.max }} {{ reg.unit }}</span>
+                                <span>{{ reg.min }} {{ reg.unit|display_unit }}</span>
+                                <span class="text-indigo-600 text-sm font-black" x-text="val + ' {{ reg.unit|display_unit }}'"></span>
+                                <span>{{ reg.max }} {{ reg.unit|display_unit }}</span>
                             </div>
                             <input type="range" x-model="val" class="range range-indigo range-sm w-full" min="{{ reg.min }}" max="{{ reg.max }}">
                             <button @click="sendWriteCommand('{{ reg.key }}', {{ reg.functionCode }}, {{ reg.address }}, Number(val), '{{ reg.type }}')"
@@ -1150,7 +1177,7 @@
                             <div class="relative flex-1">
                                 <input type="number" x-model="val" min="{{ reg.min }}" max="{{ reg.max }}" placeholder="{{ reg.min }}–{{ reg.max }}"
                                        class="input input-bordered input-sm w-full pr-12 rounded-md font-mono">
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">{{ reg.unit }}</span>
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-gray-400">{{ reg.unit|display_unit }}</span>
                             </div>
                             <button @click="sendWriteCommand('{{ reg.key }}', {{ reg.functionCode }}, {{ reg.address }}, Number(val), '{{ reg.type }}')"
                                     class="py-2 px-4 rounded-md bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all whitespace-nowrap">
@@ -1191,7 +1218,7 @@
                     <div class="px-6 py-3 flex items-center justify-between group hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-all">
                         <div class="flex-1">
                             <span class="text-xs font-bold text-gray-700 dark:text-gray-300">{{ reg.label }}</span>
-                            <span class="text-[10px] text-gray-400 ml-2">{{ reg.unit }}</span>
+                            <span class="text-[10px] text-gray-400 ml-2">{{ reg.unit|display_unit }}</span>
                         </div>
                         <div class="flex items-center space-x-3">
                             <span id="read-val-{{ reg.key }}" class="text-sm font-mono font-bold text-gray-900 dark:text-white">—</span>
@@ -1366,17 +1393,15 @@
     <!-- ── Device Control JS ── -->
     <script>
     const COMMAND_URL = "{{ command_url }}";
-    const CSRF = "{{ csrf_token }}";
 
     function getCookie(name) {
         const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
         return v ? v.pop() : '';
     }
 
-    async function commandCall(commandType, key, value, params = null) {
+    async function commandCall(commandType, key, value) {
         const body = new URLSearchParams({command_type: commandType, key});
         if (value !== null && value !== undefined) body.set('value', value);
-        if (params) body.set('params', JSON.stringify({...params, command_key: key}));
         const res = await fetch(COMMAND_URL, {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': getCookie('csrftoken')},
@@ -1424,7 +1449,7 @@
         try {
             const params = {functionCode: fc, address: address, value: value};
             if (dataType && dataType !== 'bool') params.type = dataType;
-            const data = await commandCall('write', key, value, params);
+            const data = await commandCall('write', key, value);
             if (data.error) throw new Error(data.error);
             setStatus(statusEl, 'pending', 'Waiting...');
             const result = await pollCommandResult(data.transaction_id);
@@ -1440,20 +1465,26 @@
         try {
             const params = {functionCode: fc, address: address, objectsCount: count};
             if (dataType) params.type = dataType;
-            const data = await commandCall('read', key, null, params);
+            const data = await commandCall('read', key, null);
             if (data.error) throw new Error(data.error);
             const result = await pollCommandResult(data.transaction_id);
             if (valEl) {
-                if (result.status === 'executed' && result.result) {
-                    const response = result.result.response || result.result;
-                    const val = response.value !== undefined ? response.value : JSON.stringify(response);
-                    valEl.textContent = val;
+                const reading = result.result?.read_value ?? result.result?.response?.value;
+                if (result.status === 'executed' && reading !== undefined && reading !== null) {
+                    valEl.textContent = typeof reading === 'boolean'
+                        ? (reading ? 'ON' : 'OFF')
+                        : (typeof reading === 'number' ? String(Number(reading.toFixed(2))) : String(reading));
+                    valEl.classList.remove('text-red-500');
                 } else {
-                    valEl.innerHTML = '<span class="text-red-400 text-[10px]">Error</span>';
+                    valEl.textContent = result.error || 'Could not verify this reading. Check the equipment connection.';
+                    valEl.classList.add('text-red-500');
                 }
             }
         } catch (e) {
-            if (valEl) valEl.innerHTML = '<span class="text-red-400 text-[10px]">Failed</span>';
+            if (valEl) {
+                valEl.textContent = e.message || 'Could not check this reading. Check the equipment connection.';
+                valEl.classList.add('text-red-500');
+            }
         }
     }
 

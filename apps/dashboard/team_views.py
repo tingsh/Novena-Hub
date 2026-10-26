@@ -27,6 +27,11 @@ class SharedDashboardCreateView(PermissionRequiredMixin, CreateView):
     form_class = SharedDashboardForm
     template_name = "dashboard/team/shared_form.html"
 
+    def get_initial(self):
+        initial = super().get_initial()
+        initial["is_active"] = False
+        return initial
+
     def form_valid(self, form):
         form.instance.team = self.request.team
         return super().form_valid(form)

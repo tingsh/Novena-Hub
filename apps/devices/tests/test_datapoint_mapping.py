@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.urls import reverse
 
 from apps.dashboard.services import generate_default_dashboard
 from apps.devices.config_generator import generate_connector_config
@@ -22,8 +23,12 @@ from apps.devices.models import (
     DeviceTemplate,
     Gateway,
     Site,
+    TemplateShareSubmission,
 )
-from apps.teams.models import Team
+from apps.devices.services import visible_templates_for_team
+from apps.devices.template_sharing import publish_verified_submission, submit_mapping_for_review
+from apps.teams.models import Membership, Team
+from apps.teams.roles import ROLE_ADMIN
 from apps.users.models import CustomUser
 
 
@@ -110,6 +115,115 @@ class DeviceDatapointMappingTest(TestCase):
             },
         )
         return confirm_device_datapoint_map(device=self.device, team=self.team, confirmed_by=self.user)
+
+    def _private_starter(self):
+        self.starter.source = "user_created"
+        self.starter.created_by_team = self.team
+        self.starter.is_verified = False
+        self.starter.save(update_fields=["source", "created_by_team", "is_verified"])
+
+    def test_customer_map_is_private_and_share_requires_confirmed_readings_and_consent(self):
+        self._private_starter()
+        other = Team.objects.create(name="Other", slug="other-mapping")
+        self.assertFalse(visible_templates_for_team(other).filter(pk=self.starter.pk).exists())
+        with self.assertRaises(ValidationError):
+            submit_mapping_for_review(device=self.device, team=self.team, actor=self.user, consent=True)
+        self._save_and_confirm()
+        with self.assertRaises(ValidationError):
+            submit_mapping_for_review(device=self.device, team=self.team, actor=self.user, consent=False)
+        with self.assertRaises(ValidationError):
+            submit_mapping_for_review(device=self.device, team=other, actor=self.user, consent=True)
+
+        submission = submit_mapping_for_review(
+            device=self.device,
+            team=self.team,
+            actor=self.user,
+            consent=True,
+            source_document_url="https://manufacturer.example/manual",
+        )
+        self.assertEqual(submission.status, TemplateShareSubmission.Status.SUBMITTED)
+        self.assertEqual(submission.register_map_snapshot["process_temperature"]["address"], 100)
+        self.assertNotIn("192.168.1.50", str(submission.register_map_snapshot))
+        self.assertNotIn("sample", str(submission.register_map_snapshot))
+        self.assertFalse(visible_templates_for_team(other).filter(pk=self.starter.pk).exists())
+        with self.assertRaises(ValidationError):
+            submit_mapping_for_review(device=self.device, team=self.team, actor=self.user, consent=True)
+
+    def test_review_publication_requires_staff_and_evidence_and_preserves_private_original(self):
+        self._private_starter()
+        self._save_and_confirm()
+        submission = submit_mapping_for_review(
+            device=self.device,
+            team=self.team,
+            actor=self.user,
+            consent=True,
+            source_document_url="https://manufacturer.example/manual",
+        )
+        with self.assertRaises(ValidationError):
+            publish_verified_submission(submission=submission, reviewer=self.user)
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
+        with self.assertRaises(ValidationError):
+            publish_verified_submission(submission=submission, reviewer=self.user)
+        submission.review_notes = "Register addresses and units checked against OEM manual."
+        submission.public_compatibility_notes = "S7-1200 with approved program revision A."
+        submission.portability_evidence = "Same model and firmware register layout confirmed."
+        submission.field_verification_evidence = "Representative unit readings matched the panel."
+        submission.save()
+        published = publish_verified_submission(submission=submission, reviewer=self.user)
+        other = Team.objects.create(name="Other", slug="other-published")
+        self.assertTrue(visible_templates_for_team(other).filter(pk=published.pk).exists())
+        self.assertFalse(visible_templates_for_team(other).filter(pk=self.starter.pk).exists())
+        self.assertEqual(published.evidence_status, "field_verified")
+        self.assertEqual(published.catalog_revision, 1)
+        self.assertEqual(published.compatibility_notes, submission.public_compatibility_notes)
+        self.assertFalse(published.register_map["process_temperature"]["writable"])
+        self.assertNotIn("normal_min", published.register_map["process_temperature"])
+        self.assertNotIn("alert_suggestion", published.register_map["process_temperature"])
+        self.assertEqual(self.device.template_id, self.starter.pk)
+        self.assertEqual(publish_verified_submission(submission=submission, reviewer=self.user).pk, published.pk)
+
+    def test_orphaned_customer_map_never_becomes_global(self):
+        self._private_starter()
+        self.starter.created_by_team = None
+        self.starter.save(update_fields=["created_by_team"])
+        self.assertFalse(visible_templates_for_team(self.team).filter(pk=self.starter.pk).exists())
+
+    def test_deleting_team_removes_private_curated_starter_instead_of_exposing_it(self):
+        owner = Team.objects.create(name="Demo owner", slug="demo-owner")
+        private = DeviceTemplate.objects.create(
+            name="Demo starter",
+            created_by_team=owner,
+            device_type="plc",
+            protocol="modbus_tcp",
+            mapping_strategy="site_defined",
+            register_map={},
+        )
+        owner.delete()
+        self.assertFalse(DeviceTemplate.objects.filter(pk=private.pk).exists())
+
+    def test_share_action_is_explicit_and_keeps_mapping_private(self):
+        self._private_starter()
+        self._save_and_confirm()
+        Membership.objects.create(team=self.team, user=self.user, role=ROLE_ADMIN)
+        self.client.force_login(self.user)
+        url = reverse("web_team:devices:device_datapoint_mapping", args=[self.team.slug, self.device.pk])
+        page = self.client.get(url)
+        self.assertContains(page, "Share this mapping with Novena")
+        self.client.post(url, {"action": "share_with_novena"})
+        self.assertFalse(TemplateShareSubmission.objects.exists())
+        response = self.client.post(
+            url,
+            {
+                "action": "share_with_novena",
+                "share_consent": "on",
+                "source_document_url": "https://manufacturer.example/manual",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(TemplateShareSubmission.objects.count(), 1)
+        page = self.client.get(url)
+        self.assertContains(page, "already been submitted")
 
     def test_unconfirmed_site_mapping_is_excluded_from_connector_config(self):
         save_device_datapoint_map(device=self.device, team=self.team, datapoints=self.datapoints)

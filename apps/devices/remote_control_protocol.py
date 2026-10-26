@@ -27,6 +27,7 @@ LEGACY_DEVICE_METHOD_MAP = {
 
 GATEWAY_STAGE_TO_COMMAND_STATUS = {
     "gateway_received": "gateway_received",
+    "diagnostic_completed": "verified",
     "executing": "executing",
     "field_protocol_accepted": "field_protocol_accepted",
     "field_execution_verified": "verified",

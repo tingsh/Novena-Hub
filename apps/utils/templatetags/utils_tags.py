@@ -13,3 +13,8 @@ def get_item(dictionary, key):
 @register.filter
 def site_datetime(value, site):
     return format_site_datetime(value, site)
+
+
+@register.filter
+def display_unit(value):
+    return {"degC": "°C", "degF": "°F"}.get(value, value)

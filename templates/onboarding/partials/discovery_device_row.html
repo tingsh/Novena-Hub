@@ -2,10 +2,12 @@
      class="border-t border-base-content/10 first:border-t-0" data-equipment-row="candidate"
      data-row-status="{{ candidate.row_status }}"
      x-data="{
-         open: false,
+         open: {% if template_workflow and active_candidate.action_ref == candidate.action_ref %}true{% else %}false{% endif %},
+         templateFlow: '{% if template_workflow and active_candidate.action_ref == candidate.action_ref %}{{ template_workflow }}{% endif %}',
          templateId: '{% if candidate.matched_template %}{{ candidate.matched_template.id }}{% endif %}',
          templateName: '{{ candidate.matched_template_name|escapejs }}',
          templateTrust: '{{ candidate.trust_label|escapejs }}',
+         teamMatchConfirmed: false,
          equipmentName: '{{ candidate.signature|escapejs }}',
          connectionType: '{{ candidate.connection|escapejs }}',
          host: '{{ candidate.host|escapejs }}',
@@ -16,6 +18,24 @@
          skipped: {% if candidate.skipped_for_now %}true{% else %}false{% endif %},
          searchOpen: false,
          dirty: false,
+         templatePreview: null,
+         previewLoading: false,
+         previewError: '',
+         async loadTemplatePreview() {
+             const selected = this.templateId;
+             this.templatePreview = null;
+             this.previewError = '';
+             if (!selected) return;
+             this.previewLoading = true;
+             try {
+                 const response = await fetch('{% url "web_team:onboarding:equipment_template_preview" request.team.slug %}?template_id=' + encodeURIComponent(selected));
+                 if (!response.ok) throw new Error('Signal map unavailable. Choose the template again.');
+                 const preview = await response.json();
+                 if (this.templateId === selected) this.templatePreview = preview;
+             } catch (error) {
+                 if (this.templateId === selected) this.previewError = error.message;
+             } finally { if (this.templateId === selected) this.previewLoading = false; }
+         },
          connectionReady() {
              const unit = Number(this.slaveId);
              if (!Number.isInteger(unit) || unit < 1 || unit > 247) return false;
@@ -25,12 +45,18 @@
              }
              return this.connectionType === 'modbus_rtu';
          },
-         readyToValidate() { return this.seenNow && !this.skipped && Boolean(this.templateId) && this.connectionReady(); }
+         readyToValidate() {
+             return this.seenNow && !this.skipped && this.connectionReady()
+                 && Boolean(this.templatePreview)
+                 && (this.templatePreview.mapping_strategy === 'site_defined' || this.templatePreview.signals.length > 0)
+                 && (!this.templatePreview.team_private || this.teamMatchConfirmed);
+         }
      }"
      :data-equipment-dirty="dirty ? 'true' : 'false'"
      @beforeunload.window="if (dirty) { $event.preventDefault(); $event.returnValue = '' }"
      @submit.window="dirty = false"
-     @template-picked="templateId = $event.detail.id; templateName = $event.detail.name; templateTrust = $event.detail.trust; skipped = false; searchOpen = false; dirty = true">
+     x-init="if (templateId) loadTemplatePreview()"
+     @template-picked="templateId = $event.detail.id; templateName = $event.detail.name; templateTrust = $event.detail.trust; teamMatchConfirmed = false; skipped = false; searchOpen = false; dirty = true; loadTemplatePreview()">
     <div class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 lg:grid-cols-[minmax(11rem,1.5fr)_minmax(9rem,1fr)_minmax(8rem,0.9fr)_minmax(11rem,1.2fr)_6rem_2rem] lg:items-center">
         <div class="min-w-0">
             <p class="truncate text-sm font-bold text-base-content" x-text="equipmentName">{{ candidate.signature }}</p>
@@ -41,7 +67,7 @@
             <p class="mt-0.5 text-[11px] uppercase tracking-wide text-base-content/40">{{ candidate.connection|default:"Unknown" }}</p>
         </div>
         <div class="col-start-1 lg:col-auto">
-            <span x-show="readyToValidate()" class="badge badge-success badge-outline badge-sm whitespace-nowrap">Ready to validate</span>
+            <span x-show="readyToValidate()" class="badge badge-success badge-outline badge-sm whitespace-nowrap">Ready to test</span>
             <span x-show="!readyToValidate() && hasSavedDraft" class="badge badge-ghost badge-sm whitespace-nowrap">Saved as draft</span>
             <span x-show="!readyToValidate() && !hasSavedDraft" class="badge badge-warning badge-outline badge-sm whitespace-nowrap">Needs template</span>
             {% if candidate.skipped_for_now %}<p class="mt-1 text-[11px] text-base-content/45">Skipped for now</p>{% endif %}
@@ -57,18 +83,17 @@
             <span x-text="open ? 'Close' : 'Review'">Review</span>
             <i class="fa fa-chevron-down ml-1 text-[10px] transition-transform" :class="open && 'rotate-180'" aria-hidden="true"></i>
         </button>
-        <span class="col-start-2 row-start-2 flex h-6 w-6 items-center justify-center self-end rounded-full border border-base-content/15 text-[10px] text-base-content/25 lg:col-auto lg:row-auto lg:self-auto"
-              title="Review and validate this equipment">
-            <i class="fa {% if candidate.seen_in_latest_scan %}fa-minus{% else %}fa-clock-rotate-left{% endif %}" aria-hidden="true"></i>
-        </span>
     </div>
 
     <div x-show="open" x-cloak class="border-t border-base-content/10 bg-base-200/25 px-4 py-4">
+        <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="review_equipment">
         <input type="hidden" name="candidate_key_{{ candidate.action_ref }}" value="{{ candidate.candidate_key }}">
         <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-                <p class="text-sm font-bold text-base-content">Review this equipment before validation</p>
-                <p class="mt-1 text-xs text-base-content/55">Choose the matching template. Novena will perform a read-only live check before marking this row complete.</p>
+                <p class="text-sm font-bold text-base-content">Review the template and connection</p>
+                <p class="mt-1 text-xs text-base-content/55">Preview the template's signal map, test live readings, then confirm they match your equipment.</p>
             </div>
         </div>
         {% if not candidate.seen_in_latest_scan %}
@@ -87,17 +112,19 @@
                  @click.outside="searchOpen = false"
                  @keydown.escape.window="searchOpen = false">
                 <span class="label-text mb-1 text-xs font-bold">Equipment template</span>
+                <p class="mb-2 text-[11px] text-base-content/50">Choose the exact manufacturer and model. Only templates for this connection type appear here.</p>
                 <input type="hidden" name="template_{{ candidate.action_ref }}" :value="templateId">
                 <input type="hidden" name="context" value="guided_setup">
                 <input type="hidden" name="candidate_index" value="{{ candidate.action_ref }}">
+                <input type="hidden" name="protocol" value="{{ candidate.connection }}">
                 <div x-show="templateId" class="mb-2 flex items-center justify-between gap-3 rounded-lg border border-success/25 bg-success/5 px-3 py-2">
                     <span class="min-w-0">
                         <span class="block truncate text-sm font-bold" x-text="templateName"></span>
                         <span class="block text-[11px] text-base-content/45" x-text="templateTrust"></span>
                     </span>
                     <button type="button" class="btn btn-ghost btn-xs" aria-label="Clear selected template"
-                            @click="templateId = ''; templateName = ''; templateTrust = ''; searchOpen = true; dirty = true">
-                        Change
+                            @click="templateId = ''; templateName = ''; templateTrust = ''; templatePreview = null; searchOpen = true; dirty = true">
+                        Remove template
                     </button>
                 </div>
                 <div class="relative">
@@ -105,8 +132,10 @@
                            placeholder="Search manufacturer or model"
                            class="input input-bordered input-sm w-full rounded-lg pr-9"
                            hx-get="{% url 'web_team:devices:template_library_search' request.team.slug %}"
-                           hx-trigger="focus once, keyup changed delay:300ms"
+                           hx-trigger="focus, keyup changed delay:300ms"
                            hx-target="#template-results-{{ candidate.action_ref }}"
+                           hx-select="unset"
+                           hx-swap="innerHTML"
                            hx-include="#template-search-context-{{ candidate.action_ref }}"
                            hx-sync="this:replace"
                            @focus="searchOpen = true">
@@ -142,6 +171,11 @@
             </details>
             {% endif %}
         </div>
+        {% include "onboarding/partials/template_signal_preview.html" %}
+        <label x-show="templatePreview?.team_private" x-cloak class="mt-3 flex items-start gap-2 rounded-lg border border-warning/20 bg-warning/5 p-3 text-xs">
+            <input type="checkbox" name="confirm_private_map_{{ candidate.action_ref }}" x-model="teamMatchConfirmed" class="checkbox checkbox-sm mt-0.5">
+            <span>I checked the exact model and firmware<span x-show="templatePreview?.program_scope"> and the PLC program/register assignment <strong x-text="templatePreview?.program_scope"></strong></span>. I will test live readings on this equipment before deployment.</span>
+        </label>
         {% if candidate.connection == "modbus_tcp" and not candidate.protocol_verified %}
         <p class="mt-3 text-xs text-amber-700 dark:text-amber-300">TCP endpoint reachable; Modbus unit and register map are not yet verified.</p>
         {% endif %}
@@ -149,16 +183,7 @@
         <p class="mt-3 text-xs font-semibold text-info">Novena template request: {{ candidate.template_request_reference }}</p>
         {% endif %}
         <p class="mt-3 text-xs text-base-content/50">{{ candidate.confidence_explanation }}</p>
-        <div class="mt-4 flex flex-col gap-3 border-t border-base-content/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-                <p class="text-xs font-bold text-base-content/65">Can’t find the matching template?</p>
-                <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                    <button type="submit" name="request_candidate_template" value="{{ candidate.action_ref }}" formnovalidate
-                            class="text-xs font-semibold text-primary hover:underline">Request a Novena template</button>
-                    <button type="submit" name="start_custom_template" value="{{ candidate.action_ref }}" formnovalidate
-                            class="text-xs font-semibold text-primary hover:underline">Create a custom template</button>
-                </div>
-            </div>
+        <div class="mt-4 flex flex-col gap-3 border-t border-base-content/10 pt-4 sm:flex-row sm:items-center sm:justify-end">
             <div class="flex flex-wrap items-center justify-end gap-2">
                 {% if candidate.draft_saved %}
                 <button type="submit" name="remove_candidate_draft" value="{{ candidate.action_ref }}" formnovalidate
@@ -185,8 +210,33 @@
                 <button type="submit" name="save_and_validate" value="{{ candidate.action_ref }}"
                         x-show="readyToValidate()" x-cloak @click="dirty = false"
                         class="btn btn-primary btn-sm rounded-lg" {% if not guided_setup_available %}disabled{% endif %}>
-                    Save and validate<i class="fa fa-arrow-right ml-2" aria-hidden="true"></i>
+                    <span x-text="templatePreview?.mapping_strategy === 'site_defined' ? 'Map signals' : 'Test live readings'">Test live readings</span><i class="fa fa-arrow-right ml-2" aria-hidden="true"></i>
                 </button>
+            </div>
+        </div>
+        </form>
+
+        <div class="mt-5 rounded-xl border border-base-content/10 bg-base-100 p-4" aria-label="Template options for this equipment">
+            <p class="text-xs font-bold text-base-content/65">No matching template in the library?</p>
+            <p class="mt-1 text-xs text-base-content/50">If you do not have its register list, send the model and manual to Novena. A technician can create a private map when the register list is available.</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary btn-sm rounded-lg" @click="templateFlow = templateFlow === 'request' ? '' : 'request'" :aria-expanded="(templateFlow === 'request').toString()" aria-controls="template-request-panel-{{ candidate.action_ref }}">{% if candidate.template_request_reference %}View Novena request{% else %}Get Novena setup help{% endif %}</button>
+                <button type="button" class="btn btn-outline btn-sm rounded-lg" @click="templateFlow = templateFlow === 'custom' ? '' : 'custom'" :aria-expanded="(templateFlow === 'custom').toString()" aria-controls="custom-template-panel-{{ candidate.action_ref }}">Map signals with a register list</button>
+            </div>
+            <div id="template-request-panel-{{ candidate.action_ref }}" x-show="templateFlow === 'request'" x-cloak class="mt-4">
+                {% if candidate.template_request_reference %}
+                <div class="rounded-lg border border-info/25 bg-info/5 p-4 text-sm text-base-content/70">
+                    <p class="font-bold">Template request sent</p>
+                    <p class="mt-1">Support reference: <span class="font-mono">{{ candidate.template_request_reference }}</span></p>
+                    {% if candidate.template_request_id %}<a class="link link-primary mt-2 block" href="{% url 'web_team:devices:template_help_detail' request.team.slug candidate.template_request_id %}">See status and Novena updates</a>{% endif %}
+                    <p class="mt-2 text-xs">You can continue by creating a private template if you have the equipment register map.</p>
+                </div>
+                {% else %}
+                {% include "onboarding/partials/template_request_form.html" with active_candidate=candidate %}
+                {% endif %}
+            </div>
+            <div id="custom-template-panel-{{ candidate.action_ref }}" x-show="templateFlow === 'custom'" x-cloak class="mt-4">
+                {% include "onboarding/partials/custom_template_form.html" with active_candidate=candidate %}
             </div>
         </div>
     </div>

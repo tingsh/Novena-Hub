@@ -9,17 +9,20 @@
         <div>
             <h5 class="text-sm font-bold text-base-content flex items-center gap-2">
                 {{ template.name }}
-                {% if template.is_verified %}
+                {% if template.evidence_status == "field_verified" %}
                 <span class="badge badge-success badge-xs gap-1 py-1.5 px-2 text-[8px] uppercase font-bold text-white">
-                    <i class="fa fa-check-circle text-[7px]"></i> Verified
+                    <i class="fa fa-check-circle text-[7px]"></i> Field verified
                 </span>
+                {% elif template.evidence_status == "documented" %}
+                <span class="badge badge-info badge-xs py-1.5 px-2 text-[8px] uppercase font-bold">Documented draft</span>
                 {% elif template.source == "ai_generated" %}
                 <span class="badge badge-warning badge-xs gap-1 py-1.5 px-2 text-[8px] uppercase font-bold">
                     <i class="fa fa-robot text-[7px]"></i> AI Draft
                 </span>
                 {% endif %}
             </h5>
-            <p class="text-[10px] text-base-content/40 uppercase tracking-widest font-mono mt-0.5">{{ template.manufacturer }} • {{ template.get_protocol_display }}</p>
+            <p class="text-[10px] text-base-content/40 uppercase tracking-widest font-mono mt-0.5">{{ template.manufacturer }} • {{ template.model_number }} • {{ template.get_protocol_display }}{% if template.catalog_revision %} • r{{ template.catalog_revision }}{% endif %}</p>
+            {% if template.evidence_status == "documented" and template.source_url %}<a href="{{ template.source_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary-500 underline" onclick="event.stopPropagation()">OEM source</a>{% endif %}
         </div>
     </div>
     <div class="text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity">

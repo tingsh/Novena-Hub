@@ -64,6 +64,11 @@ def _report_received_at(report: dict):
     return None
 
 
+def discovery_report_is_stale(report: dict) -> bool:
+    received_at = _report_received_at(report)
+    return bool(received_at and timezone.now() - received_at > DISCOVERY_REPORT_STALE_AFTER)
+
+
 def _parse_discovery_timestamp(value):
     if not value:
         return None
@@ -273,6 +278,42 @@ def get_or_create_setup_run(*, team, gateway: Gateway, initiated_by=None) -> Dep
         .order_by("-created_at")
         .first()
     )
+    # A failed read-only equipment check is still part of onboarding. Earlier
+    # versions marked its run terminal before any configuration was deployed.
+    # Resume that run so the customer's saved row remains editable.
+    previous = (
+        DeploymentSetupRun.objects.select_for_update()
+        .filter(team=team, gateway=gateway, state=DeploymentSetupRun.State.FAILED)
+        .exclude(pk=active.pk if active else None)
+        .order_by("-created_at")
+        .first()
+    )
+    recoverable = (
+        previous
+        and not previous.configurations.exists()
+        and previous.items.filter(state=DeploymentSetupItem.State.NEEDS_ATTENTION).exists()
+    )
+    empty_new_run = (
+        active
+        and not active.items.exists()
+        and not active.configurations.exists()
+        and active.events.count() == 1
+        and active.events.filter(event_type="setup_started").exists()
+    )
+    if recoverable and (not active or empty_new_run):
+        if empty_new_run:
+            active.state = DeploymentSetupRun.State.CANCELLED
+            active.save(update_fields=["state", "updated_at"])
+            append_setup_event(
+                active,
+                "empty_run_replaced",
+                "An empty setup run was replaced by the earlier equipment review.",
+            )
+        previous.state = DeploymentSetupRun.State.CONFIGURING
+        previous.current_step = "equipment"
+        previous.completed_at = None
+        previous.save(update_fields=["state", "current_step", "completed_at", "updated_at"])
+        return previous
     if active:
         return active
     run = DeploymentSetupRun.objects.create(
@@ -324,15 +365,18 @@ def gateway_readiness(gateway: Gateway) -> dict:
         {
             "key": "tls",
             "label": "Connection security",
-            "status": "pass" if gateway.tls_ok is not False else "fail",
+            "status": "pass" if gateway.tls_ok is True else "fail" if gateway.tls_ok is False else "warning",
             "message": (
                 "Secure connection verified."
-                if gateway.tls_ok is not False
+                if gateway.tls_ok is True
                 else "The secure connection could not be verified."
+                if gateway.tls_ok is False
+                else "The Gateway has not reported its connection security yet."
             ),
             "action": (
-                "Check the Gateway date and time. If the problem continues, "
-                "ask a technician to check its security certificate."
+                "Keep the Gateway online and contact Novena support if this remains unconfirmed."
+                if gateway.tls_ok is None
+                else "Contact Novena support to check the Gateway time and secure connection."
             ),
             "blocking": True,
         },
@@ -425,10 +469,15 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
     discovery_meta = (run.summary or {}).get("discovery") or {}
     scan_id = str(discovery_meta.get("active_scan_id") or "")
     if not scan_id:
+        locally_cancelled = discovery_meta.get("last_status") == "cancelled"
         return {
-            "key": "idle",
+            "key": "cancelled" if locally_cancelled else "idle",
             "title": "Ready to scan",
-            "message": "Connect your equipment to the Gateway, then start a scan.",
+            "message": (
+                "The previous scan was stopped. You can retry when the equipment is ready."
+                if locally_cancelled
+                else "Connect your equipment to the Gateway, then start a scan."
+            ),
             "scan_id": "",
             "progress": {"completed": 0, "total": 0},
             "scope_label": "Scanning wired Ethernet and Modbus RTU only",
@@ -439,6 +488,11 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
     matching_report = report if str(report.get("scan_id") or "") == scan_id else {}
     status = matching_report.get("status")
     devices = matching_report.get("devices") or []
+    skipped_configured = [
+        item
+        for item in matching_report.get("skipped_configured") or []
+        if isinstance(item, dict) and item.get("reason") in {"already_configured", "configured_or_busy"}
+    ]
     progress = matching_report.get("progress") or {"completed": 0, "total": 0}
     scope_label = discovery_meta.get("scope_label") or "Scanning wired Ethernet and Modbus RTU only"
     targeted = discovery_meta.get("mode") == "approved_target"
@@ -447,6 +501,8 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
         "progress": progress,
         "interfaces": matching_report.get("interfaces") or [],
         "device_count": len(devices),
+        "configured_count": len(skipped_configured),
+        "configured_endpoints": [item.get("interface", "") for item in skipped_configured],
         "scope_label": scope_label,
         "phase_label": _discovery_phase_label(matching_report),
     }
@@ -474,14 +530,34 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
         }
     if status == "complete":
         if devices:
+            qualifier = "new " if skipped_configured else ""
+            plural = "s" if len(devices) != 1 else ""
+            device_label = f"{len(devices)} {qualifier}device{plural}"
             return {
                 **base,
                 "key": "found",
-                "title": f"Found {len(devices)} device{'s' if len(devices) != 1 else ''}",
+                "title": f"Found {device_label}",
                 "message": (
                     "The endpoint is reachable. Select a template and confirm its unit ID before validation."
                     if targeted
-                    else "Select the equipment you want to configure."
+                    else (
+                        f"Select new equipment to configure. {len(skipped_configured)} already configured "
+                        f"device{'s were' if len(skipped_configured) != 1 else ' was'} skipped."
+                        if skipped_configured
+                        else "Select the equipment you want to configure."
+                    )
+                ),
+            }
+        if skipped_configured:
+            return {
+                **base,
+                "key": "configured_only",
+                "title": "No new equipment found",
+                "message": (
+                    f"{len(skipped_configured)} already configured device"
+                    f"{'s were' if len(skipped_configured) != 1 else ' was'} skipped to avoid "
+                    "disturbing existing connections. "
+                    "You can review existing equipment below or connect another device and retry the scan."
                 ),
             }
         return {
@@ -491,13 +567,13 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             "message": (
                 "The Gateway could not reach that IP and port. Check the address, route, and simulator port."
                 if targeted
-                else "Check power and cabling, retry the scan, or add the device manually."
+                else "Check equipment power and field wiring, then retry or check a known Modbus TCP address below."
             ),
         }
     if status == "cancelled":
         return {
             **base,
-            "key": "idle",
+            "key": "cancelled",
             "title": "Ready to scan",
             "message": "The previous scan was cancelled. You can retry when the equipment is ready.",
         }
@@ -508,18 +584,19 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
             "title": "Scan failed",
             "message": customer_safe_error((matching_report.get("errors") or [{}])[0].get("error", "")),
         }
-    if status == "running":
-        received_at = _report_received_at(matching_report)
-        if received_at and timezone.now() - received_at > DISCOVERY_REPORT_STALE_AFTER:
-            return {
-                **base,
-                "key": "error",
-                "title": "Scan timed out",
-                "message": (
-                    "The Gateway stopped reporting scan progress. You can retry the scan, "
-                    "or check the Gateway logs if this keeps happening."
-                ),
-            }
+    if status == "running" and (
+        discovery_report_is_stale(matching_report)
+        or (not _report_received_at(matching_report) and started_at and now - started_at > DISCOVERY_REPORT_STALE_AFTER)
+    ):
+        return {
+            **base,
+            "key": "error",
+            "title": "Scan timed out",
+            "message": (
+                "The Gateway stopped reporting scan progress. You can retry the scan, "
+                "or check the Gateway logs if this keeps happening."
+            ),
+        }
 
     command_id = discovery_meta.get("command_id")
     if command_id:
@@ -564,6 +641,13 @@ def discovery_scan_state(run: DeploymentSetupRun) -> dict:
                 "title": "Scan failed",
                 "message": customer_safe_error(rpc.error_message),
             }
+    if not matching_report and started_at and now - started_at > DISCOVERY_REPORT_STALE_AFTER:
+        return {
+            **base,
+            "key": "error",
+            "title": "Scan did not start",
+            "message": "The Gateway did not confirm this scan. Check its connection, then retry the scan.",
+        }
     if status == "running" or (run.state == DeploymentSetupRun.State.DISCOVERING and not status):
         return {
             **base,
@@ -830,17 +914,13 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
                         item.state = DeploymentSetupItem.State.AWAITING_CONFIRMATION
                         item.trust_level = DeploymentSetupItem.Trust.UNVALIDATED
                     else:
-                        item.state = DeploymentSetupItem.State.VALIDATED
-                        item.trust_level = (
-                            DeploymentSetupItem.Trust.NOVENA_VERIFIED
-                            if item.selected_template and item.selected_template.is_verified
-                            else DeploymentSetupItem.Trust.CUSTOMER_VALIDATED
-                        )
+                        item.state = DeploymentSetupItem.State.AWAITING_CONFIRMATION
+                        item.trust_level = DeploymentSetupItem.Trust.UNVALIDATED
                     message = result.get("message") or "Selected live signals were read successfully."
                     event_type = "validation_succeeded"
                     if item.device and not device_requires_mapping(item.device):
                         metadata = dict(item.device.metadata or {})
-                        metadata["guided_setup_validation"] = "validated"
+                        metadata["guided_setup_validation"] = "awaiting_confirmation"
                         item.device.metadata = metadata
                         item.device.save(update_fields=["metadata", "updated_at"])
                 else:
@@ -984,14 +1064,18 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
         run.state = DeploymentSetupRun.State.COMPLETED_ATTENTION
         run.current_step = "go_live"
         run.completed_at = timezone.now()
-    elif states and all(
-        state
-        in {
-            DeploymentSetupItem.State.NEEDS_ATTENTION,
-            DeploymentSetupItem.State.FAILED,
-            DeploymentSetupItem.State.ROLLED_BACK,
-        }
-        for state in states
+    elif (
+        latest_config
+        and states
+        and all(
+            state
+            in {
+                DeploymentSetupItem.State.NEEDS_ATTENTION,
+                DeploymentSetupItem.State.FAILED,
+                DeploymentSetupItem.State.ROLLED_BACK,
+            }
+            for state in states
+        )
     ):
         run.state = DeploymentSetupRun.State.FAILED
         run.current_step = "verify"
@@ -1036,6 +1120,45 @@ def deployment_progress(run: DeploymentSetupRun) -> list[dict]:
         {"label": "First telemetry received", "status": state(telemetry_ready)},
         {"label": "Dashboard generated", "status": state(telemetry_ready)},
         {"label": "Alerts ready for review", "status": state(level >= 3 and not failed)},
+    ]
+
+
+def verification_progress(run: DeploymentSetupRun) -> list[dict]:
+    """Customer-facing milestones for the asynchronous equipment handoff."""
+    latest_config = run.configurations.first()
+    config_status = latest_config.status if latest_config else ""
+    telemetry_ready = run.items.filter(state=DeploymentSetupItem.State.TELEMETRY_CONFIRMED).exists()
+    completed = [
+        config_status in {"published", "accepted", "active"},
+        config_status == "active",
+        telemetry_ready,
+        run.state == DeploymentSetupRun.State.COMPLETED,
+    ]
+    needs_attention = run.state in {
+        DeploymentSetupRun.State.FAILED,
+        DeploymentSetupRun.State.COMPLETED_ATTENTION,
+    } or config_status in {"failed", "timed_out", "superseded", "rolled_back"}
+    current_step = next((index for index, done in enumerate(completed) if not done), None)
+    labels = [
+        "Applying configuration",
+        "Gateway applied",
+        "Live readings received",
+        "Monitoring ready",
+    ]
+    return [
+        {
+            "label": label,
+            "status": (
+                "complete"
+                if completed[index]
+                else "attention"
+                if index == current_step and needs_attention
+                else "current"
+                if index == current_step
+                else "pending"
+            ),
+        }
+        for index, label in enumerate(labels)
     ]
 
 

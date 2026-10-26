@@ -43,7 +43,7 @@ The first production target remains a lean VPS deployment:
 - Celery Beat for scheduled dispatch/recovery jobs.
 - MQTT consumer for Gateway telemetry/logs/attributes/RPC responses.
 - Mosquitto with Dynamic Security for per-Gateway credentials.
-- Local filesystem media for the first VPS deployment, including private Business Impact reports.
+- Local filesystem media for the first VPS deployment, including private Business Impact reports and equipment-request files.
 
 Teacher note: ASGI is the Python web interface that supports both normal HTTP requests and WebSockets. Novena uses WebSockets on device detail pages, so production must run the ASGI app through an ASGI-capable worker.
 
@@ -78,7 +78,7 @@ Production assets in this repo:
 | `deploy/mosquitto/mosquitto.prod.conf` | Mosquitto listeners for internal Hub traffic, private Dynamic Security control, and public TLS MQTT. |
 | `deploy/mosquitto/dynamic-security.example.json` | Safe seed/example for Dynamic Security roles. Real credentials must be generated on the server. |
 | `deploy/backups/backup_postgres.sh` | Compressed Postgres/TimescaleDB backup. |
-| `deploy/backups/backup_private_media.sh` | Backup for confidential Business Impact report files. |
+| `deploy/backups/backup_private_media.sh` | Backup for confidential reports and equipment-request files. |
 | `deploy/backups/restore_postgres.sh` | Guarded database restore tool. |
 | `deploy/backups/backup_retention.sh` | Local daily/weekly/monthly retention cleanup. |
 | `deploy/systemd/*.example` | Nightly backup timer examples. |
@@ -232,6 +232,11 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 Deploy migrations before bringing the final app stack up. Web, worker, Beat, and MQTT consumer should run the same Git SHA.
+For customer template sharing, apply `devices.0034_templatesharesubmission` before exposing the Hub UI. Confirm staff can see the Template share submissions admin queue and that customer submissions remain team-private. The new table is covered by PostgreSQL backup and restore; see `docs/product/customer_template_review.md` for review and rollback rules.
+For template system v2, apply `devices.0035` and `0036`, then run `python manage.py migrate_template_request_files` and `python manage.py migrate_template_request_files --apply` before exposing customer pages. Verify a second dry run finds zero public manuals, Nginx denies the old public request-document path, and customer/staff downloads require authentication. Private request files are included in the `private_media` backup. The staff quote/delivery workflow and rollback procedure are in `docs/product/template_system_v2.md`.
+For the Device Template Library, back up PostgreSQL and apply `devices.0037` and `0038` before exposing its navigation entry. `0038` retires unsafe public seeds from new selection without deleting assigned revisions; review those retired rows and any affected installed equipment before onboarding new devices. Smoke test pre-Gateway browsing and private drafts, exact-model search, team isolation, saved revisions, the Guided Setup handoff and live-test/deploy separation. See `docs/product/device_template_library.md` for publication rules and rollback.
+For the energy catalog release, run `python manage.py import_energy_catalog --dry-run` from the new web image after migrations. Review the listed legacy templates and assigned-device counts, then run `python manage.py import_energy_catalog` from that image. The importer retires legacy energy maps from new selection but preserves every assigned device and its pinned template revision. Deploy the matching Gateway decoder before live testing ABB invalid-value sentinels and nonfinite meter values. New maps enter as documented drafts; do not promote them to field verified until representative hardware readings match the meter display or an independent reference. The source and qualification checklist are in `docs/product/energy_template_catalog.md`.
+The automation notification path requires `events.0004_automation_email_type` and an active Celery worker. After deployment, exercise a disposable automation email to a designated test recipient and verify both its `EmailDelivery` status and receipt outside the Hub. A queued automation log or local console email alone does not prove delivery.
 
 ## Mosquitto Dynamic Security
 
@@ -298,7 +303,7 @@ Current blocker checks include:
 - remote-control audit retention at least seven years;
 - controlled teams have acknowledged policy bundles;
 - Guided Setup TTL/retry bounds;
-- private Business Impact report storage separated from public media;
+- private Business Impact and template-request storage separated from public media;
 - WeasyPrint import works for PDF rendering.
 
 Warnings include:
@@ -325,7 +330,7 @@ First restore drill:
 RESTORE_DATABASE_URL=postgresql://novena:<password>@localhost:5432/novena_restore_test BACKUP_FILE=/opt/novena/Novena-Hub/backups/postgres/daily/<backup>.dump.gz RESTORE_CONFIRM=restore-now ./deploy/backups/restore_postgres.sh
 ```
 
-Also restore private media into a disposable directory and confirm Business Impact report files match restored database rows.
+Also restore private media into a disposable directory and confirm Business Impact reports and equipment-request files match restored database rows.
 
 Teacher note: a database restore recovers rows. It does not automatically recover files stored on disk. That is why private report backup is separate.
 
@@ -391,6 +396,9 @@ For a bad database migration:
 5. Run migrations and readiness checks.
 
 For governed remote-control deployments, keep command workers stopped after restore and run the governed-control recovery reset from `docs/governed_remote_control_operations.md`. Restored command/outbox rows must not execute accidentally.
+If reverting to a code version before the energy catalog picker filter, verify energy template selection before onboarding another meter: that older code may show legacy rows that the importer retired. Do not reverse `devices.0033_energy_template_catalog` while devices reference catalog revisions; retain the columns and rows or restore a matching database backup.
+If reverting to code before customer template sharing, keep `devices.0034_templatesharesubmission` and its rows. Sharing and the review queue will be unavailable on the older code, but retaining the table preserves customer submissions for a later forward deploy.
+If reverting the Device Template Library UI, retain `devices.0037`–`0038` and their rows. Saved revisions, drafts and anonymous community publication records remain in PostgreSQL; restoring a pre-migration backup would discard work created after that snapshot. Do not reactivate retired public templates without a new evidence review.
 
 ## Upgrade Path
 

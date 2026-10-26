@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -88,6 +89,39 @@ class SharedDashboardTests(TestCase):
         self.assertContains(response, "Test Team - Reception Screen")
         self.link.refresh_from_db()
         self.assertEqual(self.link.view_count, 1)
+
+    def test_changing_public_link_password_revokes_prior_unlock(self):
+        self.link.set_password("first-password")
+        self.link.save()
+        url = reverse("dashboard_public:view", args=[self.link.token])
+        response = self.client.post(url, {"password": "first-password"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(self.client.get(url), "Test Team - Reception Screen")
+
+        self.link.set_password("second-password")
+        self.link.save()
+        self.assertContains(self.client.get(url), "Protected Dashboard")
+        self.assertContains(self.client.post(url, {"password": "first-password"}), "Incorrect password.")
+        self.assertContains(self.client.post(url, {"password": "second-password"}), "Test Team - Reception Screen")
+
+        self.link.is_active = False
+        self.link.save()
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_public_summary_excludes_another_teams_site(self):
+        from apps.devices.models import Site
+
+        Site.objects.create(team=self.team, name="Own Cold Room")
+        other_team = Team.objects.create(name="Other Team", slug="other-team")
+        Site.objects.create(team=other_team, name="Other Team Private Site")
+
+        with patch(
+            "apps.telemetry.services.get_site_summary_stats",
+            return_value={"total_devices": 0, "active_alerts": 0},
+        ):
+            response = self.client.get(reverse("dashboard_public:view", args=[self.link.token]))
+        self.assertContains(response, "Own Cold Room")
+        self.assertNotContains(response, "Other Team Private Site")
 
     def test_public_dashboard_kiosk_mode(self):
         url = reverse("dashboard_public:view", args=[self.link.token]) + "?kiosk=1"
@@ -217,6 +251,93 @@ class AdaptiveOperationsDashboardTests(TestCase):
         self.assertEqual(dashboard["metric_groups"][0]["label"], "Energy")
         self.assertEqual(dashboard["operations_trend"]["key"], "active_power")
         self.assertEqual(dashboard["top_devices"][0]["latest_reading"]["display_value"], "42.0")
+
+    def test_temperature_trend_averages_one_device_and_keeps_missing_hours_empty(self):
+        from zoneinfo import ZoneInfo
+
+        from django.core.cache import cache
+
+        from apps.dashboard.services import build_team_operations_dashboard
+        from apps.telemetry.models import TelemetryData
+
+        self.site.timezone = "Asia/Singapore"
+        self.site.save(update_fields=["timezone"])
+        template = self._template(
+            "Cold Room",
+            "temp_sensor",
+            {"temperature": {"label": "Temperature", "unit": "degC", "dashboard_role": "trend"}},
+            category="cold_chain",
+        )
+        device = self._device("Room A", template)
+        another_device = self._device("Room B", template)
+        now = timezone.now()
+        TelemetryData.objects.create(
+            device=device, timestamp=now - timedelta(minutes=2), key="temperature", value_numeric=2
+        )
+        TelemetryData.objects.create(
+            device=device, timestamp=now - timedelta(minutes=1), key="temperature", value_numeric=4
+        )
+        TelemetryData.objects.create(
+            device=another_device, timestamp=now - timedelta(minutes=1), key="temperature", value_numeric=80
+        )
+        cache.clear()
+
+        dashboard = build_team_operations_dashboard(self.team)
+        trend = dashboard["operations_trend"]
+
+        self.assertEqual(trend["values"][-1], 3)
+        self.assertIsNone(trend["values"][-2])
+        self.assertEqual(trend["unit"], "°C")
+        self.assertEqual(trend["labels"][-1], timezone.localtime(now, ZoneInfo("Asia/Singapore")).strftime("%H:%M"))
+        self.assertIn("Room A · hourly average", trend["subtitle"])
+        self.assertEqual(dashboard["top_devices"][0]["latest_reading"]["unit"], "°C")
+
+    def test_cumulative_energy_trend_uses_last_hourly_reading(self):
+        from django.core.cache import cache
+
+        from apps.dashboard.services import build_team_operations_dashboard
+        from apps.telemetry.models import TelemetryData
+
+        template = self._template("Energy Meter", "power_meter", {"energy": {"label": "Energy", "unit": "kWh"}})
+        device = self._device("Main Meter", template)
+        now = timezone.now()
+        TelemetryData.objects.create(
+            device=device, timestamp=now - timedelta(minutes=2), key="energy", value_numeric=100
+        )
+        TelemetryData.objects.create(
+            device=device, timestamp=now - timedelta(minutes=1), key="energy", value_numeric=101
+        )
+        cache.clear()
+
+        trend = build_team_operations_dashboard(self.team)["operations_trend"]
+
+        self.assertEqual(trend["values"][-1], 101)
+        self.assertIn("hourly last reading", trend["subtitle"])
+
+    def test_delayed_device_appears_in_needs_attention(self):
+        from apps.dashboard.services import build_team_operations_dashboard
+
+        template = self._template("Cold Room", "temp_sensor", {"temperature": {"unit": "degC"}}, "cold_chain")
+        device = self._device("Delayed Room", template)
+        device.last_telemetry_at = timezone.now() - timedelta(seconds=20)
+        device.save(update_fields=["last_telemetry_at"])
+
+        dashboard = build_team_operations_dashboard(self.team)
+
+        self.assertEqual(dashboard["devices_attention"], 1)
+        self.assertEqual(dashboard["attention_items"][0]["title"], "Delayed Room")
+        self.assertIn("Delayed - last sample", dashboard["attention_items"][0]["message"])
+
+    def test_unconfigured_alert_monitoring_is_not_presented_as_all_clear(self):
+        from apps.dashboard.services import build_team_operations_dashboard
+
+        template = self._template("Cold Room", "temp_sensor", {"temperature": {"unit": "degC"}}, "cold_chain")
+        self._device("Room A", template)
+
+        dashboard = build_team_operations_dashboard(self.team)
+
+        self.assertEqual(dashboard["active_rule_count"], 0)
+        self.assertIn("Alert monitoring not set up", [item["title"] for item in dashboard["attention_items"]])
 
     def test_vfd_with_default_energy_category_is_classified_as_motor(self):
         from apps.dashboard.services import build_team_operations_dashboard

@@ -42,7 +42,7 @@ def generate_connector_config(gateway):
     protocol_groups = {}
     for device in devices:
         validation_state = (device.metadata or {}).get("guided_setup_validation")
-        if validation_state in {"pending", "failed"}:
+        if validation_state and validation_state != "validated":
             logger.info("Device %s is not validated yet; excluding it from config", device.name)
             continue
         protocol = device.protocol or "modbus_tcp"
@@ -114,7 +114,10 @@ def _build_slave_config(device, is_tcp):
         "sendDataOnlyOnChange": connection.get("sendDataOnlyOnChange", False),
         "connectAttemptTimeMs": connection.get("connectAttemptTimeMs", 5000),
         "connectAttemptCount": connection.get("connectAttemptCount", 5),
-        "waitAfterFailedAttemptsMs": connection.get("waitAfterFailedAttemptsMs", 300000),
+        # Retry within the device's offline window after the attempt budget is
+        # exhausted. Five minutes leaves a recovered field device stale while
+        # the Gateway heartbeat remains healthy.
+        "waitAfterFailedAttemptsMs": connection.get("waitAfterFailedAttemptsMs", 30000),
         "timeseries": [],
         "attributes": [],
     }
@@ -153,6 +156,8 @@ def _build_slave_config(device, is_tcp):
             entry["multiplier"] = reg["multiplier"]
         if "offset" in reg:
             entry["offset"] = reg["offset"]
+        if "invalidValues" in reg:
+            entry["invalidValues"] = reg["invalidValues"]
 
         if reg.get("attribute"):
             slave["attributes"].append(entry)
@@ -226,7 +231,12 @@ def human_config_preview(gateway):
     from apps.subscriptions.enforcement import get_effective_polling_interval_seconds
 
     connectors = generate_connector_config(gateway)
-    devices = list(gateway.devices.select_related("template").all())
+    devices = [
+        device
+        for device in gateway.devices.select_related("template").all()
+        if not (device.metadata or {}).get("guided_setup_validation")
+        or (device.metadata or {}).get("guided_setup_validation") == "validated"
+    ]
     return {
         "gateway": gateway.name,
         "connector_count": len(connectors),

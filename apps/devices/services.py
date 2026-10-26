@@ -56,8 +56,11 @@ def gateways_for_team(team):
 
 
 def visible_templates_for_team(team):
-    """Global templates plus private templates created by the current team."""
-    return DeviceTemplate.objects.filter(Q(created_by_team__isnull=True) | Q(created_by_team=team))
+    """Selectable current templates; retired revisions remain on assigned devices."""
+    return DeviceTemplate.objects.filter(
+        Q(created_by_team=team) | Q(created_by_team__isnull=True, source__in=["curated", "community"]),
+        is_current=True,
+    ).exclude(evidence_status="retired")
 
 
 def normalize_gateway_serial(serial_number: str) -> str:
@@ -231,7 +234,7 @@ def _normalize_command_value(value):
 
 
 def _register_params_from_template(device, key, command_type, value):
-    from .datapoint_maps import effective_register_map
+    from .datapoint_maps import default_register_count, effective_register_map
 
     register = effective_register_map(device).get(key)
 
@@ -247,7 +250,7 @@ def _register_params_from_template(device, key, command_type, value):
     if "objectsCount" in register:
         params["objectsCount"] = register["objectsCount"]
     elif command_type == "read":
-        params["objectsCount"] = 1
+        params["objectsCount"] = default_register_count(register.get("type"))
     if command_type == "write":
         params["value"] = value
     return params
@@ -526,7 +529,7 @@ def _site_from_context(team, gateway=None, session=None):
     return team.site_set.order_by("created_at").first()
 
 
-def _commissioning_candidates(gateway):
+def _commissioning_candidates(gateway, setup_run=None):
     if not gateway:
         return []
 
@@ -535,7 +538,12 @@ def _commissioning_candidates(gateway):
     registered_ports = {
         str(device.port): device.name for device in gateway.devices.exclude(port__isnull=True).exclude(port="")
     }
-    latest_run = gateway.deployment_setup_runs.order_by("-created_at").first()
+    from .deployment_setup import TERMINAL_RUN_STATES
+
+    latest_run = setup_run or (
+        gateway.deployment_setup_runs.exclude(state__in=TERMINAL_RUN_STATES).order_by("-created_at").first()
+        or gateway.deployment_setup_runs.order_by("-created_at").first()
+    )
     draft_items = list(
         latest_run.items.filter(device__isnull=True, removed_at__isnull=True).select_related("selected_template")
         if latest_run
@@ -593,9 +601,7 @@ def _commissioning_candidates(gateway):
         )
         ready_for_validation = bool(matched_template and connection_ready and not skipped_for_now)
         status = "ready" if ready_for_validation else "needs_template"
-        row_status = (
-            "Ready to validate" if ready_for_validation else "Saved as draft" if draft_saved else "Needs template"
-        )
+        row_status = "Ready to test" if ready_for_validation else "Saved as draft" if draft_saved else "Needs template"
         template_requested = bool(draft_data.get("template_request_reference"))
         candidates.append(
             {
@@ -725,26 +731,38 @@ def _candidate_connection_ready(protocol, connection):
     return False
 
 
-def build_commissioning_context(team, gateway=None, session=None):
+def build_commissioning_context(team, gateway=None, session=None, setup_run=None):
     """Return a normalized, template-friendly commissioning state for onboarding and gateway pages."""
     gateway = _gateway_from_context(team, gateway=gateway, session=session)
     site = _site_from_context(team, gateway=gateway, session=session)
     devices = list(gateway.devices.select_related("template", "site") if gateway else [])
-    candidates = _commissioning_candidates(gateway)
-    latest_config = gateway.config_history.first() if gateway else None
+    candidates = _commissioning_candidates(gateway, setup_run=setup_run)
+    latest_config = (setup_run.configurations.first() if setup_run else None) or (
+        gateway.config_history.first() if gateway else None
+    )
     first_live_device = next((device for device in devices if device.last_telemetry_at), None)
-    setup_run = None
     readiness = None
     if gateway:
-        from .deployment_setup import gateway_readiness, sync_setup_run
+        from .deployment_setup import TERMINAL_RUN_STATES, gateway_readiness, sync_setup_run
         from .models import DeploymentSetupRun
 
-        setup_run = DeploymentSetupRun.objects.filter(team=team, gateway=gateway).order_by("-created_at").first()
+        if setup_run is None:
+            setup_run = (
+                DeploymentSetupRun.objects.filter(team=team, gateway=gateway)
+                .exclude(state__in=TERMINAL_RUN_STATES)
+                .order_by("-created_at")
+                .first()
+                or DeploymentSetupRun.objects.filter(team=team, gateway=gateway).order_by("-created_at").first()
+            )
         if setup_run:
             setup_run = sync_setup_run(setup_run)
         readiness = gateway_readiness(gateway)
 
-    setup_items = list(setup_run.items.select_related("device", "selected_template") if setup_run else [])
+    setup_items = list(
+        setup_run.items.filter(removed_at__isnull=True).select_related("device", "selected_template")
+        if setup_run
+        else []
+    )
     represented_setup_item_ids = {
         candidate["setup_item_id"] for candidate in candidates if candidate.get("setup_item_id")
     }
@@ -773,7 +791,11 @@ def build_commissioning_context(team, gateway=None, session=None):
         completed.append("device_scan_running")
     if devices or candidates:
         completed.append("devices_discovered")
-    if devices or any(candidate["matched_template"] for candidate in candidates):
+    if (
+        any(device.template_id for device in devices)
+        or any(item.selected_template_id for item in equipment_setup_items)
+        or any(candidate["matched_template"] for candidate in candidates)
+    ):
         completed.append("templates_selected")
     if latest_config and latest_config.status in {"accepted", "active"}:
         completed.append("config_pushed")
@@ -830,6 +852,7 @@ def build_commissioning_context(team, gateway=None, session=None):
         "completed_equipment_count": completed_equipment_count,
         "review_equipment_count": candidate_review_count + review_item_count,
         "validation_equipment_count": sum(item.state == "validating" for item in equipment_setup_items),
+        "confirmation_equipment_count": sum(item.state == "awaiting_confirmation" for item in equipment_setup_items),
         "ready_candidate_count": sum(candidate["ready_for_validation"] for candidate in candidates),
         "skipped_candidate_count": sum(candidate["skipped_for_now"] for candidate in candidates),
         "current_discovery_count": sum(candidate["seen_in_latest_scan"] for candidate in candidates),

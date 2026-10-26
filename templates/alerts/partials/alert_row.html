@@ -44,6 +44,7 @@
                     <button 
                         hx-post="{% url 'web_team:alerts:escalate_alert' request.team.slug alert.id %}"
                         hx-target="#alert-row-{{ alert.id }}"
+                        hx-select="unset"
                         hx-swap="outerHTML"
                         class="btn btn-xs btn-outline btn-error text-[10px] font-bold"
                     >
@@ -59,6 +60,7 @@
                 <button 
                     hx-post="{% url 'web_team:alerts:acknowledge_alert' request.team.slug alert.id %}"
                     hx-target="#alert-row-{{ alert.id }}"
+                    hx-select="unset"
                     hx-swap="outerHTML"
                     class="text-indigo-600 hover:text-indigo-900 dark:text-indigo-400 dark:hover:text-indigo-300 font-semibold"
                 >

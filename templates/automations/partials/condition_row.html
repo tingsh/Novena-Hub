@@ -1,0 +1,29 @@
+{% load form_tags %}
+<div class="condition-form p-5 bg-base-200/50 rounded-xl border border-base-300 relative group" data-condition-row>
+  {{ condition_form.non_field_errors }}
+  <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+    <div class="md:col-span-2">{% render_field condition_form.device %}</div>
+    <div class="md:col-span-3 w-full mt-2">
+      <label class="block mb-1 font-bold" for="{{ condition_form.telemetry_key.id_for_label }}">Reading to monitor</label>
+      <select name="{{ condition_form.telemetry_key.html_name }}" id="{{ condition_form.telemetry_key.id_for_label }}" class="select select-bordered w-full" data-condition-reading>
+        <option value="">Choose equipment first</option>
+        {% for signal in condition_form.signal_options %}
+          <option value="{{ signal.key }}" data-device-id="{{ signal.device_id }}" data-boolean="{{ signal.is_boolean|yesno:'true,false' }}" {% if signal.selected %}selected{% endif %}>{{ signal.label }}</option>
+        {% endfor %}
+      </select>
+      <small class="pg-text-muted">Only readings from this equipment's saved mapping can trigger an automation.</small>
+      {{ condition_form.telemetry_key.errors }}
+    </div>
+    <div class="md:col-span-2">{% render_field condition_form.operator %}</div>
+    <div class="md:col-span-2" data-condition-threshold>{% render_field condition_form.threshold %}</div>
+    <div class="md:col-span-1">{% render_field condition_form.duration_seconds %}</div>
+  </div>
+  {% if conditions.can_delete %}
+    <div class="absolute top-2 right-2">
+      <label class="label cursor-pointer justify-start gap-2 text-xs text-error/80 hover:text-error transition-colors">
+        {{ condition_form.DELETE }} <span class="label-text text-error/80">Remove</span>
+      </label>
+    </div>
+  {% endif %}
+  {% for hidden in condition_form.hidden_fields %}{{ hidden }}{% endfor %}
+</div>

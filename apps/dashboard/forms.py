@@ -11,6 +11,7 @@ class DateRangeForm(forms.Form):
 class SharedDashboardForm(forms.ModelForm):
     raw_password = forms.CharField(
         required=False,
+        label="Password to open link",
         widget=forms.PasswordInput(render_value=True),
         help_text="Leave blank for no password. If set, users will need this password to view the dashboard.",
     )
@@ -21,6 +22,10 @@ class SharedDashboardForm(forms.ModelForm):
         widgets = {
             "expires_at": forms.DateTimeInput(attrs={"type": "datetime-local"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["is_active"].label = "Enable this public link"
 
     def save(self, commit=True):
         instance = super().save(commit=False)

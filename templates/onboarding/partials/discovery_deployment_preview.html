@@ -2,29 +2,33 @@
     <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
             <p class="text-xs font-black uppercase tracking-widest text-base-content/45">Next step</p>
-            <h2 class="mt-1 text-xl font-black">Deploy validated equipment</h2>
+            <h2 class="mt-1 text-xl font-black">{% if scan_state.key == 'configured_only' and not commissioning.equipment_count %}Add another device{% else %}Deploy confirmed equipment{% endif %}</h2>
             {% if can_deploy %}
-            <p class="mt-1 text-sm text-base-content/55">{{ commissioning.completed_equipment_count }} validated equipment item{{ commissioning.completed_equipment_count|pluralize }} ready. You can review another item or continue onboarding.</p>
+            <p class="mt-1 text-sm text-base-content/55">{{ deployable_items|length }} customer-confirmed equipment item{{ deployable_items|length|pluralize }} ready. Only confirmed equipment will be deployed; drafts and skipped items stay saved for later.</p>
+            {% elif scan_state.key == 'configured_only' and not commissioning.equipment_count %}
+            <p class="mt-1 text-sm text-base-content/55">Your existing equipment remains configured. Connect another device to the Gateway, then retry the scan to set it up.</p>
             {% else %}
-            <p class="mt-1 text-sm text-base-content/55">Review an equipment row, choose its template, and complete the live validation to continue.</p>
+            <p class="mt-1 text-sm text-base-content/55">Preview a template, test live readings, and confirm they match your equipment to continue.</p>
             {% endif %}
         </div>
-        <form method="post">
+        {% if scan_state.key != 'configured_only' or commissioning.equipment_count %}
+        <form method="post" hx-boost="false">
             {% csrf_token %}
             <input type="hidden" name="action" value="deploy">
             <button class="btn btn-primary rounded-lg" type="submit" {% if not can_deploy %}disabled{% endif %}>
-                Deploy and continue<i class="fa fa-arrow-right ml-2"></i>
+                {% if can_deploy %}Deploy {{ deployable_items|length }} confirmed{% else %}Deploy and continue{% endif %}<i class="fa fa-arrow-right ml-2"></i>
             </button>
         </form>
+        {% endif %}
     </div>
-    {% if config_preview.devices %}
+    {% if deployable_items %}
     <div class="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-        {% for equipment in config_preview.devices %}
+        {% for equipment in deployable_items %}
         <div class="rounded-xl bg-base-200/50 p-4">
-            <p class="font-bold">{{ equipment.name }}</p>
-            <p class="mt-1 text-xs text-base-content/50">{{ equipment.protocol }} · {{ equipment.target }}{% if equipment.slave_id %} · Unit {{ equipment.slave_id }}{% endif %} · every {{ equipment.polling_interval }}s</p>
+            <p class="font-bold">{{ equipment.device.name }}</p>
+            <p class="mt-1 text-xs text-base-content/50">{{ equipment.device.get_protocol_display }} · {{ equipment.connection.host }}:{{ equipment.connection.port }} · Unit {{ equipment.connection.slave_id }}</p>
             <div class="mt-3 flex flex-wrap gap-1">
-                {% for key in equipment.telemetry_keys|slice:":8" %}<span class="badge badge-ghost badge-sm">{{ key }}</span>{% endfor %}
+                {% for point in equipment.datapoints|slice:":8" %}<span class="badge badge-ghost badge-sm">{{ point.label }}</span>{% endfor %}
             </div>
         </div>
         {% endfor %}

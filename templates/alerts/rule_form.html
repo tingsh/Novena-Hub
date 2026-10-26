@@ -32,7 +32,7 @@
                 <div>
                     <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Rule Name</label>
                     {{ form.name.errors }}
-                    <input type="text" name="name" value="{{ form.name.value|default:'' }}" class="input input-bordered w-full rounded-2xl font-bold" placeholder="e.g., Critical Boiler Temp" required>
+                    <input type="text" name="name" value="{{ form.name.value|default:'' }}" class="input input-bordered w-full rounded-2xl font-bold" placeholder="e.g., Cold room high temperature" required>
                 </div>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -65,8 +65,9 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-base-200/50 rounded-2xl border border-base-content/5">
                     <!-- Site -->
                     <div>
-                        <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Filter by Site</label>
-                        <select name="site" class="select select-bordered w-full rounded-2xl font-bold">
+                        <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Site to monitor</label>
+                        {{ form.site.errors }}
+                        <select id="alert-site" name="site" class="select select-bordered w-full rounded-2xl font-bold">
                             {% for choice in form.site.field.choices %}
                                 <option value="{{ choice.0 }}" {% if form.site.value|slugify == choice.0|slugify %}selected{% endif %}>{{ choice.1 }}</option>
                             {% endfor %}
@@ -74,8 +75,9 @@
                     </div>
                     <!-- Device -->
                     <div>
-                        <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Filter by Device</label>
-                        <select name="device" class="select select-bordered w-full rounded-2xl font-bold">
+                        <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Equipment to monitor</label>
+                        {{ form.device.errors }}
+                        <select id="alert-device" name="device" class="select select-bordered w-full rounded-2xl font-bold">
                             {% for choice in form.device.field.choices %}
                                 <option value="{{ choice.0 }}" {% if form.device.value|slugify == choice.0|slugify %}selected{% endif %}>{{ choice.1 }}</option>
                             {% endfor %}
@@ -87,7 +89,14 @@
                     <!-- Telemetry Key -->
                     <div>
                         <label class="block text-xs font-black uppercase tracking-widest text-base-content/40 mb-2">Reading to monitor</label>
-                        <input type="text" name="telemetry_key" value="{{ form.telemetry_key.value|default:'' }}" class="input input-bordered w-full rounded-2xl font-bold font-mono text-sm" placeholder="e.g., active_power" required>
+                        {{ form.telemetry_key.errors }}
+                        <select id="alert-reading" name="telemetry_key" class="select select-bordered w-full rounded-2xl font-bold text-sm" required>
+                            <option value="">Select equipment or site first</option>
+                            {% for signal in form.available_signals %}
+                                <option value="{{ signal.key }}" data-device-id="{{ signal.device_id }}" data-site-id="{{ signal.site_id }}" data-site-wide-safe="{{ signal.site_wide_safe|yesno:'true,false' }}" data-device-label="{{ signal.device_name }}{% if signal.device_name %} · {% endif %}{{ signal.label }}{% if signal.unit %} ({{ signal.unit }}){% endif %}" data-site-label="{{ signal.label }}{% if signal.unit %} ({{ signal.unit }}){% endif %}" {% if signal.selected %}selected{% endif %}>{{ signal.device_name }}{% if signal.device_name %} · {% endif %}{{ signal.label }}{% if signal.unit %} ({{ signal.unit }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="text-[10px] text-base-content/40 mt-2">A site-wide rule applies to every equipment here that reports this reading. Choose one equipment when units differ.</p>
                     </div>
                     <!-- Condition -->
                     <div>
@@ -191,7 +200,7 @@
                     <div class="relative">
                         <input type="text" name="q" placeholder="Search team members by name or email..." class="input input-bordered w-full rounded-2xl font-bold"
                                hx-get="{% url 'web_team:alerts:search_users' request.team.slug %}" 
-                               hx-trigger="keyup changed delay:300ms" hx-target="#search-results"
+                               hx-trigger="keyup changed delay:300ms" hx-target="#search-results" hx-select="unset" hx-swap="innerHTML"
                                @click.outside="document.getElementById('search-results').innerHTML = ''">
                         <div id="search-results"></div>
                     </div>
@@ -279,4 +288,40 @@
         </div>
     </form>
 </div>
+<script>
+(() => {
+    const site = document.getElementById('alert-site');
+    const device = document.getElementById('alert-device');
+    const reading = document.getElementById('alert-reading');
+    if (!site || !device || !reading) return;
+    function filterReadings() {
+        const selected = reading.selectedOptions[0];
+        const seenSiteKeys = new Set();
+        for (const option of reading.options) {
+            if (!option.value) continue;
+            let eligible = device.value
+                ? option.dataset.deviceId === device.value
+                : Boolean(site.value && option.dataset.siteId === site.value && option.dataset.siteWideSafe === 'true');
+            if (!device.value && eligible) {
+                if (seenSiteKeys.has(option.value)) eligible = false;
+                else seenSiteKeys.add(option.value);
+            }
+            option.textContent = device.value ? option.dataset.deviceLabel : option.dataset.siteLabel;
+            option.disabled = !eligible;
+            option.hidden = !eligible;
+        }
+        if (selected && selected.disabled) reading.value = '';
+        reading.options[0].textContent = device.value || site.value
+            ? 'Choose a mapped reading'
+            : 'Select equipment or site first';
+    }
+    site.addEventListener('change', filterReadings);
+    device.addEventListener('change', () => {
+        const mapped = [...reading.options].find(option => option.dataset.deviceId === device.value);
+        if (mapped) site.value = mapped.dataset.siteId;
+        filterReadings();
+    });
+    filterReadings();
+})();
+</script>
 {% endblock %}

@@ -1,43 +1,35 @@
 {% if include_scan_oob %}
-<div id="scan-state-panel"
-     hx-swap-oob="true"
-     class="p-6 border-b border-base-content/10 bg-base-200/30"
-     hx-get="{% url 'web_team:onboarding:discovery_poll' request.team.slug %}"
-     hx-select="#scan-state-panel"
-     hx-target="this"
-     hx-swap="outerHTML"
-     hx-trigger="{% if scan_state.key == 'scanning' %}every 2s{% else %}none{% endif %}">
-    {% include "onboarding/partials/discovery_scan_state.html" %}
-</div>
-{% endif %}
-{% if include_scan_oob %}
 {% include "onboarding/partials/discovery_deployment_preview.html" with deployment_preview_oob=True %}
 {% endif %}
-<div id="discovery-list"
+<div id="equipment-live"
      hx-get="{% url 'web_team:onboarding:discovery_poll' request.team.slug %}"
-     hx-disinherit="hx-target hx-select"
+     hx-select="#equipment-live"
      hx-target="this"
      hx-trigger="{% if scan_state.key == 'scanning' or commissioning.validation_equipment_count %}every 2s{% else %}none{% endif %}"
      hx-swap="outerHTML">
-    <form method="post">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="review_equipment">
-        {% include "onboarding/partials/discovery_devices.html" %}
-    </form>
+<div id="scan-state-panel" class="p-6 border-b border-base-content/10 bg-base-200/30">
+    {% include "onboarding/partials/equipment_progress.html" %}
+    {% include "onboarding/partials/discovery_scan_state.html" %}
+</div>
+<div id="discovery-list">
+    {% include "onboarding/partials/discovery_devices.html" %}
     {% if scan_state.key != "scanning" and guided_setup_available %}
     <div class="border-t border-base-content/10 bg-base-200/20 p-5">
         <details id="advanced-discovery-settings" hx-preserve class="rounded-xl border border-base-content/10 bg-base-100">
             <summary class="flex cursor-pointer list-none items-center justify-between gap-4 p-4">
                 <span>
-                    <span class="block text-sm font-bold text-base-content/75">Advanced settings</span>
-                    <span class="mt-1 block text-xs text-base-content/50">Check equipment using a known network address</span>
+                    <span class="block text-sm font-bold text-base-content/75">Equipment missing from the scan?</span>
+                    <span class="mt-1 block text-xs text-base-content/50">The Gateway has not confirmed a field connection to that equipment yet.</span>
                 </span>
                 <i class="fa fa-chevron-down text-xs text-base-content/35" aria-hidden="true"></i>
             </summary>
-            <div class="border-t border-base-content/10 p-4">
-                <p class="mb-4 max-w-3xl text-xs text-base-content/55">
-                    Most customers do not need this. Use it when equipment was not found and your installer, controls engineer, or IT team provided its network details.
-                </p>
+            <div class="border-t border-base-content/10 p-4 text-sm text-base-content/65">
+                <ol class="list-decimal space-y-2 pl-5">
+                    <li>Check that the equipment is powered and connected to the Gateway field Ethernet port or RS485 wiring.</li>
+                    <li>Retry the scan. For Modbus TCP, ask your installer or site IT team to confirm the equipment IP address and port.</li>
+                    <li>If you know that address, check it directly below.</li>
+                </ol>
+                <p class="mt-4 mb-3 text-xs font-bold text-base-content/70">Check a known Modbus TCP address</p>
                 <form method="post" class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-end">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="start_target_discovery">
@@ -52,8 +44,10 @@
                     <button class="btn btn-outline btn-sm rounded-lg" type="submit">Check address</button>
                 </form>
                 <p class="mt-3 text-xs text-base-content/45">Modbus TCP normally uses port 502. Only the address and port you enter will be checked.</p>
+                <p class="mt-3 text-xs text-base-content/55">Still missing? Check the field connection with your installer or site IT team, then retry the scan.</p>
             </div>
         </details>
     </div>
     {% endif %}
+</div>
 </div>

@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import template_help_views, template_library, views
 
 app_name = "devices"
 
@@ -61,7 +61,19 @@ urlpatterns = [
     path("htmx/ai-template/status/<str:task_id>/", views.ai_template_status, name="ai_template_status"),
     path("htmx/ai-template/approve/", views.ai_template_approve, name="ai_template_approve"),
     # Template Library
-    path("templates/", views.TemplateLibraryView.as_view(), name="template_library"),
+    path("templates/", template_library.library, name="template_library"),
+    path("templates/private/new/", template_library.private_draft, name="template_draft_new"),
+    path("templates/private/<int:pk>/", template_library.private_draft, name="template_draft_edit"),
+    path("templates/<int:pk>/", template_library.detail, name="template_detail"),
+    path("templates/<int:pk>/save/", template_library.save_for_setup, name="template_save"),
+    path("templates/<int:pk>/use/", template_library.use_in_setup, name="template_use"),
+    path("templates/help/", template_help_views.template_help_list, name="template_help_list"),
+    path("templates/help/<int:pk>/", template_help_views.template_help_detail, name="template_help_detail"),
+    path(
+        "templates/help/<int:pk>/files/<str:kind>/",
+        template_help_views.template_help_file,
+        name="template_help_file",
+    ),
     # Remote Control Command URLs
     path("<int:pk>/command/", views.device_send_command, name="device_send_command"),
     path("<int:pk>/command/status/<uuid:tx_id>/", views.device_command_status, name="device_command_status"),

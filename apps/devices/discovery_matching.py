@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from django.db.models import Q
 
 from .models import DeviceTemplate
+from .services import visible_templates_for_team
 
 
 @dataclass
@@ -35,10 +36,16 @@ def rank_templates_for_discovery(discovery: dict, limit: int = 5, team=None) -> 
     model = _norm(identification.get("model") or discovery.get("model"))
     signature = _norm(discovery.get("signature"))
     protocol = _norm(discovery.get("protocol") or discovery.get("connection")).replace("modbus_", "modbus_")
+    program = _norm(identification.get("program") or discovery.get("program_signature"))
 
-    qs = DeviceTemplate.objects.all()
+    if not (vendor or model or signature):
+        return []
+
+    qs = DeviceTemplate.objects.filter(is_current=True).exclude(evidence_status="retired")
     if team is not None:
-        qs = qs.filter(Q(created_by_team__isnull=True) | Q(created_by_team=team))
+        qs = visible_templates_for_team(team)
+    else:
+        qs = qs.filter(created_by_team__isnull=True, source="curated")
     query = Q()
     if vendor:
         query |= Q(manufacturer__icontains=vendor)
@@ -51,6 +58,14 @@ def rank_templates_for_discovery(discovery: dict, limit: int = 5, team=None) -> 
 
     matches: list[TemplateMatch] = []
     for template in qs[:100]:
+        if template.device_type == "plc" and template.mapping_strategy == "site_defined":
+            if not model or model != _norm(template.model_number):
+                continue
+            if not template.program_scope or program != _norm(template.program_scope):
+                continue
+        elif template.created_by_team_id and template.catalog_key:
+            if not model or model != _norm(template.model_number):
+                continue
         score = 0
         reasons = []
         manufacturer = _norm(template.manufacturer)

@@ -88,7 +88,7 @@
             {% elif gateway.lifecycle_status == "bootstrap_seen" or gateway.lifecycle_status == "activating" %}Novena is securely preparing this Gateway. Keep it powered on and connected.
             {% elif gateway.lifecycle_status == "commissioning" %}Novena is validating and applying the selected equipment settings. Keep the Gateway online.
             {% elif gateway.lifecycle_status == "active" %}The Gateway is managed by Novena and sending equipment data. No action is required.
-            {% elif gateway.lifecycle_status == "online" %}The secure connection is ready. Continue by adding or discovering equipment.
+            {% elif gateway.lifecycle_status == "online" %}{% if gateway.devices.count %}The Gateway is connected with {{ gateway.devices.count }} configured equipment. Check each equipment status below before relying on its readings.{% else %}The secure connection is ready. Continue by adding or discovering equipment.{% endif %}
             {% else %}Novena is preparing this managed Gateway for monitoring.{% endif %}
         </p>
         {% if gateway.freshness.status != "live" %}
@@ -472,7 +472,7 @@
                     </div>
                 </div>
                 <div class="p-6">
-                    {% if latest_activation and latest_activation.status != "acknowledged" and gateway.freshness.status == "live" and gateway.lifecycle_status != "release_pending" and gateway.lifecycle_status != "released" %}
+                    {% if latest_activation and latest_activation.status != "acknowledged" and gateway.lifecycle_status != "active" and gateway.freshness.status == "live" and gateway.lifecycle_status != "release_pending" and gateway.lifecycle_status != "released" %}
                     <div class="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-800">
                         <div class="font-bold">Activation: {{ latest_activation.get_status_display }}</div>
                         <p class="mt-1">If the Gateway is powered on but has not connected, securely retry activation. No password will be shown.</p>

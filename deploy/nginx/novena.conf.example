@@ -31,6 +31,10 @@ server {
         add_header Cache-Control "public, max-age=2592000";
     }
 
+    location ^~ /media/equipment-template-requests/ {
+        return 404;
+    }
+
     location /media/ {
         alias /opt/novena/Novena-Hub/media/;
         expires 1h;

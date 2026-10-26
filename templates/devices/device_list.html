@@ -1,27 +1,27 @@
 {% extends "web/app/app_base.html" %}
-{% load static %}
+{% load static tz %}
 {% block app %}
 <div class="px-4 sm:px-6 lg:px-8 py-8">
     <div class="sm:flex sm:items-center">
         <div class="sm:flex-auto">
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Devices</h1>
-            <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">Monitor and manage your energy generation and consumption equipment.</p>
+            <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">Check equipment status and open live readings for each connected device.</p>
         </div>
         <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
-            <a href="{% url 'web_team:devices:device_create' request.team.slug %}"
+            <a href="{% url 'web_team:onboarding:setup_start' request.team.slug %}"
                class="inline-flex items-center justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto">
-                <i class="fa fa-plus mr-2"></i> Add Device
+                <i class="fa fa-plus mr-2"></i> Set up equipment
             </a>
         </div>
     </div>
 
-    <!-- Filters placeholder -->
     <div class="mt-8 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 pb-4">
-        <div class="flex space-x-4">
-            <button class="text-primary-600 font-medium text-sm">All</button>
-            <button class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-sm">Online</button>
-            <button class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-sm">Offline</button>
-            <button class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 text-sm">Alarm</button>
+        <div class="flex flex-wrap gap-x-4 gap-y-2" aria-label="Filter devices by status">
+            <a href="{% url 'web_team:devices:device_list' request.team.slug %}" {% if status_filter == 'all' %}aria-current="page"{% endif %} class="font-medium text-sm {% if status_filter == 'all' %}text-primary-600{% else %}text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200{% endif %}">All</a>
+            <a href="?status=live" {% if status_filter == 'live' %}aria-current="page"{% endif %} class="font-medium text-sm {% if status_filter == 'live' %}text-primary-600{% else %}text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200{% endif %}">Live</a>
+            <a href="?status=delayed" {% if status_filter == 'delayed' %}aria-current="page"{% endif %} class="font-medium text-sm {% if status_filter == 'delayed' %}text-primary-600{% else %}text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200{% endif %}">Delayed</a>
+            <a href="?status=offline" {% if status_filter == 'offline' %}aria-current="page"{% endif %} class="font-medium text-sm {% if status_filter == 'offline' %}text-primary-600{% else %}text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200{% endif %}">Offline</a>
+            <a href="?status=alarm" {% if status_filter == 'alarm' %}aria-current="page"{% endif %} class="font-medium text-sm {% if status_filter == 'alarm' %}text-primary-600{% else %}text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200{% endif %}">Alarm</a>
         </div>
     </div>
 
@@ -34,9 +34,8 @@
                             <tr>
                                 <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 dark:text-white sm:pl-6">Name</th>
                                 <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Type</th>
-                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Category</th>
                                 <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Status</th>
-                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Last Data</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900 dark:text-white">Last reading</th>
                                 <th scope="col" class="relative py-3.5 pl-3 pr-4 sm:pr-6 text-right">
                                     <span class="sr-only">Actions</span>
                                 </th>
@@ -67,14 +66,6 @@
                                 <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
                                     {{ device.get_device_type_display }}
                                 </td>
-                                <td class="whitespace-nowrap px-3 py-4 text-sm">
-                                    <span class="inline-flex items-center rounded-md px-2 py-1 text-xs font-medium 
-                                        {% if device.energy_category == 'generation' %}bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300
-                                        {% elif device.energy_category == 'consumption' %}bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300
-                                        {% else %}bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-400{% endif %}">
-                                        {{ device.get_energy_category_display }}
-                                    </span>
-                                </td>
                                 <td class='whitespace-nowrap px-3 py-4 text-sm'>
                                     {% with freshness=device.freshness %}
                                     <div class='flex items-center'>
@@ -84,7 +75,7 @@
                                     {% endwith %}
                                 </td>
                                 <td class="whitespace-nowrap px-3 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                    {{ device.last_telemetry_at|default:"--" }}
+                                    {% if device.last_telemetry_at %}{% timezone device.site.timezone %}<time datetime="{{ device.last_telemetry_at|date:'c' }}">{{ device.last_telemetry_at|date:'Y-m-d H:i O' }}</time>{% endtimezone %}<span class="block text-xs text-gray-400">{{ device.site.timezone }} time</span>{% else %}No readings yet{% endif %}
                                 </td>
                                 <td class="whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
                                     <a href="{% url 'web_team:devices:device_edit' request.team.slug device.pk %}" class="text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 mr-4">Edit</a>
@@ -93,8 +84,8 @@
                             </tr>
                             {% empty %}
                             <tr>
-                                <td colspan="6" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
-                                    No devices tracked yet. Add your first piece of equipment.
+                                <td colspan="5" class="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                                    {% if status_filter == 'all' %}No devices tracked yet. Add your first piece of equipment.{% else %}No devices match this status. Choose All to see the full list.{% endif %}
                                 </td>
                             </tr>
                             {% endfor %}

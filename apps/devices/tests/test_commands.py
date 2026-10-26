@@ -92,6 +92,19 @@ class DeviceCommandTest(TestCase):
         self.assertEqual(params["functionCode"], 3)
         self.assertEqual(params["address"], 101)
 
+    def test_float32_read_requests_two_modbus_registers(self):
+        from apps.devices.remote_control import resolve_device_params
+
+        register_map = dict(self.template.register_map)
+        register_map["temperature"] = {"address": 3000, "functionCode": 3, "type": "float32"}
+        self.template.register_map = register_map
+        self.template.save(update_fields=["register_map"])
+
+        command = send_device_command(self.device, self.user, "temperature", command_type="read")
+        self.assertEqual(command.remote_command.request_payload["params"]["objectsCount"], 2)
+        params, _ = resolve_device_params(self.device, "temperature", "read_device")
+        self.assertEqual(params["objectsCount"], 2)
+
     def test_raw_register_parameters_and_unmapped_keys_are_rejected(self):
         with self.assertRaisesMessage(ValueError, "Raw register parameters"):
             send_device_command(
@@ -194,6 +207,42 @@ class DeviceCommandTest(TestCase):
         command.refresh_from_db()
         self.assertEqual(command.status, "sent")
         self.assertIsNone(command.executed_at)
+
+    def test_completed_read_updates_customer_command_status(self):
+        rpc = RpcCommand.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            request_id="12345678-1234-1234-1234-123456789098",
+            method="read_device",
+            params={"device_name": self.device.name},
+        )
+        command = DeviceCommand.objects.create(
+            team=self.team,
+            device=self.device,
+            command_type="read",
+            command_key="motor_speed",
+            transaction_id="test-tx-read-completed",
+            rpc_command=rpc,
+            status="sent",
+        )
+
+        process_command_response(
+            json.dumps(
+                {
+                    "request_id": str(rpc.request_id),
+                    "method": "read_device",
+                    "status": "success",
+                    "stage": "diagnostic_completed",
+                    "result": {"operation": "read", "read_value": 42, "device_accepted": True},
+                }
+            )
+        )
+
+        rpc.refresh_from_db()
+        command.refresh_from_db()
+        self.assertEqual(rpc.response_stage, "diagnostic_completed")
+        self.assertEqual(command.status, "executed")
+        self.assertEqual(command.response_payload["result"]["read_value"], 42)
 
     def test_process_command_response_failure(self):
         command = DeviceCommand.objects.create(
