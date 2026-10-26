@@ -10,6 +10,7 @@
             @click="$dispatch('template-picked', { id: '{{ template.id }}', name: '{{ template.name|escapejs }}', trust: '{% if template.source == "novena_assisted" %}Novena-assisted private · live test required{% elif template.created_by_team %}Team private · live test required{% elif template.mapping_strategy == "site_defined" %}Site-specific starter{% elif template.evidence_status == "documented" %}Documented draft · live test required{% elif template.evidence_status == "field_verified" %}Field verified{% elif template.source == "ai_generated" %}AI draft{% else %}Unreviewed template{% endif %}' })">
         <span class="min-w-0">
             <span class="block truncate text-sm font-bold text-base-content">{{ template.name }}</span>
+            {% if template.pk in saved_template_ids %}<span class="badge badge-primary badge-xs">Saved for setup</span>{% endif %}{% if template.source == "community" %}<span class="badge badge-outline badge-xs">Community contributed</span>{% endif %}
             <span class="mt-1 block text-xs text-base-content/50">
                 {{ template.manufacturer|default:"Manufacturer not listed" }}{% if template.model_number %} · {{ template.model_number }}{% endif %} · {{ template.get_protocol_display }}
                 {% if template.catalog_revision %} · r{{ template.catalog_revision }}{% endif %}
@@ -41,7 +42,7 @@
                 </p>
             </div>
             <span class="badge badge-sm {% if template.evidence_status == 'field_verified' %}badge-success{% elif template.evidence_status == 'documented' %}badge-info{% elif template.source == 'ai_generated' %}badge-warning{% else %}badge-outline{% endif %}">
-                {% if template.source == "novena_assisted" %}Novena-assisted private{% elif template.created_by_team %}Team private · retest{% elif template.mapping_strategy == "site_defined" %}Starter · map signals{% elif template.evidence_status == "field_verified" %}Field verified{% elif template.evidence_status == "documented" %}Documented draft{% elif template.source == "ai_generated" %}AI draft{% else %}Unreviewed{% endif %}
+                {% if template.source == "novena_assisted" %}Novena-assisted private{% elif template.created_by_team %}Team private · retest{% elif template.mapping_strategy == "site_defined" %}Starter · define signals{% elif template.evidence_status == "field_verified" %}Field verified{% elif template.evidence_status == "documented" %}Documented draft{% elif template.source == "ai_generated" %}AI draft{% else %}Unreviewed{% endif %}
             </span>
         </div>
         {% if template.evidence_status == "documented" and template.source_url %}<a href="{{ template.source_url }}" target="_blank" rel="noopener noreferrer" class="mt-2 block text-xs text-primary-500 underline">OEM register source</a>{% endif %}

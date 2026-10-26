@@ -29,6 +29,18 @@ class ScheduleAndEnergyCalculationTests(ImpactTestCase):
         self.assertEqual(sources, [])
         self.assertFalse(has_boundary)
 
+    def test_private_template_cannot_feed_energy_impact_even_with_verified_flag(self):
+        template = self.create_template({"energy_import": {"unit": "kWh"}})
+        template.created_by_team = self.team
+        template.save(update_fields=["created_by_team"])
+        device = self.create_device(template, energy_category="utility")
+        self.create_source(device, "energy_import")
+
+        sources, has_boundary = _energy_sources(self.profile)
+
+        self.assertEqual(sources, [])
+        self.assertFalse(has_boundary)
+
     def test_schedule_handles_midnight_weekends_and_date_override(self):
         self.profile.operating_schedule = {
             "monday": [["22:00", "06:00"]],

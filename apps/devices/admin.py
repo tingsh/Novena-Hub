@@ -116,6 +116,7 @@ class GatewayInventoryAdmin(admin.ModelAdmin):
 
 @admin.register(DeviceTemplate)
 class DeviceTemplateAdmin(admin.ModelAdmin):
+    actions = ["retire_templates"]
     list_display = (
         "name",
         "manufacturer",
@@ -129,17 +130,26 @@ class DeviceTemplateAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("device_type", "protocol", "category", "is_verified", "source")
-    search_fields = ("name", "manufacturer", "model_number")
+    search_fields = ("name", "manufacturer", "model_number", "model_aliases", "variant")
     readonly_fields = ("usage_count", "created_at")
 
     def get_readonly_fields(self, request, obj=None):
         fields = super().get_readonly_fields(request, obj)
-        if obj and obj.created_by_team_id and obj.catalog_key:
+        if obj and obj.catalog_key:
             return tuple(field.name for field in obj._meta.fields if field.name != "is_current")
         return fields
 
     def has_delete_permission(self, request, obj=None):
         return not (obj and obj.catalog_key) and super().has_delete_permission(request, obj)
+
+    @admin.action(description="Retire selected templates from new selection")
+    def retire_templates(self, request, queryset):
+        for template in queryset.filter(is_current=True):
+            template.is_current = False
+            template.evidence_status = "retired"
+            template.is_verified = False
+            template.save(update_fields=["is_current", "evidence_status", "is_verified"])
+        self.message_user(request, "Selected templates retired; existing equipment assignments were retained.")
 
 
 @admin.register(Device)
@@ -335,7 +345,7 @@ class TemplateShareSubmissionAdmin(admin.ModelAdmin):
         "category", "submitted_by", "submitted_at", "status", "reviewed_by", "reviewed_at",
         "published_template",
     )
-    actions = ["mark_reviewing", "reject_submission", "publish_verified"]
+    actions = ["mark_reviewing", "reject_submission", "publish_documented", "publish_verified"]
 
     def has_add_permission(self, request):
         return False
@@ -346,11 +356,14 @@ class TemplateShareSubmissionAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         fields = super().get_readonly_fields(request, obj)
         if obj and obj.status == TemplateShareSubmission.Status.PUBLISHED:
-            return (
+            published_fields = (
                 *fields,
                 "manufacturer", "model_number", "source_document_url", "review_notes",
-                "public_compatibility_notes", "portability_evidence", "field_verification_evidence",
+                "public_compatibility_notes", "portability_evidence",
             )
+            if obj.published_template.evidence_status == "field_verified":
+                return (*published_fields, "field_verification_evidence")
+            return published_fields
         return fields
 
     @admin.action(description="Mark selected submissions as reviewing")
@@ -382,6 +395,20 @@ class TemplateShareSubmissionAdmin(admin.ModelAdmin):
                 self.message_user(request, f"Submission {submission.pk}: {exc}", level=messages.ERROR)
             else:
                 self.message_user(request, f"Published {published.name} revision {published.catalog_revision}.")
+
+    @admin.action(description="Publish selected templates as OEM documented after review")
+    def publish_documented(self, request, queryset):
+        from .template_sharing import publish_reviewed_submission
+
+        for submission in queryset:
+            try:
+                published = publish_reviewed_submission(
+                    submission=submission, reviewer=request.user, evidence_status="documented"
+                )
+            except ValidationError as exc:
+                self.message_user(request, f"Submission {submission.pk}: {exc}", level=messages.ERROR)
+            else:
+                self.message_user(request, f"Published {published.name} as OEM documented.")
 
 
 @admin.register(GatewayActivation)

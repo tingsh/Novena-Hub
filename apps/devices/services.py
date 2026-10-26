@@ -58,7 +58,7 @@ def gateways_for_team(team):
 def visible_templates_for_team(team):
     """Selectable current templates; retired revisions remain on assigned devices."""
     return DeviceTemplate.objects.filter(
-        Q(created_by_team=team) | Q(created_by_team__isnull=True, source="curated"),
+        Q(created_by_team=team) | Q(created_by_team__isnull=True, source__in=["curated", "community"]),
         is_current=True,
     ).exclude(evidence_status="retired")
 
@@ -794,8 +794,10 @@ def build_commissioning_context(team, gateway=None, session=None, setup_run=None
         completed.append("device_scan_running")
     if devices or candidates:
         completed.append("devices_discovered")
-    if any(item.selected_template_id for item in equipment_setup_items) or any(
-        candidate["matched_template"] for candidate in candidates
+    if (
+        any(device.template_id for device in devices)
+        or any(item.selected_template_id for item in equipment_setup_items)
+        or any(candidate["matched_template"] for candidate in candidates)
     ):
         completed.append("templates_selected")
     if latest_config and latest_config.status in {"accepted", "active"}:

@@ -25,7 +25,9 @@ def template_help_list(request, team_slug):
     else:
         form = TemplateHelpRequestForm()
     requests = EquipmentTemplateRequest.objects.filter(team=request.team).select_related("delivered_template")
-    return render(request, "devices/template_help_list.html", {"form": form, "help_requests": requests})
+    return render(request, "devices/template_help_list.html", {
+        "form": form, "help_requests": requests, "active_tab": "templates",
+    })
 
 
 @require_permission("manage_devices")
@@ -49,7 +51,9 @@ def template_help_detail(request, team_slug, pk):
                 transaction.on_commit(lambda: _send_help_email(help_request=help_request))
             messages.success(request, "Your additional details were sent to Novena.")
         return redirect("web_team:devices:template_help_detail", team_slug=team_slug, pk=pk)
-    return render(request, "devices/template_help_detail.html", {"help_request": help_request})
+    return render(request, "devices/template_help_detail.html", {
+        "help_request": help_request, "active_tab": "templates",
+    })
 
 
 @require_permission("manage_devices")

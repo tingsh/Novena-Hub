@@ -1482,6 +1482,10 @@ def htmx_device_create(request, team_slug):
 
 @require_permission("view_devices")
 def template_library_search(request, team_slug):
+    from django.db.models import Case, IntegerField, Value, When
+
+    from .models import SavedDeviceTemplate
+
     query = request.GET.get("q", "").strip()[:100]
     candidate_index = request.GET.get("candidate_index", "")
     guided_setup = request.GET.get("context") == "guided_setup"
@@ -1496,15 +1500,19 @@ def template_library_search(request, team_slug):
             Q(name__icontains=query)
             | Q(manufacturer__icontains=query)
             | Q(model_number__icontains=query)
+            | Q(model_aliases__icontains=query)
             | Q(device_type__icontains=query)
             | Q(protocol__icontains=query)
             | Q(category__icontains=query)
         )
-        .order_by("-is_verified", "created_by_team_id", "name")
     )
     if guided_setup and protocol:
         templates = templates.filter(protocol=protocol)
     template_count = templates.count()
+    saved_ids = set(SavedDeviceTemplate.objects.filter(team=request.team).values_list("template_id", flat=True))
+    templates = templates.annotate(
+        saved_rank=Case(When(pk__in=saved_ids, then=Value(0)), default=Value(1), output_field=IntegerField())
+    ).order_by("saved_rank", "-is_verified", "created_by_team_id", "name")[:10]
     template_name = (
         "onboarding/partials/template_search_results.html"
         if guided_setup
@@ -1514,7 +1522,8 @@ def template_library_search(request, team_slug):
         request,
         template_name,
         {
-            "templates": templates[:10],
+            "templates": templates,
+            "saved_template_ids": saved_ids,
             "template_count": template_count,
             "candidate_index": candidate_index,
             "query": query,
@@ -1704,51 +1713,6 @@ def ai_template_approve(request, team_slug):
             "devices/partials/ai_template_result.html",
             {"status": "error", "error": f"Failed to save template: {e}"},
         )
-
-
-class TemplateLibraryView(PermissionRequiredMixin, ListView):
-    permission_required = "view_devices"
-    model = DeviceTemplate
-    template_name = "devices/template_library.html"
-    context_object_name = "templates"
-
-    def get_queryset(self):
-        from apps.devices.solution_profiles import get_profile, rank_templates_for_profile
-
-        qs = visible_templates_for_team(self.request.team)
-        q = self.request.GET.get("q", "").strip()
-        protocol = self.request.GET.get("protocol", "").strip()
-        category = self.request.GET.get("category", "").strip()
-        profile_key = self.request.GET.get("profile", "").strip()
-        verified_only = self.request.GET.get("verified_only", "") == "true"
-
-        if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(manufacturer__icontains=q) | Q(model_number__icontains=q))
-        if protocol:
-            qs = qs.filter(protocol=protocol)
-        if category:
-            qs = qs.filter(category=category)
-        if verified_only:
-            qs = qs.filter(evidence_status="field_verified")
-
-        if profile_key:
-            return rank_templates_for_profile(qs, get_profile(profile_key))
-        return qs.order_by("-is_verified", "-usage_count")
-
-    def get_context_data(self, **kwargs):
-        from apps.devices.solution_profiles import PROFILES
-
-        context = super().get_context_data(**kwargs)
-        context["active_tab"] = "templates"
-        context["search_query"] = self.request.GET.get("q", "")
-        context["selected_protocol"] = self.request.GET.get("protocol", "")
-        context["selected_category"] = self.request.GET.get("category", "")
-        context["selected_profile"] = self.request.GET.get("profile", "")
-        context["verified_only"] = self.request.GET.get("verified_only", "") == "true"
-        context["protocols"] = DeviceTemplate.PROTOCOL_CHOICES
-        context["categories"] = DeviceTemplate.VERTICAL_CHOICES
-        context["solution_profiles"] = PROFILES.values()
-        return context
 
 
 @require_permission("send_critical_commands")

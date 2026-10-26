@@ -1,179 +1,25 @@
 {% extends "web/app/app_base.html" %}
-{% load static %}
 {% block app %}
-<div class="px-4 sm:px-6 lg:px-8 py-8" x-data="{ showAiBuilder: false }">
-    <!-- Header -->
-    <div class="sm:flex sm:items-center sm:justify-between border-b border-base-content/10 pb-6 mb-8">
-        <div class="sm:flex-auto">
-            <h1 class="text-3xl font-black text-base-content font-heading tracking-tight">Hardware Templates</h1>
-            <p class="mt-2 text-sm text-base-content/60">
-                Choose a Novena map, reuse a private team map, or request help for equipment that is not listed. Every map needs a live reading check on your device.
-            </p>
-        </div>
-        <div class="mt-4 sm:ml-16 sm:mt-0 flex gap-3">
-            <a href="{% url 'web_team:devices:template_help_list' request.team.slug %}" class="btn btn-outline">Get Novena setup help</a>
-            <button @click="showAiBuilder = !showAiBuilder" 
-                    class="inline-flex items-center justify-center rounded-2xl bg-indigo-600 hover:bg-indigo-700 px-5 py-3 text-xs font-black uppercase tracking-widest text-white shadow-lg shadow-indigo-600/10 transition-all">
-                <i class="fa fa-sparkles mr-2 animate-pulse"></i>
-                <span x-text="showAiBuilder ? 'Hide AI Generator' : 'Generate with AI'">Generate with AI</span>
-            </button>
-        </div>
-    </div>
-
-    <!-- AI Generator Card (Alpine-controlled collapse) -->
-    <div x-show="showAiBuilder" 
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0 transform -translate-y-4"
-         x-transition:enter-end="opacity-100 transform translate-y-0"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="opacity-100 transform translate-y-0"
-         x-transition:leave-end="opacity-0 transform -translate-y-4"
-         class="mb-8">
-        {% include "devices/partials/ai_template_builder.html" %}
-    </div>
-
-    <!-- Search & Filters -->
-    <div class="bg-base-200/50 p-6 rounded-3xl border border-base-content/5 mb-8">
-        <form method="GET" action="." class="flex flex-col md:flex-row gap-4 items-end">
-            <div class="form-control w-full md:flex-1">
-                <label class="label pb-1">
-                    <span class="label-text text-xs font-bold uppercase tracking-widest text-base-content/50">Search</span>
-                </label>
-                <div class="relative">
-                    <input type="text" name="q" value="{{ search_query }}" placeholder="Search by name or manufacturer..."
-                           class="input input-bordered w-full rounded-2xl bg-base-100 border-base-content/10 focus:ring-2 focus:ring-primary-500/50 transition-all font-medium pl-10">
-                    <i class="fa fa-search absolute left-4 top-1/2 -translate-y-1/2 text-base-content/30"></i>
-                </div>
-            </div>
-
-            <div class="form-control w-full md:w-56">
-                <label class="label pb-1">
-                    <span class="label-text text-xs font-bold uppercase tracking-widest text-base-content/50">Solution Profile</span>
-                </label>
-                <select name="profile" class="select select-bordered w-full rounded-2xl bg-base-100 border-base-content/10 font-medium">
-                    <option value="">All Profiles</option>
-                    {% for profile in solution_profiles %}
-                    <option value="{{ profile.key }}" {% if selected_profile == profile.key %}selected{% endif %}>{{ profile.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="form-control w-full md:w-48">
-                <label class="label pb-1">
-                    <span class="label-text text-xs font-bold uppercase tracking-widest text-base-content/50">Protocol</span>
-                </label>
-                <select name="protocol" class="select select-bordered w-full rounded-2xl bg-base-100 border-base-content/10 font-medium">
-                    <option value="">All Protocols</option>
-                    {% for val, label in protocols %}
-                    <option value="{{ val }}" {% if selected_protocol == val %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="form-control w-full md:w-48">
-                <label class="label pb-1">
-                    <span class="label-text text-xs font-bold uppercase tracking-widest text-base-content/50">Category</span>
-                </label>
-                <select name="category" class="select select-bordered w-full rounded-2xl bg-base-100 border-base-content/10 font-medium">
-                    <option value="">All Categories</option>
-                    {% for val, label in categories %}
-                    <option value="{{ val }}" {% if selected_category == val %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="form-control shrink-0 py-3 flex flex-row items-center gap-2">
-                <input type="checkbox" name="verified_only" value="true" id="verified_only" 
-                       {% if verified_only %}checked{% endif %}
-                       class="checkbox checkbox-primary checkbox-sm rounded-lg">
-                <label for="verified_only" class="label-text text-xs font-bold uppercase tracking-widest text-base-content/70 cursor-pointer">Verified Only</label>
-            </div>
-
-            <div class="flex gap-2 w-full md:w-auto">
-                <button type="submit" class="btn btn-primary rounded-2xl font-black text-xs uppercase tracking-widest px-6 flex-1 md:flex-none">
-                    Filter
-                </button>
-                <a href="?" class="btn btn-ghost rounded-2xl font-black text-xs uppercase tracking-widest flex-1 md:flex-none">
-                    Reset
-                </a>
-            </div>
-        </form>
-    </div>
-
-    <!-- Templates Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {% for template in templates %}
-        <div class="card bg-base-100 border border-base-content/5 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-3xl overflow-hidden flex flex-col group">
-            <div class="p-6 flex-1 flex flex-col">
-                <div class="flex items-start justify-between gap-4 mb-4">
-                    <div>
-                        <span class="text-[10px] text-base-content/40 uppercase tracking-widest font-bold block">{{ template.manufacturer }}</span>
-                        <h3 class="text-base font-black text-base-content font-heading tracking-tight mt-1 group-hover:text-primary-500 transition-colors">
-                            {{ template.name }}
-                        </h3>
-                    </div>
-                    <div class="shrink-0 flex flex-col items-end gap-1.5">
-                        {% if template.evidence_status == "field_verified" %}
-                        <span class="badge badge-success text-white font-black uppercase tracking-wider text-[8px] py-2 px-3 gap-1">
-                            <i class="fa fa-check-circle text-[7px]"></i> Field verified
-                        </span>
-                        {% elif template.evidence_status == "documented" %}
-                        <span class="badge badge-info font-black uppercase tracking-wider text-[8px] py-2 px-3">Documented draft</span>
-                        {% elif template.source == "ai_generated" %}
-                        <span class="badge badge-warning font-black uppercase tracking-wider text-[8px] py-2 px-3 gap-1">
-                            <i class="fa fa-robot text-[7px]"></i> AI Draft
-                        </span>
-                        {% endif %}
-                        {% if template.source == 'novena_assisted' %}<span class="badge badge-outline text-[9px]">Novena-assisted private · live test required</span>{% elif template.created_by_team %}<span class="badge badge-outline text-[9px]">Team private · live test required</span>{% endif %}
-                        {% if template.catalog_revision %}<span class="text-[10px] text-base-content/50 font-mono">Revision {{ template.catalog_revision }}</span>{% endif %}
-                        <span class="badge badge-outline border-base-content/10 font-mono uppercase text-[8px] py-2 px-3">
-                            {{ template.protocol|upper }}
-                        </span>
-                    </div>
-                </div>
-
-                <div class="mt-4 flex-1">
-                    {% if template.compatibility_notes %}<p class="mb-3 text-xs text-base-content/60">{{ template.compatibility_notes }}</p>{% endif %}
-                    {% if template.firmware_scope %}<p class="mb-2 text-xs">Firmware: {{ template.firmware_scope }}</p>{% endif %}
-                    {% if template.program_scope %}<p class="mb-2 text-xs font-semibold text-warning">Use only with PLC program/register assignment {{ template.program_scope }}.</p>{% endif %}
-                    <span class="text-[9px] font-black text-base-content/40 uppercase tracking-widest block mb-2">Mapped Registers</span>
-                    <div class="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                        {% for reg, info in template.register_map.items %}
-                        <div class="bg-base-200/50 px-2 py-1 rounded-lg border border-base-content/5 text-[10px] font-mono flex items-center gap-1">
-                            <span class="font-bold text-base-content">{{ reg }}</span>
-                            <span class="text-base-content/40 text-[9px]">({{ info.address }})</span>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-
-                <div class="mt-6 pt-4 border-t border-base-content/5 flex items-center justify-between">
-                    <div class="text-[10px] text-base-content/40 font-bold uppercase tracking-widest">
-                        {% if template.usage_count > 0 %}
-                        Used by <span class="text-primary-500 font-black">{{ template.usage_count }}</span> devices
-                        {% else %}
-                        Not used yet
-                        {% endif %}
-                    </div>
-                    {% if template.source_url %}
-                    <a href="{{ template.source_url }}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary-500 font-bold hover:underline flex items-center gap-1">
-                        <i class="fa fa-link text-[10px]"></i> OEM source
-                    </a>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-        {% empty %}
-        <div class="col-span-full py-16 text-center bg-base-200/20 rounded-3xl border border-dashed border-base-content/10">
-            <div class="w-16 h-16 bg-base-200 rounded-full flex items-center justify-center mx-auto mb-4 text-base-content/30">
-                <i class="fa fa-folder-open text-2xl"></i>
-            </div>
-            <h4 class="text-lg font-black text-base-content font-heading tracking-tight">No Templates Found</h4>
-            <p class="text-xs text-base-content/50 mt-1 max-w-sm mx-auto">
-                No templates matched your filtering criteria. Try resetting the filters or generate a new one with the AI tool.
-            </p>
-        </div>
-        {% endfor %}
-    </div>
+<div class="mx-auto max-w-7xl space-y-7 px-4 py-8 sm:px-6 lg:px-8">
+  <header class="flex flex-wrap items-start justify-between gap-4">
+    <div><p class="text-xs font-bold uppercase tracking-widest text-primary">Equipment setup</p><h1 class="mt-1 text-3xl font-black">Device Template Library</h1><p class="mt-2 max-w-2xl text-sm text-base-content/65">Find a template for your exact equipment model. Browse and save before claiming a Gateway; test live readings later in Guided Setup.</p></div>
+    {% if can_manage_templates %}<div class="flex flex-wrap gap-2"><a class="btn btn-outline" href="{% url 'web_team:devices:template_draft_new' request.team.slug %}">Build a private template</a><a class="btn btn-primary" href="{% url 'web_team:devices:template_help_list' request.team.slug %}">Get Novena setup help</a></div>{% endif %}
+  </header>
+  {% if saved_templates or private_drafts and can_manage_templates %}<section class="grid gap-4 lg:grid-cols-2" aria-label="Your template workspace">
+    {% if saved_templates %}<div class="rounded-2xl border border-base-content/10 bg-base-100 p-5"><h2 class="font-bold">Saved for setup</h2><p class="mt-1 text-xs text-base-content/55">Choose one for equipment in Guided Setup.</p><ul class="mt-3 divide-y divide-base-content/10">{% for saved in saved_templates %}<li class="flex justify-between gap-2 py-2 text-sm">{% if saved.selectable %}<a class="font-semibold text-primary hover:underline" href="{% url 'web_team:devices:template_detail' request.team.slug saved.template.pk %}">{{ saved.template.manufacturer }} {{ saved.template.model_number|default:saved.template.name }}</a>{% else %}<span>{{ saved.template.manufacturer }} {{ saved.template.model_number|default:saved.template.name }} <strong class="text-warning">Older or retired revision</strong></span>{% endif %}<span class="text-xs text-base-content/50">r{{ saved.template.catalog_revision|default:"—" }}</span>{% if not saved.selectable and can_manage_templates %}<form method="post" action="{% url 'web_team:devices:template_save' request.team.slug saved.template.pk %}">{% csrf_token %}<input type="hidden" name="action" value="remove"><button class="text-xs text-primary underline" type="submit">Remove</button></form>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+    {% if private_drafts and can_manage_templates %}<div class="rounded-2xl border border-base-content/10 bg-base-100 p-5"><h2 class="font-bold">Private drafts</h2><p class="mt-1 text-xs text-base-content/55">Only your team can see these preparations.</p><ul class="mt-3 divide-y divide-base-content/10">{% for draft in private_drafts %}<li class="py-2 text-sm"><a class="font-semibold text-primary hover:underline" href="{% url 'web_team:devices:template_draft_edit' request.team.slug draft.pk %}">{{ draft.name|default:"Untitled template" }}</a> <span class="text-xs text-base-content/50">{{ draft.manufacturer }} {{ draft.model_number }}</span></li>{% endfor %}</ul></div>{% endif %}
+  </section>{% endif %}
+  <div class="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
+    <aside class="self-start rounded-2xl border border-base-content/10 bg-base-100 p-5 lg:sticky lg:top-6" aria-label="Manufacturers"><h2 class="font-bold">Manufacturers</h2><a class="mt-3 block text-sm text-primary hover:underline" href="{% url 'web_team:devices:template_library' request.team.slug %}">All manufacturers</a><nav class="mt-2 max-h-96 overflow-y-auto"><ul class="space-y-1">{% for vendor in manufacturers %}<li><a class="flex justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-base-200 {% if selected.manufacturer == vendor.manufacturer %}bg-primary/10 font-bold text-primary{% endif %}" href="?manufacturer={{ vendor.manufacturer|urlencode }}"><span class="truncate">{{ vendor.manufacturer }}</span><span class="text-xs text-base-content/50">{{ vendor.count }}</span></a></li>{% empty %}<li class="text-sm text-base-content/50">No manufacturers listed yet.</li>{% endfor %}</ul></nav></aside>
+    <main class="min-w-0 space-y-5">
+      <form method="get" class="rounded-2xl border border-base-content/10 bg-base-100 p-5" role="search"><label class="text-sm font-bold" for="template-search">Search manufacturer or exact model</label><div class="mt-2 flex flex-wrap gap-2"><input id="template-search" type="search" name="q" value="{{ selected.q }}" placeholder="For example, PM5110 or A9MEM3255" class="input input-bordered min-w-48 flex-1" autocomplete="off"><button class="btn btn-primary" type="submit">Search templates</button></div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><label class="text-xs font-semibold">Manufacturer<select name="manufacturer" class="select select-bordered mt-1 w-full"><option value="">All</option>{% for vendor in manufacturers %}<option value="{{ vendor.manufacturer }}" {% if selected.manufacturer == vendor.manufacturer %}selected{% endif %}>{{ vendor.manufacturer }}</option>{% endfor %}</select></label><label class="text-xs font-semibold">Protocol<select name="protocol" class="select select-bordered mt-1 w-full"><option value="">All</option>{% for value, label in protocols %}<option value="{{ value }}" {% if selected.protocol == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label class="text-xs font-semibold">Equipment type<select name="equipment_type" class="select select-bordered mt-1 w-full"><option value="">All</option>{% for value, label in equipment_types %}<option value="{{ value }}" {% if selected.equipment_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label class="text-xs font-semibold">Provided by<select name="source" class="select select-bordered mt-1 w-full"><option value="">All</option><option value="novena" {% if selected.source == 'novena' %}selected{% endif %}>Novena</option><option value="community" {% if selected.source == 'community' %}selected{% endif %}>Community</option><option value="team" {% if selected.source == 'team' %}selected{% endif %}>My team</option></select></label></div>
+        <div class="mt-3 flex flex-wrap items-center gap-3"><label class="text-xs font-semibold">Evidence<select name="evidence" class="select select-bordered select-sm ml-2"><option value="">All levels</option><option value="field_verified" {% if selected.evidence == 'field_verified' %}selected{% endif %}>Field verified</option><option value="documented" {% if selected.evidence == 'documented' %}selected{% endif %}>OEM documented</option></select></label><a class="text-sm text-primary hover:underline" href="{% url 'web_team:devices:template_library' request.team.slug %}">Clear filters</a></div>
+      </form>
+      <div class="flex items-center justify-between"><h2 class="text-lg font-bold">{{ result_count }} template{{ result_count|pluralize }}</h2><span class="text-xs text-base-content/55">Check model, protocol and firmware before use</span></div>
+      {% if templates %}<div class="grid gap-3">{% for template in templates %}<article class="rounded-2xl border border-base-content/10 bg-base-100 p-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-wide text-base-content/55">{{ template.manufacturer|default:"Manufacturer not listed" }}</p><h3 class="mt-1 text-lg font-bold"><a class="hover:text-primary hover:underline" href="{% url 'web_team:devices:template_detail' request.team.slug template.pk %}">{{ template.model_number|default:template.name }}</a></h3>{% if template.name != template.model_number %}<p class="text-sm text-base-content/65">{{ template.name }}</p>{% endif %}</div><a class="btn btn-outline btn-sm" href="{% url 'web_team:devices:template_detail' request.team.slug template.pk %}">View details</a></div><div class="mt-3 flex flex-wrap gap-2 text-xs"><span class="badge badge-outline">{{ template.get_device_type_display }}</span><span class="badge badge-outline">{{ template.get_protocol_display }}</span><span class="badge badge-outline">{{ template.library_origin }}</span><span class="badge {% if template.created_by_team %}badge-outline{% elif template.evidence_status == 'field_verified' %}badge-success{% elif template.evidence_status == 'documented' %}badge-info{% else %}badge-warning{% endif %}">{{ template.library_evidence }}</span>{% if template.saved_for_setup %}<span class="badge badge-primary">Saved for setup</span>{% endif %}{% if not template.library_read_only %}<span class="badge badge-warning">Contains controls · cannot reuse</span>{% endif %}</div><p class="mt-3 text-xs text-base-content/60">{{ template.signal_count }} signal{{ template.signal_count|pluralize }}{% if template.variant %} · Variant: {{ template.variant }}{% endif %}{% if template.catalog_revision %} · Revision {{ template.catalog_revision }}{% endif %}</p></article>{% endfor %}</div>{% if page_obj.has_other_pages %}<nav class="flex items-center justify-between pt-2 text-sm" aria-label="Template pages"><span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span><div class="flex gap-2">{% if page_obj.has_previous %}<a class="btn btn-outline btn-sm" href="?{{ request.GET.urlencode }}&page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}{% if page_obj.has_next %}<a class="btn btn-outline btn-sm" href="?{{ request.GET.urlencode }}&page={{ page_obj.next_page_number }}">Next</a>{% endif %}</div></nav>{% endif %}
+      {% else %}<div class="rounded-2xl border border-dashed border-base-content/20 bg-base-100 p-8"><h3 class="text-lg font-bold">No matching template</h3><p class="mt-1 text-sm text-base-content/65">Check the exact model or clear the filters. You can prepare a private template before installing a Gateway.</p><div class="mt-4 flex flex-wrap gap-2"><a class="btn btn-outline" href="{% url 'web_team:devices:template_library' request.team.slug %}">Clear filters</a>{% if can_manage_templates %}<a class="btn btn-outline" href="{% url 'web_team:devices:template_draft_new' request.team.slug %}">Build a private template</a><a class="btn btn-primary" href="{% url 'web_team:devices:template_help_list' request.team.slug %}">Get Novena setup help</a>{% endif %}</div></div>{% endif %}
+    </main>
+  </div>
 </div>
 {% endblock %}

@@ -322,6 +322,8 @@ class DeviceTemplate(models.Model):
     name = models.CharField(max_length=200)
     manufacturer = models.CharField(max_length=200, blank=True)
     model_number = models.CharField(max_length=200, blank=True)
+    model_aliases = models.JSONField(default=list, blank=True)
+    variant = models.CharField(max_length=200, blank=True)
     device_type = models.CharField(max_length=30, choices=DEVICE_TYPE_CHOICES)
     protocol = models.CharField(max_length=20, choices=PROTOCOL_CHOICES)
     mapping_strategy = models.CharField(
@@ -351,6 +353,7 @@ class DeviceTemplate(models.Model):
 
     SOURCE_CHOICES = (
         ("curated", _("Curated (Novena)")),
+        ("community", _("Community contributed")),
         ("ai_generated", _("AI Generated")),
         ("user_created", _("User Created")),
         ("novena_assisted", _("Novena assisted · private")),
@@ -378,18 +381,28 @@ class DeviceTemplate(models.Model):
         return self.name
 
     def save(self, *args, **kwargs):
-        if self.pk and self.created_by_team_id and self.catalog_key:
+        if self.pk and self.catalog_key:
             previous = type(self).objects.filter(pk=self.pk).first()
             immutable = (
-                "name", "manufacturer", "model_number", "device_type", "protocol",
+                "name", "manufacturer", "model_number", "model_aliases", "variant", "device_type", "protocol",
                 "mapping_strategy", "register_map", "category", "source", "source_url",
                 "firmware_scope", "program_scope", "catalog_key", "catalog_revision",
-                "source_mapping_revision_id", "created_by_team_id", "evidence_status", "is_verified",
+                "source_mapping_revision_id", "created_by_team_id",
                 "default_polling_interval", "discovery_hints", "compatibility_notes",
                 "document_revision", "datapoint_schema_version", "alert_presets",
             )
             if previous and any(getattr(previous, field) != getattr(self, field) for field in immutable):
-                raise ValidationError("Create a new team-map revision instead of changing a published snapshot.")
+                raise ValidationError("Create a new template revision instead of changing a published snapshot.")
+            if previous and not previous.is_current and self.is_current:
+                raise ValidationError(
+                    "An older or retired revision cannot become current again; review a new revision."
+                )
+            if previous and (
+                previous.evidence_status, previous.is_verified
+            ) != (self.evidence_status, self.is_verified):
+                retiring = self.evidence_status == "retired" and not self.is_verified and not self.is_current
+                if not retiring:
+                    raise ValidationError("Create a new reviewed revision to change template evidence.")
         return super().save(*args, **kwargs)
 
     class Meta:
@@ -400,6 +413,37 @@ class DeviceTemplate(models.Model):
                 name="unique_device_template_catalog_revision",
             )
         ]
+
+
+class SavedDeviceTemplate(BaseTeamModel):
+    """A team's pinned catalog revision, without equipment or validation state."""
+
+    template = models.ForeignKey(DeviceTemplate, on_delete=models.PROTECT, related_name="saved_by_teams")
+    saved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["team", "template"], name="unique_team_saved_template")]
+
+
+class PrivateTemplateDraft(BaseTeamModel):
+    """Editable pre-Gateway template preparation; only publication creates a selectable revision."""
+
+    name = models.CharField(max_length=200, blank=True)
+    manufacturer = models.CharField(max_length=200, blank=True)
+    model_number = models.CharField(max_length=200, blank=True)
+    variant = models.CharField(max_length=200, blank=True)
+    protocol = models.CharField(max_length=20, choices=DeviceTemplate.PROTOCOL_CHOICES, default="modbus_tcp")
+    device_type = models.CharField(max_length=30, choices=DeviceTemplate.DEVICE_TYPE_CHOICES, default="other")
+    category = models.CharField(max_length=20, choices=DeviceTemplate.VERTICAL_CHOICES, default="energy")
+    firmware_scope = models.CharField(max_length=200, blank=True)
+    program_scope = models.CharField(max_length=200, blank=True)
+    source_url = models.URLField(blank=True, max_length=500)
+    configuration_notes = models.TextField(blank=True)
+    signals = models.JSONField(default=list, blank=True)
+    last_published_template = models.ForeignKey(
+        DeviceTemplate, null=True, blank=True, on_delete=models.SET_NULL, related_name="source_private_drafts"
+    )
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
 
 
 class Device(BaseTeamModel):

@@ -8,6 +8,8 @@ This guide is for the first low-cost production deployment where Novena runs Pos
 
 A backup is a copy of the database and private files, including impact reports and equipment request manuals/nameplates, at a point in time. A restore is the act of loading those copies again.
 
+Device Template Library drafts, saved revision references and community review status are PostgreSQL rows. Back up the database before `devices.0037`–`0038`; the retirement migration preserves assigned devices but removes unsafe public templates from new selection. A restore to a pre-migration snapshot loses later drafts and saves. See `docs/product/device_template_library.md` for the smoke test after restore.
+
 The important part is the restore. Until we have restored a backup once, we only have a file that we hope is useful.
 
 ## What The Scripts Do
