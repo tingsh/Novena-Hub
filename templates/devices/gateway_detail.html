@@ -66,7 +66,14 @@
     {% if gateway.lifecycle_status == "release_pending" %}
     <div class="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
         <div class="font-bold"><i class="fa fa-lock mr-2"></i>Secure release in progress</div>
-        <p class="mt-1">This Gateway is quarantined while Novena verifies that both service identities are revoked. Its data remains protected until that completes.</p>
+        {% if release_request.edge_reset_at %}
+        <p class="mt-1">Gateway reset confirmed. Novena is revoking its MQTT access before the serial number becomes available again.</p>
+        {% else %}
+        <p class="mt-1">Keep this Gateway powered on and connected. Novena is waiting for it to erase its site settings and confirm the reset before revoking access and releasing the serial number.</p>
+        {% endif %}
+        {% if not release_request.edge_reset_at and 'secure_release_v1' not in gateway.gateway_capabilities %}
+        <p class="mt-2 font-semibold">This Gateway may need a software update before secure release can complete. Contact support if it remains pending.</p>
+        {% endif %}
         {% if release_request.status == "needs_attention" %}
         <p class="mt-2 font-semibold">Automatic retries need support attention. The Gateway remains safely quarantined.</p>
         {% endif %}

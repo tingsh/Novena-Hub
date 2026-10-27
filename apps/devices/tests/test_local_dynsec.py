@@ -89,6 +89,12 @@ class LocalStateValidationTest(SimpleTestCase):
 
 
 class PartialRevocationTest(ManagedGatewayFixture):
+    def setUp(self):
+        super().setUp()
+        policy_patch = patch("apps.telemetry.mqtt_publisher.clear_gateway_retained_policy")
+        policy_patch.start()
+        self.addCleanup(policy_patch.stop)
+
     def test_each_partial_failure_quarantines_then_verified_retry_completes(self):
         from django.test import override_settings
 
@@ -99,6 +105,8 @@ class PartialRevocationTest(ManagedGatewayFixture):
 
                 with transaction.atomic():
                     release = request_gateway_release(self.gateway)
+                    release.edge_reset_at = timezone.now()
+                    release.save(update_fields=["edge_reset_at"])
                     with patch(
                         "apps.devices.mqtt_provisioning._publish_dynsec_command",
                         side_effect=[{}] * failed_step + [DynsecCommandError("denied")],

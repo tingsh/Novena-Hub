@@ -5,9 +5,10 @@
 {% if setup_item.state == "validating" %}<script>window.setTimeout(() => window.location.reload(), 3000);</script>{% endif %}
 <script>
 function datapointMapping() {
-    const initial = JSON.parse(document.getElementById('initial-datapoints').textContent || '[]');
+    const initial = JSON.parse(document.getElementById('initial-datapoints').textContent || '[]')
+        .map(row => ({ ...row, read_function_code: String(row.read_function_code ?? 3) }));
     const blank = () => ({
-        key: '', label: '', address: 0, read_function_code: 3, data_type: 'uint16',
+        key: '', label: '', address: 0, read_function_code: '3', data_type: 'uint16',
         objects_count: 1, unit: '', multiplier: 1, offset: 0, access: 'read_only',
         write_function_code: null, display_type: 'value', normal_min: null, normal_max: null,
         safety_min: null, safety_max: null, alert_suggestion: '',
@@ -90,7 +91,7 @@ function datapointMapping() {
                                 <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Signal key</span><input required x-model="row.key" class="input input-bordered input-sm" placeholder="process_temperature"></label>
                                 <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Signal name</span><input required x-model="row.label" class="input input-bordered input-sm" placeholder="Process Temperature"></label>
                                 <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Address</span><input required type="number" min="0" max="65535" x-model.number="row.address" class="input input-bordered input-sm"></label>
-                                <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Where stored?</span><select x-model.number="row.read_function_code" class="select select-bordered select-sm"><option :value="3">Holding register</option><option :value="4">Input register</option><option :value="1">Coil</option><option :value="2">Discrete input</option></select></label>
+                                <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Where stored?</span><select x-model="row.read_function_code" class="select select-bordered select-sm"><option value="3">Holding register</option><option value="4">Input register</option><option value="1">Coil</option><option value="2">Discrete input</option></select></label>
                                 <label class="form-control"><span class="label-text mb-1 text-xs font-bold">Display</span><select x-model="row.display_type" class="select select-bordered select-sm"><option value="value">Value</option><option value="gauge">Gauge</option><option value="trend">Trend chart</option><option value="status">Status indicator</option></select></label>
                                 <button type="button" class="btn btn-ghost btn-sm text-error" @click="removeRow(index)" aria-label="Delete signal"><i class="fa fa-trash"></i></button>
                             </div>

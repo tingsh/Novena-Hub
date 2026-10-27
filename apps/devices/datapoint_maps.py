@@ -541,6 +541,10 @@ def confirm_device_datapoint_map(*, device, team, confirmed_by) -> DeviceDatapoi
     mapping = ensure_device_datapoint_map(device)
     mapping = DeviceDatapointMap.objects.select_for_update().get(pk=mapping.pk)
     current_checksum = mapping_checksum(device, mapping.datapoints)
+    if mapping.status == DeviceDatapointMap.Status.CONFIRMED and mapping.confirmed_checksum == current_checksum:
+        # The mapping page and guided onboarding can both ask the customer to
+        # confirm the same tested map. Repeating that confirmation is safe.
+        return mapping
     if mapping.status != DeviceDatapointMap.Status.AWAITING_CONFIRMATION:
         raise ValidationError("Run a successful live validation before confirming these signals.")
     if not mapping.tested_checksum or mapping.tested_checksum != current_checksum:

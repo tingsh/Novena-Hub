@@ -482,6 +482,9 @@ class EdgeConfigGenerationTest(TestCase):
 )
 class GatewayDeleteReleaseViewTest(TestCase):
     def setUp(self):
+        policy_patch = patch("apps.telemetry.mqtt_publisher.clear_gateway_retained_policy")
+        policy_patch.start()
+        self.addCleanup(policy_patch.stop)
         from django.test import Client
         from django.utils import timezone
 
@@ -585,8 +588,13 @@ class GatewayDeleteReleaseViewTest(TestCase):
         self.inventory.refresh_from_db()
         self.assertEqual(self.gateway.lifecycle_status, "release_pending")
         self.assertEqual(self.inventory.status, "claimed")
+        pending_page = self.client.get(response["Location"])
+        self.assertContains(pending_page, "waiting for it to erase its site settings")
 
-        dispatch_gateway_release(self.gateway.release_requests.get().pk)
+        release = self.gateway.release_requests.get()
+        release.edge_reset_at = timezone.now()
+        release.save(update_fields=["edge_reset_at"])
+        dispatch_gateway_release(release.pk)
 
         self.assertFalse(Device.objects.filter(pk=device.pk).exists())
         mock_deprovision.assert_called_once()
@@ -598,6 +606,11 @@ class GatewayDeleteReleaseViewTest(TestCase):
         self.assertIsNone(self.inventory.claimed_at)
         self.gateway.refresh_from_db()
         self.assertEqual(self.gateway.lifecycle_status, "released")
+        from django.urls import reverse
+
+        old_detail = self.client.get(response["Location"])
+        self.assertRedirects(old_detail, reverse("web_team:devices:gateway_list", args=[self.team.slug]))
+        self.assertEqual(self.client.get(self._delete_url()).status_code, 404)
 
     @override_settings(MQTT_PROVISIONING_REQUIRED=True)
     @patch("apps.telemetry.mqtt_publisher.publish_gateway_activation")
@@ -609,7 +622,10 @@ class GatewayDeleteReleaseViewTest(TestCase):
 
         self.client.force_login(self.admin)
         self.client.post(self._delete_url(), {"confirmation_serial": self.serial})
-        dispatch_gateway_release(self.gateway.release_requests.get().pk)
+        release = self.gateway.release_requests.get()
+        release.edge_reset_at = timezone.now()
+        release.save(update_fields=["edge_reset_at"])
+        dispatch_gateway_release(release.pk)
 
         gateway = claim_gateway_for_team(
             self.other_team, self.other_site, "Reclaimed Gateway", self.serial, self.claim_code

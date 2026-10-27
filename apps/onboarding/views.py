@@ -1,5 +1,6 @@
 import ipaddress
 import json
+import math
 import re
 import uuid
 from datetime import UTC, timedelta
@@ -914,6 +915,12 @@ def _signal_display_order(register_map, key, label):
     return ({"primary": 0, "secondary": 1, "health": 2}.get(role, 3), label)
 
 
+def _live_value_display(value):
+    if isinstance(value, float) and math.isfinite(value):
+        return f"{value:.2f}".rstrip("0").rstrip(".")
+    return value
+
+
 def _attach_equipment_readings(commissioning):
     """Pair each live result with the map the Gateway read, for customer review."""
     for item in commissioning["equipment_setup_items"]:
@@ -926,6 +933,7 @@ def _attach_equipment_readings(commissioning):
                 "function_code": points.get(signal.get("key"), {}).get("functionCode"),
                 "raw_value": signal.get("raw_value"),
                 "value": signal.get("decoded_value", signal.get("value")),
+                "display_value": _live_value_display(signal.get("decoded_value", signal.get("value"))),
                 "unit": signal.get("unit") or points.get(signal.get("key"), {}).get("unit", ""),
                 "status": signal.get("status", "unknown"),
                 "warning": signal.get("warning_message") or signal.get("error_message") or "",
@@ -1028,13 +1036,27 @@ def step_3_discover(request, team_slug):
             if (
                 item.state != DeploymentSetupItem.State.AWAITING_CONFIRMATION
                 or not item.selected_template
-                or item.selected_template.mapping_strategy == "site_defined"
                 or result.get("status") != "success"
                 or not signals
-                or any(signal.get("status") not in {"success", "warning"} for signal in signals)
+                or any(
+                    signal.get("status") not in {"success", "warning"} or signal.get("blocking") for signal in signals
+                )
             ):
                 messages.error(request, "Complete a successful live test before confirming this template.")
                 return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+            if item.selected_template.mapping_strategy == "site_defined":
+                from apps.devices.datapoint_maps import confirm_device_datapoint_map
+
+                try:
+                    mapping = confirm_device_datapoint_map(
+                        device=item.device,
+                        team=request.team,
+                        confirmed_by=request.user,
+                    )
+                except ValidationError as exc:
+                    messages.error(request, "; ".join(exc.messages))
+                    return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
+                item.datapoints = mapping.datapoints
             from apps.devices.deployment_setup import append_setup_event
 
             item.state = DeploymentSetupItem.State.VALIDATED
@@ -1046,7 +1068,7 @@ def step_3_discover(request, team_slug):
             result["customer_confirmed_at"] = timezone.now().isoformat()
             result["customer_confirmed_by"] = request.user.pk
             item.validation_result = result
-            item.save(update_fields=["state", "trust_level", "validation_result", "updated_at"])
+            item.save(update_fields=["state", "trust_level", "datapoints", "validation_result", "updated_at"])
             metadata = dict(item.device.metadata or {})
             metadata["guided_setup_validation"] = "validated"
             item.device.metadata = metadata

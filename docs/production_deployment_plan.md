@@ -1,8 +1,8 @@
 # Novena Hub Production Deployment Plan
 
-Last reviewed: 2026-08-17
+Last reviewed: 2026-10-28 (after factory-energy, cold-room, and facilities/HVAC CM4 replays)
 
-This is the practical plan for putting Novena Hub on a real public production server for a 3-5 customer technical canary, without creating a throwaway demo environment that must be rebuilt later.
+This is the practical plan for putting Novena Hub on a public server. First prove the stack privately, then open a controlled investor showcase with labelled sample data. Invite three customers only as a supervised, read-only pilot after the release and each site's equipment pass the acceptance checks below. Use the same maintainable deployment rather than a throwaway demo environment.
 
 The matching repo-backed checklist is `docs/production_readiness_kit.md`.
 
@@ -23,13 +23,7 @@ Teacher note: a VPS is a rented Linux server. It is cheaper because you operate 
 
 ## Target Cost
 
-For the first canary, aim for roughly USD 20-60/month before email/WhatsApp/Stripe variable usage:
-
-- VPS: USD 12-40/month depending on RAM and disk.
-- Backups/object storage: usually USD 1-10/month at this stage.
-- Cloudflare DNS/CDN: USD 0/month on the Free plan for this use case.
-- Domain: already owned.
-- AWS SES, WhatsApp, Stripe: usage-based and likely small during pilots.
+Recheck current provider prices before ordering. Budget for the VPS, backups and off-server storage, a domain, monitoring, and any enabled SES/WhatsApp/Stripe usage. The older August cost figures are not a purchase quote.
 
 Use at least 4 GB RAM. Prefer 8 GB RAM if the price is still comfortable, because Postgres, Redis, Celery, WeasyPrint PDF generation, and Vite-built static assets all share the same machine.
 
@@ -66,7 +60,7 @@ Use this production directory on the VPS:
 That path is intentionally separate from the local development checkout. Your current local development checkout is:
 
 ```bash
-/home/shouheng/Novena-Platform/Novena-Hub
+/home/shouheng/Projects/Novena-Platform/Novena-Hub
 ```
 
 Teacher note: keeping `/opt/novena/Novena-Hub` on the VPS makes commands in systemd timers, backup scripts, and Nginx examples stable even if your laptop workspace moves again.
@@ -114,6 +108,12 @@ docker compose version
 
 Use a modern Docker Compose version. The production Compose file uses `env_file.required`, which needs a recent Compose v2 release. If your server Compose is old, upgrade Docker Compose before continuing.
 
+## Freeze the release before cloning
+
+Record one reviewed Hub Git SHA, one compatible Gateway Git SHA, their migrations, production image digests, and a rollback pair. Do not deploy a moving development branch or rely on the latest local checkout. As of this review, GitHub Hub `main` includes the committed E2E work through PR #29, but the latest secure-release and HVAC fixes are still uncommitted. Gateway `main` does not include three committed read/recovery fixes or its latest uncommitted secure-release and discovery changes. Neither current `main` alone reproduces the final physical replay. Review, commit, test, and promote a matching pair before the first server build. Keep write-back and OTA disabled for the initial read-only pilot.
+
+Before publishing the app, prove two disposable tenants cannot see each other's devices, telemetry, templates or MQTT topics. Verify a released Gateway loses its old operational credentials and site configuration and can be claimed by the new tenant; an offline release must remain pending. Do not seed customer accounts or manufacturing claim codes into a public demo.
+
 ## Clone And Prepare The Repo
 
 ```bash
@@ -122,6 +122,8 @@ sudo chown -R "$USER:$USER" /opt/novena
 cd /opt/novena
 git clone <your-github-repo-url> Novena-Hub
 cd /opt/novena/Novena-Hub
+git fetch origin
+git checkout --detach <reviewed-hub-release-sha>
 ```
 
 Create runtime directories:
@@ -153,6 +155,7 @@ Fill the real values in `deploy/env/production.env`. The most important groups a
 - Redis: `REDIS_URL`.
 - MQTT: `MQTT_DYNSEC_ADMIN_USER`, `MQTT_DYNSEC_ADMIN_PASS`, `MQTT_PROVISIONING_REQUIRED=True`, `MQTT_ACCEPT_LEGACY_SHARED_INBOUND=False`.
 - Gateway identity and activation: `GATEWAY_CLAIM_SECRET`, `GATEWAY_ACTIVATION_ENCRYPTION_KEY`.
+- Gateway release: `GATEWAY_RELEASE_LEASE_SECONDS`, `GATEWAY_RELEASE_RETRY_MAX_SECONDS`, a paired Gateway build advertising `secure_release_v1`, and the signed config/command key trusted by that Gateway. Apply `devices.0039_gateway_release_edge_reset_at` with the release candidate. Verify its physical reset/credential scrub before reassigning hardware.
 - Public gateway instructions: `PUBLIC_MQTT_BROKER_SCHEME=mqtts`, `PUBLIC_MQTT_BROKER_HOST=mqtt.novenaplatform.com`, `PUBLIC_MQTT_BROKER_PORT=8883`.
 - Guided Setup and governed control: `REMOTE_CONTROL_ACTIVE_SIGNING_KEY_ID`, `REMOTE_CONTROL_SIGNING_KEYS`, `GATEWAY_CONFIG_*`, `GUIDED_SETUP_FIRST_TELEMETRY_TIMEOUT_SECONDS`.
 - Email: AWS SES keys, sender addresses, optional Anymail webhook secret.
@@ -266,6 +269,16 @@ docker compose -f docker-compose.prod.yml run --rm web python manage.py verify_t
 docker compose -f docker-compose.prod.yml run --rm web python manage.py collectstatic --noinput
 ```
 
+`verify_timescale` checks basic hypertable presence only; it does not fail on missing Community policies. Run the stronger, read-only policy check before bringing up customer traffic:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T postgres \
+  psql -X -v ON_ERROR_STOP=1 -U novena -d novena_hub \
+  < scripts/database/verify_timescale_policies.sql
+```
+
+It must print `PASS` for Community license, compression, the hourly continuous aggregate, refresh, and both 90-day retention jobs. If it fails, stop; do not mark fallback migrations as healthy or accept telemetry until the schema and policies are repaired and rechecked. Pin the PostgreSQL/TimescaleDB image version or digest for the release rather than silently advancing the mutable `latest-pg17` tag.
+
 Start the full stack:
 
 ```bash
@@ -304,6 +317,8 @@ Set up local backup plus off-server upload. The current system needs both:
 - Postgres/TimescaleDB backup for relational data and telemetry.
 - Private media backup for confidential Business Impact PDF reports.
 
+It also needs a protected backup of `deploy/mosquitto/data/dynamic-security.json`, which contains the broker's live per-Gateway client and role state. The broker backup script and separate root timer are provided; install them, configure restricted off-server upload, and pass a disposable broker-state restore drill before inviting customers. A PostgreSQL restore alone cannot recreate an unchanged broker identity state. Store production environment secrets separately in a restricted secret vault.
+
 Subscription telemetry limits are access windows, not backup or database deletion schedules. PostgreSQL/TimescaleDB may still contain telemetry outside a team's current visible plan window until the global physical retention policy, currently 90 days, drops it.
 
 Manual first backup:
@@ -312,6 +327,8 @@ Manual first backup:
 NOVENA_ROOT=/opt/novena/Novena-Hub ./deploy/backups/backup_postgres.sh
 NOVENA_ROOT=/opt/novena/Novena-Hub ./deploy/backups/backup_private_media.sh
 NOVENA_ROOT=/opt/novena/Novena-Hub ./deploy/backups/backup_retention.sh
+sudo install -o root -g root -m 0700 deploy/backups/backup_mqtt_dynsec.sh /usr/local/sbin/novena-backup-mqtt-dynsec
+sudo /usr/local/sbin/novena-backup-mqtt-dynsec
 ```
 
 Install the timer:
@@ -319,15 +336,17 @@ Install the timer:
 ```bash
 sudo cp deploy/systemd/novena-postgres-backup.service.example /etc/systemd/system/novena-postgres-backup.service
 sudo cp deploy/systemd/novena-postgres-backup.timer.example /etc/systemd/system/novena-postgres-backup.timer
+sudo cp deploy/systemd/novena-mqtt-backup.service.example /etc/systemd/system/novena-mqtt-backup.service
+sudo cp deploy/systemd/novena-mqtt-backup.timer.example /etc/systemd/system/novena-mqtt-backup.timer
 sudo systemctl daemon-reload
-sudo systemctl enable --now novena-postgres-backup.timer
+sudo systemctl enable --now novena-postgres-backup.timer novena-mqtt-backup.timer
 ```
 
 Then perform one restore drill before inviting customers. A backup that has never been restored is only a hope, not a recovery plan.
 
 ## Go-Live Smoke Test
 
-Before inviting the first 3-5 technical canary customers:
+For the controlled investor showcase, complete items 1–6, the production preflight, tenant/access isolation, and restore/rollback checks with labelled sample data. Do not imply that the sample equipment is live customer hardware. Before inviting the first three technical canary customers, complete the full list on the frozen release:
 
 1. `https://novenaplatform.com` loads.
 2. `https://app.novenaplatform.com` loads signup/login.
@@ -339,10 +358,12 @@ Before inviting the first 3-5 technical canary customers:
 8. Serial-scoped telemetry arrives on `v1/gateway/{serial}/telemetry` and lands under the correct tenant.
 9. Guided Setup publishes signed config and receives matching acknowledgement evidence.
 10. First telemetry appears on the customer dashboard.
-11. Alert triggers and sends real SES email plus approved WhatsApp template.
+11. A customer-approved alert triggers, is acknowledged and resolves; at least one approved external notification channel reaches its designated recipient. Test WhatsApp separately before enabling it for customers.
 12. Maintenance ticket flow works.
-13. Backup and restore drill passed.
+13. Database, private-media and Mosquitto Dynamic Security backups and restore drills passed; application and Gateway rollback were rehearsed.
 14. Stripe webhook signature validation is configured before any paid user is charged.
+15. Two-tenant HTTP/MQTT isolation, Gateway release/reclaim, signed config acknowledgement, offline buffer/replay and correct customer dashboard assignment pass.
+16. Each customer's exact model, firmware, wiring and CT/PT scaling are documented and displayed readings are compared against the device or an independent reference. A simulator template is not field verification.
 
 ## Hardware Replay Handoff
 
@@ -352,13 +373,7 @@ The production server is not considered customer-ready until the physical replay
 field device -> Novena Gateway -> mqtt.novenaplatform.com:8883 -> Mosquitto -> mqtt_consumer -> TimescaleDB -> dashboard -> alert -> email/WhatsApp -> maintenance ticket
 ```
 
-For August 2026, the open release gates remain:
-
-- offline buffering across process restart and reconnect on physical CM4;
-- factory-energy, cold-chain, and facilities/HVAC replay with representative equipment;
-- governed write-back validation including power loss, key rotation, restore, and emergency disable;
-- production Stripe webhooks/live billing and inbound WhatsApp security before paid rollout;
-- 3-5 customer technical canary before widening toward 20 customers.
+The local CM4 has now replayed factory energy, cold room and facilities/HVAC with Laptop 2 simulators, plus actual field cable/host and CM4 Wi-Fi outages. This establishes the workflow, not compatibility with a customer's equipment or the public server. The intermittent field port-502 timeout still needs diagnosis or a measured support/recovery boundary. Automatic route failover was not tested because that CM4 has only one uplink. The owner deferred the local 24-hour cold-room soak; do not describe it as passed. Keep governed write-back, autonomous automation and OTA disabled for the first read-only pilot. Test payment and inbound WhatsApp security before enabling those paid or messaging functions.
 
 ## Deployment Update Routine
 

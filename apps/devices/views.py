@@ -311,6 +311,12 @@ class GatewayDetailView(PermissionRequiredMixin, DetailView):
     template_name = "devices/gateway_detail.html"
     context_object_name = "gateway"
 
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if self.object.lifecycle_status == "released":
+            return HttpResponseRedirect(reverse_lazy("web_team:devices:gateway_list", args=[request.team.slug]))
+        return self.render_to_response(self.get_context_data(object=self.object))
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         from apps.telemetry.models import GatewayLog
@@ -408,6 +414,9 @@ class GatewayDeleteView(PermissionRequiredMixin, DeleteView):
     permission_required = "manage_devices"
     model = Gateway
     template_name = "devices/gateway_confirm_delete.html"
+
+    def get_queryset(self):
+        return super().get_queryset().exclude(lifecycle_status="released")
 
     def form_valid(self, form):
         confirmation_serial = self.request.POST.get("confirmation_serial", "").strip().upper()

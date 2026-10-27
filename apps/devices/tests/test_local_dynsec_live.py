@@ -13,9 +13,11 @@ import threading
 import time
 from pathlib import Path
 from unittest import skipUnless
+from unittest.mock import patch
 
 import paho.mqtt.client as mqtt
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from apps.devices.activation import decrypt_activation_secret, provision_gateway_activation
 from apps.devices.gateway_release import dispatch_gateway_release, request_gateway_release
@@ -41,6 +43,9 @@ def free_port():
 )
 class LocalDynsecLifecycleTest(TestCase):
     def setUp(self):
+        policy_patch = patch("apps.telemetry.mqtt_publisher.clear_gateway_retained_policy")
+        policy_patch.start()
+        self.addCleanup(policy_patch.stop)
         self.temp = tempfile.TemporaryDirectory(dir=os.environ.get("NOVENA_MQTT_TEST_ROOT"))
         self.addCleanup(self.temp.cleanup)
         self.directory = Path(self.temp.name)
@@ -194,6 +199,9 @@ class LocalDynsecLifecycleTest(TestCase):
         publisher._reconnect_with_current_credentials()
         self.wait_connected(publisher)
         release = request_gateway_release(gateway)
+        # This broker test isolates verified revocation; edge reset has separate tests.
+        release.edge_reset_at = timezone.now()
+        release.save(update_fields=["edge_reset_at"])
         dispatch_gateway_release(release.pk)
         release.refresh_from_db()
         self.assertEqual(release.status, "completed")
@@ -216,6 +224,8 @@ class LocalDynsecLifecycleTest(TestCase):
     def test_missing_admin_response_prevents_release(self):
         gateway, _ = self.claim()
         release = request_gateway_release(gateway)
+        release.edge_reset_at = timezone.now()
+        release.save(update_fields=["edge_reset_at"])
         # Rejected admin authentication must not produce a completed release.
         with override_settings(MQTT_DYNSEC_ADMIN_PASS="incorrect-test-password"):
             dispatch_gateway_release(release.pk)
