@@ -14,10 +14,13 @@ The September migration restored files but did not activate their broker securit
 The October factory replay therefore proved release/reclaim workflow only, not revocation.
 
 `apps/devices/activation.py` provisions only when that setting is true. Failures
-keep the durable claim for retry. `gateway_release.py` completes release only
-after verified revocation when enabled. False plus DEBUG permits an intentional
-local bypass; false outside DEBUG leaves the release quarantined. Never disable
-provisioning to clear a failed secured release.
+keep the durable claim for retry. Release now requires two receipts in order:
+the CM4 confirms that it erased its site configuration and buffered data, then
+Dynamic Security confirms both MQTT identities were revoked. An offline or old
+Gateway remains `release_pending`, and its inventory serial cannot be reclaimed.
+Disabling provisioning no longer bypasses either step, even in DEBUG. Keep the
+Gateway powered on and update its software if it lacks `secure_release_v1`.
+Never disable provisioning to clear a failed secured release.
 
 The preserved repository/bundle JSON has legacy `roleName` fields, nested password
 objects, a passwordless cloud client and broad cloud/admin permissions. It is not

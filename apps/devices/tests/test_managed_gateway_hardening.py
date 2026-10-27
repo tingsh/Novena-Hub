@@ -22,7 +22,7 @@ from apps.devices.gateway_config_delivery import (
     dispatch_gateway_config_outbox,
     queue_gateway_config,
 )
-from apps.devices.gateway_release import dispatch_gateway_release, request_gateway_release
+from apps.devices.gateway_release import acknowledge_gateway_release, dispatch_gateway_release, request_gateway_release
 from apps.devices.models import (
     Device,
     DeviceTemplate,
@@ -75,6 +75,69 @@ class ManagedGatewayFixture(TestCase):
     GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", MQTT_PROVISIONING_REQUIRED=True
 )
 class GatewayReleaseHardeningTest(ManagedGatewayFixture):
+    def setUp(self):
+        super().setUp()
+        policy_patch = patch("apps.telemetry.mqtt_publisher.clear_gateway_retained_policy")
+        policy_patch.start()
+        self.addCleanup(policy_patch.stop)
+
+    @override_settings(
+        REMOTE_CONTROL_ACTIVE_SIGNING_KEY_ID="test-release-key",
+        REMOTE_CONTROL_SIGNING_PRIVATE_KEY=SIGNING_SEED,
+        REMOTE_CONTROL_SIGNING_KEYS={},
+    )
+    @patch("apps.telemetry.mqtt_publisher._publish_qos1")
+    def test_release_command_is_signed_and_bound_to_current_claim(self, publish):
+        from apps.telemetry.claim_identity import gateway_claim_id
+        from apps.telemetry.mqtt_publisher import publish_gateway_release
+
+        release = request_gateway_release(self.gateway)
+        publish_gateway_release(release)
+
+        topic, wire = publish.call_args.args
+        self.assertEqual(topic, f"v1/gateway/{self.gateway.serial_number}/provision")
+        self.assertEqual(wire["action"], "release")
+        self.assertEqual(wire["request_id"], str(release.request_id))
+        self.assertEqual(wire["claim_id"], gateway_claim_id(self.gateway))
+        self.assertEqual(wire["signing_key_id"], "test-release-key")
+        self.assertTrue(wire["signature"])
+
+    @patch("apps.telemetry.mqtt_publisher.publish_gateway_release")
+    @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt")
+    def test_offline_edge_keeps_claim_quarantined_until_exact_reset_receipt(self, deprovision, publish):
+        from apps.telemetry.claim_identity import gateway_claim_id
+
+        release = request_gateway_release(self.gateway)
+        dispatch_gateway_release(release.pk)
+        release.refresh_from_db()
+        self.inventory.refresh_from_db()
+        self.assertEqual(release.status, "retry")
+        self.assertIsNone(release.edge_reset_at)
+        self.assertEqual(self.inventory.status, "claimed")
+        publish.assert_called_once()
+        deprovision.assert_not_called()
+        self.gateway.refresh_from_db()
+
+        self.assertIsNone(acknowledge_gateway_release(self.gateway, {
+            "gateway_release_status": "reset_complete",
+            "gateway_release_request_id": str(release.request_id),
+            "gateway_release_claim_id": "another-claim",
+        }))
+        self.assertIsNone(acknowledge_gateway_release(self.gateway, {
+            "gateway_release_status": "reset_complete",
+            "gateway_release_request_id": str(uuid.uuid4()),
+            "gateway_release_claim_id": gateway_claim_id(self.gateway),
+        }))
+        self.assertIsNotNone(acknowledge_gateway_release(self.gateway, {
+            "gateway_release_status": "reset_complete",
+            "gateway_release_request_id": str(release.request_id),
+            "gateway_release_claim_id": gateway_claim_id(self.gateway),
+        }))
+        dispatch_gateway_release(release.pk)
+        release.refresh_from_db()
+        self.assertEqual(release.status, "completed")
+        deprovision.assert_called_once()
+
     def _device(self):
         return Device.objects.create(
             team=self.team,
@@ -87,22 +150,8 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
 
     @override_settings(MQTT_PROVISIONING_REQUIRED=False, DEBUG=True)
     @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt")
-    def test_local_release_without_dynsec_completes(self, deprovision):
-        release = request_gateway_release(self.gateway)
-
-        dispatch_gateway_release(release.pk)
-
-        release.refresh_from_db()
-        self.gateway.refresh_from_db()
-        self.inventory.refresh_from_db()
-        self.assertEqual(release.status, "completed")
-        self.assertEqual(self.gateway.lifecycle_status, "released")
-        self.assertEqual(self.inventory.status, "released")
-        deprovision.assert_not_called()
-
-    @override_settings(MQTT_PROVISIONING_REQUIRED=False, DEBUG=False)
-    @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt")
-    def test_nonlocal_release_without_dynsec_stays_quarantined(self, deprovision):
+    @patch("apps.telemetry.mqtt_publisher.publish_gateway_release")
+    def test_local_release_without_dynsec_stays_quarantined(self, publish, deprovision):
         release = request_gateway_release(self.gateway)
 
         dispatch_gateway_release(release.pk)
@@ -113,12 +162,32 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
         self.assertEqual(release.status, "retry")
         self.assertEqual(self.gateway.lifecycle_status, "release_pending")
         self.assertEqual(self.inventory.status, "claimed")
+        publish.assert_called_once()
+        deprovision.assert_not_called()
+
+    @override_settings(MQTT_PROVISIONING_REQUIRED=False, DEBUG=False)
+    @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt")
+    @patch("apps.telemetry.mqtt_publisher.publish_gateway_release")
+    def test_nonlocal_release_without_dynsec_stays_quarantined(self, publish, deprovision):
+        release = request_gateway_release(self.gateway)
+
+        dispatch_gateway_release(release.pk)
+
+        release.refresh_from_db()
+        self.gateway.refresh_from_db()
+        self.inventory.refresh_from_db()
+        self.assertEqual(release.status, "retry")
+        self.assertEqual(self.gateway.lifecycle_status, "release_pending")
+        self.assertEqual(self.inventory.status, "claimed")
+        publish.assert_called_once()
         deprovision.assert_not_called()
 
     @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt", side_effect=RuntimeError("broker down"))
     def test_unknown_revocation_keeps_inventory_and_data_quarantined(self, _deprovision):
         device = self._device()
         release = request_gateway_release(self.gateway)
+        release.edge_reset_at = timezone.now()
+        release.save(update_fields=["edge_reset_at"])
 
         dispatch_gateway_release(release.pk)
 
@@ -177,6 +246,8 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
         )
 
         release = request_gateway_release(self.gateway)
+        release.edge_reset_at = timezone.now()
+        release.save(update_fields=["edge_reset_at"])
         dispatch_gateway_release(release.pk)
 
         release.refresh_from_db()
@@ -205,6 +276,23 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
 
         self.assertEqual(first.pk, second.pk)
         self.assertEqual(self.gateway.release_requests.count(), 1)
+
+
+class GatewayRetainedPolicyTest(ManagedGatewayFixture):
+    @patch("apps.telemetry.mqtt_publisher.get_mqtt_client")
+    def test_release_clears_broker_retained_policy(self, get_client):
+        from apps.telemetry.mqtt_publisher import clear_gateway_retained_policy
+
+        result = get_client.return_value.publish.return_value
+        result.rc = 0
+        result.is_published.return_value = True
+
+        clear_gateway_retained_policy(self.gateway)
+
+        get_client.return_value.publish.assert_called_once_with(
+            f"v1/gateway/{self.gateway.serial_number}/control/policy", b"", qos=1, retain=True
+        )
+        result.wait_for_publish.assert_called_once_with(timeout=5)
 
 
 @override_settings(GATEWAY_ACTIVATION_ENCRYPTION_KEY="MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")

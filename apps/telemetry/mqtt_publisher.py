@@ -194,12 +194,14 @@ def publish_gateway_activation(activation, operational_password):
     Send fresh operational MQTT credentials while the gateway is in bootstrap mode.
     """
     gateway = activation.gateway
+    from apps.telemetry.claim_identity import gateway_claim_id
     request_id = str(activation.request_id)
     topic = f"v1/gateway/{gateway.serial_number}/bootstrap/activate"
     payload = {
         "request_id": request_id,
         "generation": activation.generation,
         "action": "activate",
+        "claim_id": gateway_claim_id(gateway),
         "activation_expires_at": activation.expires_at.isoformat(),
         "mqtt": {
             "username": gateway.mqtt_username or gateway.serial_number,
@@ -216,6 +218,40 @@ def publish_gateway_activation(activation, operational_password):
         result.rc,
     )
     return request_id
+
+
+def publish_gateway_release(release):
+    """Ask the currently claimed edge to erase site state before broker revocation."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.devices.remote_control_crypto import sign_payload
+    from apps.telemetry.claim_identity import gateway_claim_id
+
+    gateway = release.gateway
+    body = {
+        "schema_version": 1,
+        "action": "release",
+        "request_id": str(release.request_id),
+        "claim_id": gateway_claim_id(gateway),
+        "target": {"gateway_serial": gateway.serial_number},
+        "expires_at": (timezone.now() + timedelta(minutes=5)).isoformat(),
+    }
+    key_id, signature = sign_payload(body)
+    topic = f"v1/gateway/{gateway.serial_number}/provision"
+    return _publish_qos1(topic, {**body, "signing_key_id": key_id, "signature": signature})
+
+
+def clear_gateway_retained_policy(gateway):
+    """Remove old owner's retained control policy before serial reuse."""
+    topic = f"v1/gateway/{gateway.serial_number}/control/policy"
+    result = get_mqtt_client().publish(topic, b"", qos=1, retain=True)
+    if result.rc != mqtt.MQTT_ERR_SUCCESS:
+        raise RuntimeError("Could not clear retained Gateway control policy.")
+    result.wait_for_publish(timeout=5)
+    if not result.is_published():
+        raise RuntimeError("Broker did not confirm retained policy removal.")
 
 
 def publish_attribute_push(gateway, attributes):

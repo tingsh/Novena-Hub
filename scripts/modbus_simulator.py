@@ -56,7 +56,7 @@ COLD_ROOM_COILS = {
 CHILLER_REGISTERS = {
     "temperature": 100,
     "active_power": 102,
-    "run_hours": 103,
+    "run_hours": 104,
 }
 
 CHILLER_COILS = {
@@ -78,7 +78,7 @@ def make_identity(scenario):
     products = {
         "factory": ("NPM-100", "Novena PM-100 power meter"),
         "cold": ("NCS-100", "Novena cold room sensor"),
-        "facilities": ("NPM-100", "Novena PM-100 power meter"),
+        "facilities": ("NCH-200", "Novena NCH-200 chiller monitor"),
     }
     product_code, product_name = products[scenario]
     identity = ModbusDeviceIdentification()
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     print(f"Starting Modbus TCP on {args.host}:{args.port}; confirm the listener from another shell before testing")
     print("Power meter registers: current=3000, voltage=3028, active_power=3060, frequency=3100, energy=3200")
     print("Cold-room registers/coils: temperature=3000, humidity=3002, door_open coil=10, compressor coil=11")
-    print("Chiller registers/coils: temperature=100, compressor coil=101, active_power=102, run_hours=103")
+    print("Chiller registers/coils: temperature=100, compressor coil=101, active_power=102, run_hours=104")
     print(f"Operating mode: {args.mode}")
     print("Press Ctrl+C to stop.\n")
 

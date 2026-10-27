@@ -157,9 +157,26 @@ class Command(BaseCommand):
             .first()
         )
         gateway = inventory.gateway if inventory else None
-        if not gateway or gateway.lifecycle_status in {"release_pending", "released"}:
+        if not gateway or gateway.lifecycle_status == "released":
             logger.warning("Rejected MQTT %s for unknown gateway serial %s.", message_type, topic_serial)
             return None, None
+        if gateway.lifecycle_status == "release_pending" and not (
+            message_type == "attributes"
+            and (payload.get("attributes") or {}).get("gateway_release_status") == "reset_complete"
+        ):
+            logger.warning("Rejected MQTT %s from Gateway pending secure release: %s.", message_type, topic_serial)
+            return None, None
+
+        if message_type in {"telemetry", "logs"} and gateway.activations.exists():
+            from apps.telemetry.claim_identity import gateway_claim_id
+
+            if payload.get("claim_id") != gateway_claim_id(gateway):
+                logger.warning(
+                    "Rejected MQTT %s for gateway %s: missing or stale claim identity.",
+                    message_type,
+                    topic_serial,
+                )
+                return None, None
 
         return message_type, gateway
 
@@ -322,6 +339,12 @@ class Command(BaseCommand):
             if not gateway:
                 logger.warning("Gateway %s not found for attribute sync", gateway_sn)
                 return
+
+        if gateway.lifecycle_status == "release_pending":
+            from apps.devices.gateway_release import acknowledge_gateway_release
+
+            acknowledge_gateway_release(gateway, payload.get("attributes") or {})
+            return
 
         attrs = payload.get("attributes", {})
         previously_clock_ready = gateway.remote_control_clock_ready

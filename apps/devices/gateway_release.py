@@ -159,6 +159,34 @@ def _finalize_release(release_id) -> GatewayReleaseRequest:
     return release
 
 
+@transaction.atomic
+def acknowledge_gateway_release(gateway, attrs):
+    """Only the active claim's exact reset receipt can unlock revocation."""
+    from apps.telemetry.claim_identity import gateway_claim_id
+
+    if attrs.get("gateway_release_status") != "reset_complete":
+        return None
+    release = (
+        GatewayReleaseRequest.objects.select_for_update()
+        .filter(gateway=gateway, request_id=attrs.get("gateway_release_request_id"))
+        .exclude(status=GatewayReleaseRequest.Status.COMPLETED)
+        .first()
+    )
+    if not release or gateway.lifecycle_status != "release_pending":
+        return None
+    if attrs.get("gateway_release_claim_id") != gateway_claim_id(gateway):
+        return None
+    if not release.edge_reset_at:
+        release.edge_reset_at = timezone.now()
+        release.status = GatewayReleaseRequest.Status.RETRY
+        release.next_attempt_at = timezone.now()
+        release.lease_expires_at = None
+        release.last_error = ""
+        release.save()
+        transaction.on_commit(lambda: _schedule_release(release.pk))
+    return release
+
+
 def dispatch_gateway_release(release_id) -> GatewayReleaseRequest | None:
     now = timezone.now()
     lease_seconds = int(getattr(settings, "GATEWAY_RELEASE_LEASE_SECONDS", 60))
@@ -187,17 +215,20 @@ def dispatch_gateway_release(release_id) -> GatewayReleaseRequest | None:
         release.save()
 
     try:
-        if getattr(settings, "MQTT_PROVISIONING_REQUIRED", False):
-            from .mqtt_provisioning import deprovision_gateway_mqtt
+        if not release.edge_reset_at:
+            from apps.telemetry.mqtt_publisher import publish_gateway_release
 
-            deprovision_gateway_mqtt(release.gateway)
-        elif settings.DEBUG:
-            logger.info(
-                "Skipped MQTT dynamic-security revocation for %s in local development mode.",
-                release.gateway.serial_number,
-            )
-        else:
-            raise RuntimeError("Gateway release requires MQTT credential revocation outside local development.")
+            publish_gateway_release(release)
+            _retry_release(release_id, "Waiting for the Gateway to confirm its local reset.")
+            return GatewayReleaseRequest.objects.get(pk=release_id)
+        if not getattr(settings, "MQTT_PROVISIONING_REQUIRED", False):
+            raise RuntimeError("Gateway release requires verified MQTT credential revocation.")
+        from apps.telemetry.mqtt_publisher import clear_gateway_retained_policy
+
+        from .mqtt_provisioning import deprovision_gateway_mqtt
+
+        clear_gateway_retained_policy(release.gateway)
+        deprovision_gateway_mqtt(release.gateway)
     except Exception as exc:
         _retry_release(release_id, exc)
         return GatewayReleaseRequest.objects.get(pk=release_id)

@@ -6,7 +6,7 @@ site health targets, and verify NetworkManager profiles and both uplink
 layouts on hardware before enabling automatic failover for a customer. The
 factory CM4 replay alone does not close this gate.
 
-Last reviewed: 2026-08-17
+Last reviewed: 2026-10-28 (after three local CM4 E2E scenarios)
 
 This guide documents the repo-backed production assets and checks for Novena Hub. Use it together with `docs/production_deployment_plan.md`.
 
@@ -16,7 +16,7 @@ This readiness kit answers: "What files, checks, env vars, backups, and smoke te
 
 ## Current CTO Verdict
 
-The July readiness kit is still relevant, but the August codebase has raised the bar. The platform now includes managed Gateway hardening, serial-scoped MQTT identity, signed Guided Setup config delivery, governed remote-control flows, Business Impact private reports, customizable Command Center assets, and stricter Stripe webhook expectations.
+The physical CM4 has now completed customer-browser factory-energy, cold-room and facilities/HVAC replays with simulated field devices. Claim, signed setup, live readings, customer-created alert lifecycles, field cable/host recovery and Wi-Fi buffer/replay have evidence. The newest secure Gateway release, Modbus discovery and Hub confirmation fixes remain uncommitted candidates; the public stack, real notification delivery and actual customer equipment have not passed acceptance. This kit therefore distinguishes a controlled investor showcase from a supervised three-customer pilot.
 
 So the core deployment model stays the same:
 
@@ -54,7 +54,7 @@ Telemetry retention has two layers. Subscription plans cap customer-visible char
 Current local development checkout:
 
 ```bash
-/home/shouheng/Novena-Platform/Novena-Hub
+/home/shouheng/Projects/Novena-Platform/Novena-Hub
 ```
 
 Recommended production server checkout:
@@ -63,7 +63,7 @@ Recommended production server checkout:
 /opt/novena/Novena-Hub
 ```
 
-Do not treat old `/home/shouheng/projects/Novena-Hub` references as current unless you intentionally restore that path.
+Do not treat old WSL paths or `/home/shouheng/Novena-Platform/Novena-Hub` as the current Ubuntu checkout.
 
 ## Deployment Asset Map
 
@@ -79,6 +79,7 @@ Production assets in this repo:
 | `deploy/mosquitto/dynamic-security.example.json` | Safe seed/example for Dynamic Security roles. Real credentials must be generated on the server. |
 | `deploy/backups/backup_postgres.sh` | Compressed Postgres/TimescaleDB backup. |
 | `deploy/backups/backup_private_media.sh` | Backup for confidential reports and equipment-request files. |
+| `deploy/backups/backup_mqtt_dynsec.sh` | Root-only live Mosquitto client/role-state backup. |
 | `deploy/backups/restore_postgres.sh` | Guarded database restore tool. |
 | `deploy/backups/backup_retention.sh` | Local daily/weekly/monthly retention cleanup. |
 | `deploy/systemd/*.example` | Nightly backup timer examples. |
@@ -197,6 +198,20 @@ If the signing key is blank, do not use the OTA update flow. For pilots, it is a
 
 ## Required Celery Beat Tasks
 
+The uncommitted release candidate adds secure Gateway release and requires CM4 software advertising `secure_release_v1`. Freeze and deploy the compatible Hub/Gateway pair together; do not assume the current Gateway `main` has this behavior.
+The Hub sends a signed, claim-bound reset request and waits for its matching
+receipt before revoking MQTT credentials. If the Gateway is offline, release
+remains pending and the serial stays unavailable for another team. Operators
+must restore Gateway connectivity or perform a controlled physical reset;
+never bypass the pending state by editing inventory or disabling provisioning.
+The `devices.0039_gateway_release_edge_reset_at` migration records this receipt.
+After broker revocation, the Gateway must erase the former claim's operational
+MQTT username, password and claim ID from its active and rollback configs. It
+retains the factory bootstrap identity so a new owner can claim it again;
+Hub creates a fresh broker bootstrap client when that claim starts. Verify no
+old field connectors or historical site snapshots remain before transferring
+physical hardware to another customer.
+
 `production_readiness_check` requires these scheduled tasks to exist:
 
 - `apps.devices.tasks.dispatch_due_gateway_config_outboxes`
@@ -232,11 +247,13 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 Deploy migrations before bringing the final app stack up. Web, worker, Beat, and MQTT consumer should run the same Git SHA.
+Record the reviewed Hub and Gateway SHAs and image digests before deploying. GitHub Hub `main` contains the committed E2E work through PR #29, but not the latest uncommitted fixes; Gateway `main` is behind its three-commit test branch and uncommitted candidate. A build from either current `main` alone does not reproduce the last physical replay.
 For customer template sharing, apply `devices.0034_templatesharesubmission` before exposing the Hub UI. Confirm staff can see the Template share submissions admin queue and that customer submissions remain team-private. The new table is covered by PostgreSQL backup and restore; see `docs/product/customer_template_review.md` for review and rollback rules.
 For template system v2, apply `devices.0035` and `0036`, then run `python manage.py migrate_template_request_files` and `python manage.py migrate_template_request_files --apply` before exposing customer pages. Verify a second dry run finds zero public manuals, Nginx denies the old public request-document path, and customer/staff downloads require authentication. Private request files are included in the `private_media` backup. The staff quote/delivery workflow and rollback procedure are in `docs/product/template_system_v2.md`.
 For the Device Template Library, back up PostgreSQL and apply `devices.0037` and `0038` before exposing its navigation entry. `0038` retires unsafe public seeds from new selection without deleting assigned revisions; review those retired rows and any affected installed equipment before onboarding new devices. Smoke test pre-Gateway browsing and private drafts, exact-model search, team isolation, saved revisions, the Guided Setup handoff and live-test/deploy separation. See `docs/product/device_template_library.md` for publication rules and rollback.
 For the energy catalog release, run `python manage.py import_energy_catalog --dry-run` from the new web image after migrations. Review the listed legacy templates and assigned-device counts, then run `python manage.py import_energy_catalog` from that image. The importer retires legacy energy maps from new selection but preserves every assigned device and its pinned template revision. Deploy the matching Gateway decoder before live testing ABB invalid-value sentinels and nonfinite meter values. New maps enter as documented drafts; do not promote them to field verified until representative hardware readings match the meter display or an independent reference. The source and qualification checklist are in `docs/product/energy_template_catalog.md`.
 The automation notification path requires `events.0004_automation_email_type` and an active Celery worker. After deployment, exercise a disposable automation email to a designated test recipient and verify both its `EmailDelivery` status and receipt outside the Hub. A queued automation log or local console email alone does not prove delivery.
+No alert rule should be created by Gateway or equipment onboarding. In a disposable pilot tenant, verify that a customer explicitly creates the first rule after deployment, that it triggers and resolves on a mapped signal, and that its approved external notification reaches a real recipient. Keep write-back, OTA and unqualified autonomous actions disabled for the first read-only pilot.
 
 ## Mosquitto Dynamic Security
 
@@ -306,6 +323,8 @@ Current blocker checks include:
 - private Business Impact and template-request storage separated from public media;
 - WeasyPrint import works for PDF rendering.
 
+The readiness command's Timescale check verifies only extension and hypertable existence. It does **not** verify the Community license, compression, hourly continuous aggregate or scheduled policies. Run `scripts/database/verify_timescale_policies.sql` through `psql -X -v ON_ERROR_STOP=1` after migrations; its final `PASS` line is required before customer telemetry. This closes the Ubuntu Apache-package failure mode that the basic check missed. See the exact Compose command in `docs/production_deployment_plan.md`.
+
 Warnings include:
 
 - Stripe test mode, which is acceptable for unpaid pilots.
@@ -322,7 +341,11 @@ Minimum routine:
 ./deploy/backups/backup_postgres.sh
 ./deploy/backups/backup_private_media.sh
 ./deploy/backups/backup_retention.sh
+sudo install -o root -g root -m 0700 deploy/backups/backup_mqtt_dynsec.sh /usr/local/sbin/novena-backup-mqtt-dynsec
+sudo /usr/local/sbin/novena-backup-mqtt-dynsec
 ```
+
+The Mosquitto Dynamic Security backup is implemented but still needs to be installed and tested on the public server. Its state at `deploy/mosquitto/data/dynamic-security.json` changes as claims and releases occur. Configure restricted off-server upload and prove a disposable broker-state restore alongside matching PostgreSQL and private-media backups before inviting customers; keep environment secrets in a separate restricted vault. Do not describe the backups as a complete disaster-recovery plan until that drill passes.
 
 First restore drill:
 
@@ -336,7 +359,7 @@ Teacher note: a database restore recovers rows. It does not automatically recove
 
 ## Go-Live Smoke Test
 
-Before inviting customers:
+For a controlled investor showcase, use clearly labelled sample data and complete production preflight, HTTPS/WebSocket, MQTT TLS if a Gateway is attached, tenant/access isolation, and backup/rollback checks. Before inviting customers, complete the full list:
 
 1. `https://novenaplatform.com` loads the public site.
 2. `https://app.novenaplatform.com` loads login/signup.
@@ -351,10 +374,12 @@ Before inviting customers:
    alone must leave Guided Setup blocked with a clear missing-heartbeat reason.
 9. Guided Setup sends signed config and receives matching acknowledgement evidence.
 10. First telemetry reaches TimescaleDB and the correct customer dashboard.
-11. Alert, email, approved WhatsApp template, and maintenance ticket flow works end to end.
+11. A customer-created alert triggers, is acknowledged and resolves, and at least one approved external notification channel reaches its designated recipient. Test WhatsApp separately before enabling that channel for customers.
 12. Business Impact private report generation and authorized download works.
-13. Backup runs and restore drill has passed.
+13. PostgreSQL, private media and Mosquitto Dynamic Security backups and restore drills pass, as do application and Gateway rollback rehearsals.
 14. Stripe webhook signature validation is configured before paid rollout.
+15. Two disposable tenants prove HTTP, template, telemetry and serial-scoped MQTT isolation; secure Gateway release/reclaim and offline-pending behavior work on the release pair.
+16. Each first-customer exact device map is compared against a physical display or independent reference, including units and CT/PT scaling.
 
 ## Hardware Replay Handoff
 
@@ -370,13 +395,7 @@ service reports failure and restarts, then resumes full heartbeats before setup 
 
 ## Current Release Gates
 
-As of 2026-08-17, do not widen beyond a 3-5 customer technical canary until these are proven:
-
-1. Offline buffering across process restart and reconnect on physical CM4 hardware.
-2. Factory-energy, cold-chain, and facilities/HVAC CM4 hardware replays with representative equipment.
-3. Governed write-back on representative devices, including power loss, key rotation, restore, and emergency-disable recovery.
-4. Production Stripe webhooks/live billing and inbound WhatsApp security before paid rollout.
-5. A 3-5 customer technical canary before a 20-customer cohort.
+As of 2026-10-28, the local CM4 has passed the three simulator workflows plus bounded field cable/host and Wi-Fi outage replays. Remaining gates for the first **supervised, read-only** customer are a frozen and reviewed Hub/Gateway pair, real public-server preflight and restore, external alert receipt, two-tenant isolation, and that customer's exact equipment qualification. The intermittent Laptop 2 port-502 timeout remains an open reliability risk. The deferred 24-hour cold-room soak and second-uplink automatic failover are not passed; record the pilot's monitoring/recovery boundaries honestly. Governed write-back, paid Stripe billing, inbound WhatsApp and OTA require their own acceptance before those functions are enabled. Complete the three-customer technical canary before widening to a broader cohort.
 
 ## Rollback Basics
 

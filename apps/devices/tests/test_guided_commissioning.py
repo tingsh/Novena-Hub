@@ -1453,7 +1453,7 @@ class GuidedSetupViewTest(TestCase):
                         "key": "temperature",
                         "address": 3000,
                         "status": "success",
-                        "decoded_value": 2.5,
+                        "decoded_value": 2.50000002384,
                         "raw_value": [0, 0],
                         "unit": "degC",
                     }
@@ -1467,6 +1467,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(before, "Review live readings")
         self.assertContains(before, "FC 3")
         self.assertContains(before, "2.5 degC")
+        self.assertNotContains(before, "2.50000002384")
         self.assertContains(before, "Confirm template and readings")
 
         confirmed = self.client.post(self.url, {"action": "confirm_setup_item", "item_id": item.pk})
@@ -1483,6 +1484,79 @@ class GuidedSetupViewTest(TestCase):
         self.assertTrue(after.context["can_deploy"])
         self.assertContains(after, "1 of 1 templates confirmed")
         self.assertContains(after, '<form method="post" hx-boost="false">')
+
+    def test_site_defined_readings_confirm_map_and_unlock_deployment(self):
+        from apps.devices.config_generator import generate_connector_config
+        from apps.devices.datapoint_maps import (
+            mapping_checksum,
+            record_device_datapoint_validation,
+            save_device_datapoint_map,
+        )
+
+        template = DeviceTemplate.objects.create(
+            name="Factory site map",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            mapping_strategy="site_defined",
+            register_map={},
+            created_by_team=self.team,
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Factory meter",
+            template=template,
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            connection_config={"host": "10.0.0.20", "port": 502, "slave_id": 1},
+        )
+        mapping = save_device_datapoint_map(
+            device=device,
+            team=self.team,
+            datapoints=[{"key": "voltage", "address": 3028, "read_function_code": 3,
+                         "data_type": "float32", "unit": "V"}],
+        )
+        result = {"status": "success", "mapping_checksum": mapping_checksum(device, mapping.datapoints),
+                  "signals": [{"key": "voltage", "status": "success", "decoded_value": 230.1}]}
+        record_device_datapoint_validation(device=device, result=result, validated_by=self.user)
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=template,
+            state=DeploymentSetupItem.State.AWAITING_CONFIRMATION,
+            connection=device.connection_config, datapoints=mapping.datapoints, validation_result=result,
+        )
+
+        self.assertEqual(generate_connector_config(self.gateway), [])
+        response = self.client.post(self.url, {"action": "confirm_setup_item", "item_id": item.pk})
+        self.assertEqual(response.status_code, 302)
+        item.refresh_from_db()
+        mapping.refresh_from_db()
+        self.assertEqual(item.state, DeploymentSetupItem.State.VALIDATED)
+        self.assertEqual(mapping.status, "confirmed")
+        self.assertEqual(mapping.confirmed_checksum, mapping_checksum(device, mapping.datapoints))
+        self.assertTrue(generate_connector_config(self.gateway))
+        self.assertTrue(self.client.get(self.url).context["can_deploy"])
+
+    def test_site_defined_confirmation_rejects_untested_map(self):
+        template = DeviceTemplate.objects.create(
+            name="Untested factory map", device_type="power_meter", protocol="modbus_tcp",
+            mapping_strategy="site_defined", register_map={}, created_by_team=self.team,
+        )
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team, gateway=self.gateway, site=self.site, name="Factory meter",
+            template=template, device_type="power_meter", protocol="modbus_tcp",
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team, run=run, device=device, selected_template=template,
+            state=DeploymentSetupItem.State.AWAITING_CONFIRMATION,
+            validation_result={"status": "success", "signals": [{"key": "voltage", "status": "success"}]},
+        )
+        self.client.post(self.url, {"action": "confirm_setup_item", "item_id": item.pk})
+        item.refresh_from_db()
+        self.assertEqual(item.state, DeploymentSetupItem.State.AWAITING_CONFIRMATION)
+        self.assertFalse(self.client.get(self.url).context["can_deploy"])
 
     def test_verify_step_uses_deployed_run_when_newer_run_was_cancelled(self):
         template = DeviceTemplate.objects.create(

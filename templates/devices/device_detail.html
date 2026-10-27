@@ -1209,7 +1209,7 @@
                             <p class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mt-1">Read-only equipment check</p>
                         </div>
                     </div>
-                    <button onclick="readAllRegisters()" class="btn btn-ghost btn-xs rounded-md text-emerald-600 font-bold text-[10px] uppercase tracking-widest bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100">
+                    <button id="read-all-registers" onclick="readAllRegisters()" class="btn btn-ghost btn-xs rounded-md text-emerald-600 font-bold text-[10px] uppercase tracking-widest bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100">
                         <i class="fa fa-refresh mr-1"></i> Check all readings
                     </button>
                 </div>
@@ -1489,13 +1489,22 @@
     }
 
     async function readAllRegisters() {
+        const button = document.getElementById('read-all-registers');
+        if (button?.disabled) return;
         const registers = [
             {% for reg in readable_registers %}
             {key: '{{ reg.key }}', fc: {{ reg.functionCode }}, addr: {{ reg.address }}, count: {{ reg.objectsCount }}, type: '{{ reg.type }}'},
             {% endfor %}
         ];
-        for (const reg of registers) {
-            readRegister(reg.key, reg.fc, reg.addr, reg.count, reg.type);
+        if (button) button.disabled = true;
+        try {
+            // Reads share one Modbus master and one governed command sequence.
+            // Await each result so a customer click cannot race five requests.
+            for (const reg of registers) {
+                await readRegister(reg.key, reg.fc, reg.addr, reg.count, reg.type);
+            }
+        } finally {
+            if (button) button.disabled = false;
         }
     }
 

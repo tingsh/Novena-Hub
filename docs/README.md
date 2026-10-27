@@ -5,7 +5,8 @@ This index separates current source-of-truth material from historical records. H
 ## Current project direction
 
 - [Current project status](agent_context/skills/novena-project-status/references/project_status.md) — current phase, sprint goal, release gates and recent work.
-- [CTO product progress review](cto_product_progress_review_2026-07-18.md) — latest cross-repository assessment.
+- [CTO progress and market review (24 Oct 2026)](cto_progress_and_market_review_2026-10-24.md) — canary strategy and market thesis; use current project status for the later physical replay results.
+- [CTO product progress review (18 Jul 2026)](cto_product_progress_review_2026-07-18.md) — earlier cross-repository assessment and historical blocker baseline.
 - [Business plan](business_plan_2026-07-18.md) — current commercial and product strategy.
 - [Physical Operations Platform roadmap](physical_operations_platform_roadmap_2026-08-11.md) — staged CTO/CPO roadmap from current narrow wedges to mature APJC physical operations platform.
 - [Customer template sharing and review](product/customer_template_review.md) — private map consent, Novena qualification, publication and first-time setup fallback.
@@ -35,6 +36,7 @@ The Gateway repository's `ARCHITECTURE.md` is the current edge-runtime guide. Hi
 - [Pilot readiness audit](pilot_readiness_audit.md) and [scorecard](pilot_readiness_scorecard.md)
 - [Hardware replay runbook](hardware_replay_runbook_2026-07-09.md)
 - [Factory-energy CM4 replay result (2026-10-08)](factory_energy_cm4_replay_2026-10-08.md) — observed end-to-end behavior, fixes and remaining gates.
+- [Round 2 customer-browser and CM4 audit (21–27 Oct 2026)](round2_post_onboarding_platform_audit_2026-10-21.md) — factory, cold-room, facilities/HVAC, field recovery, bugs and unresolved port-502 risk.
 - [Local MQTT Dynamic Security](local_mqtt_dynamic_security.md) — authenticated LAN setup, sudo installation, revocation tests and rollback.
 - [Local development machine notes](local_development_machine_notes.md)
 

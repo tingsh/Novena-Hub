@@ -8,9 +8,19 @@ from django.test import Client, RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.devices.models import Device, DeviceTemplate, Gateway, GatewayConfig, GatewayInventory, RpcCommand, Site
+from apps.devices.models import (
+    Device,
+    DeviceTemplate,
+    Gateway,
+    GatewayActivation,
+    GatewayConfig,
+    GatewayInventory,
+    RpcCommand,
+    Site,
+)
 from apps.teams.models import Membership, Team
 from apps.teams.roles import ROLE_OWNER
+from apps.telemetry.claim_identity import gateway_claim_id
 from apps.telemetry.consumers import TelemetryConsumer
 from apps.telemetry.management.commands.mqtt_consumer import Command as MqttConsumerCommand
 from apps.telemetry.models import GatewayLog, TelemetryData
@@ -40,6 +50,28 @@ def buffered_gateway_payload(gateway, payload):
         "_topic_gateway_sn": gateway.serial_number,
         "_topic_gateway_id": gateway.pk,
     }
+
+
+@pytest.mark.django_db
+def test_reclaimed_gateway_rejects_unscoped_and_previous_claim_data():
+    team = Team.objects.create(name="New owner", slug="new-owner")
+    site = Site.objects.create(team=team, name="Factory")
+    gateway = Gateway.objects.create(
+        team=team, site=site, name="Gateway", serial_number="GW-RECLAIM", access_token="token"
+    )
+    claim_gateway(gateway)
+    GatewayActivation.objects.create(
+        team=team, gateway=gateway, expires_at=timezone.now(), status="acknowledged"
+    )
+    command = MqttConsumerCommand()
+    topic = "v1/gateway/GW-RECLAIM/logs"
+    payload = {"serial_number": gateway.serial_number, "logs": []}
+
+    assert command._resolve_inbound_gateway(topic, payload) == (None, None)
+    assert command._resolve_inbound_gateway(topic, {**payload, "claim_id": "old-claim"}) == (None, None)
+    assert command._resolve_inbound_gateway(
+        topic, {**payload, "claim_id": gateway_claim_id(gateway)}
+    ) == ("logs", gateway)
 
 
 def test_websocket_connection_uses_effective_plan_and_device_interval():

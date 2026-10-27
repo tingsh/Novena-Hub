@@ -270,6 +270,7 @@ class GatewayReleaseRequest(BaseTeamModel):
     claimed_at = models.DateTimeField(null=True, blank=True)
     lease_expires_at = models.DateTimeField(null=True, blank=True)
     last_error = models.TextField(blank=True)
+    edge_reset_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

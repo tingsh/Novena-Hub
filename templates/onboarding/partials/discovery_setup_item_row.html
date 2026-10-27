@@ -91,7 +91,7 @@
                 <thead><tr><th>Signal</th><th>Read address</th><th>Function</th><th>Live value</th><th>Raw response</th><th>Result</th></tr></thead>
                 <tbody>{% for signal in item.reading_rows %}<tr>
                     <td class="font-medium">{{ signal.label }}</td><td class="font-mono">{{ signal.address|default_if_none:"—" }}</td><td>{% if signal.function_code %}FC {{ signal.function_code }}{% else %}—{% endif %}</td>
-                    <td class="font-mono">{{ signal.value|default_if_none:"—" }} {{ signal.unit }}</td><td class="font-mono text-xs">{{ signal.raw_value|default_if_none:"—" }}</td>
+                    <td class="font-mono">{{ signal.display_value|default_if_none:"—" }} {{ signal.unit }}</td><td class="font-mono text-xs">{{ signal.raw_value|default_if_none:"—" }}</td>
                     <td><span class="badge badge-sm {% if signal.status == 'success' %}badge-success{% elif signal.status == 'warning' %}badge-warning{% else %}badge-error{% endif %}">{{ signal.status|title }}</span>{% if signal.warning %}<p class="mt-1 text-xs text-warning">{{ signal.warning }}</p>{% endif %}</td>
                 </tr>{% endfor %}</tbody>
             </table></div>

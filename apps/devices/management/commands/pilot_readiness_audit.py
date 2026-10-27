@@ -175,7 +175,7 @@ TEMPLATE_SPECS = {
             },
             "compressor_status": {"label": "Compressor", "type": "bool", "address": 101, "functionCode": 1},
             "active_power": {"label": "Power Draw", "unit": "W", "type": "float32", "address": 102, "functionCode": 3},
-            "run_hours": {"label": "Run Hours", "unit": "h", "type": "float32", "address": 103, "functionCode": 3},
+            "run_hours": {"label": "Run Hours", "unit": "h", "type": "float32", "address": 104, "functionCode": 3},
         },
         "alert_presets": [
             {
