@@ -16,7 +16,7 @@ This readiness kit answers: "What files, checks, env vars, backups, and smoke te
 
 ## Current CTO Verdict
 
-The physical CM4 has now completed customer-browser factory-energy, cold-room and facilities/HVAC replays with simulated field devices. Claim, signed setup, live readings, customer-created alert lifecycles, field cable/host recovery and Wi-Fi buffer/replay have evidence. The newest secure Gateway release, Modbus discovery and Hub confirmation fixes remain uncommitted candidates; the public stack, real notification delivery and actual customer equipment have not passed acceptance. This kit therefore distinguishes a controlled investor showcase from a supervised three-customer pilot.
+The physical CM4 has now completed customer-browser factory-energy, cold-room and facilities/HVAC replays with simulated field devices. Claim, signed setup, live readings, customer-created alert lifecycles, field cable/host recovery and Wi-Fi buffer/replay have evidence. The secure Gateway release, Modbus discovery and Hub confirmation fixes are merged into both `main` branches through Hub PR #30 and Gateway PR #16. The public stack, real notification delivery and actual customer equipment have not passed acceptance. This kit therefore distinguishes a controlled investor showcase from a supervised three-customer pilot.
 
 So the core deployment model stays the same:
 
@@ -198,7 +198,7 @@ If the signing key is blank, do not use the OTA update flow. For pilots, it is a
 
 ## Required Celery Beat Tasks
 
-The uncommitted release candidate adds secure Gateway release and requires CM4 software advertising `secure_release_v1`. Freeze and deploy the compatible Hub/Gateway pair together; do not assume the current Gateway `main` has this behavior.
+The merged Hub/Gateway baseline adds secure Gateway release and requires CM4 software advertising `secure_release_v1`. Deploy the compatible pair together, and reinstall/verify the CM4 from the selected Gateway release before the public replay.
 The Hub sends a signed, claim-bound reset request and waits for its matching
 receipt before revoking MQTT credentials. If the Gateway is offline, release
 remains pending and the serial stays unavailable for another team. Operators
@@ -247,7 +247,7 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 Deploy migrations before bringing the final app stack up. Web, worker, Beat, and MQTT consumer should run the same Git SHA.
-Record the reviewed Hub and Gateway SHAs and image digests before deploying. GitHub Hub `main` contains the committed E2E work through PR #29, but not the latest uncommitted fixes; Gateway `main` is behind its three-commit test branch and uncommitted candidate. A build from either current `main` alone does not reproduce the last physical replay.
+Record the reviewed Hub and Gateway SHAs and image digests before deploying. Hub `main` includes the E2E fixes through PR #30 (`86f8e20` at this review); Gateway `main` includes the matching edge fixes through PR #16 (`f2f7f84`). Build an immutable release pair from those commits or later reviewed commits, then run the public-server and CM4 smoke tests; merging source does not itself deploy it.
 For customer template sharing, apply `devices.0034_templatesharesubmission` before exposing the Hub UI. Confirm staff can see the Template share submissions admin queue and that customer submissions remain team-private. The new table is covered by PostgreSQL backup and restore; see `docs/product/customer_template_review.md` for review and rollback rules.
 For template system v2, apply `devices.0035` and `0036`, then run `python manage.py migrate_template_request_files` and `python manage.py migrate_template_request_files --apply` before exposing customer pages. Verify a second dry run finds zero public manuals, Nginx denies the old public request-document path, and customer/staff downloads require authentication. Private request files are included in the `private_media` backup. The staff quote/delivery workflow and rollback procedure are in `docs/product/template_system_v2.md`.
 For the Device Template Library, back up PostgreSQL and apply `devices.0037` and `0038` before exposing its navigation entry. `0038` retires unsafe public seeds from new selection without deleting assigned revisions; review those retired rows and any affected installed equipment before onboarding new devices. Smoke test pre-Gateway browsing and private drafts, exact-model search, team isolation, saved revisions, the Guided Setup handoff and live-test/deploy separation. See `docs/product/device_template_library.md` for publication rules and rollback.
@@ -395,7 +395,7 @@ service reports failure and restarts, then resumes full heartbeats before setup 
 
 ## Current Release Gates
 
-As of 2026-10-28, the local CM4 has passed the three simulator workflows plus bounded field cable/host and Wi-Fi outage replays. Remaining gates for the first **supervised, read-only** customer are a frozen and reviewed Hub/Gateway pair, real public-server preflight and restore, external alert receipt, two-tenant isolation, and that customer's exact equipment qualification. The intermittent Laptop 2 port-502 timeout remains an open reliability risk. The deferred 24-hour cold-room soak and second-uplink automatic failover are not passed; record the pilot's monitoring/recovery boundaries honestly. Governed write-back, paid Stripe billing, inbound WhatsApp and OTA require their own acceptance before those functions are enabled. Complete the three-customer technical canary before widening to a broader cohort.
+As of 2026-10-28, the local CM4 has passed the three simulator workflows plus bounded field cable/host and Wi-Fi outage replays. The reviewed Hub/Gateway source pair is merged. Remaining gates for the first **supervised, read-only** customer are deploying that exact pair, real public-server preflight and restore, external alert receipt, two-tenant isolation, and that customer's exact equipment qualification. The intermittent Laptop 2 port-502 timeout remains an open reliability risk. The deferred 24-hour cold-room soak and second-uplink automatic failover are not passed; record the pilot's monitoring/recovery boundaries honestly. Governed write-back, paid Stripe billing, inbound WhatsApp and OTA require their own acceptance before those functions are enabled. Complete the three-customer technical canary before widening to a broader cohort.
 
 ## Rollback Basics
 
