@@ -60,18 +60,17 @@ def test_reclaimed_gateway_rejects_unscoped_and_previous_claim_data():
         team=team, site=site, name="Gateway", serial_number="GW-RECLAIM", access_token="token"
     )
     claim_gateway(gateway)
-    GatewayActivation.objects.create(
-        team=team, gateway=gateway, expires_at=timezone.now(), status="acknowledged"
-    )
+    GatewayActivation.objects.create(team=team, gateway=gateway, expires_at=timezone.now(), status="acknowledged")
     command = MqttConsumerCommand()
     topic = "v1/gateway/GW-RECLAIM/logs"
     payload = {"serial_number": gateway.serial_number, "logs": []}
 
     assert command._resolve_inbound_gateway(topic, payload) == (None, None)
     assert command._resolve_inbound_gateway(topic, {**payload, "claim_id": "old-claim"}) == (None, None)
-    assert command._resolve_inbound_gateway(
-        topic, {**payload, "claim_id": gateway_claim_id(gateway)}
-    ) == ("logs", gateway)
+    assert command._resolve_inbound_gateway(topic, {**payload, "claim_id": gateway_claim_id(gateway)}) == (
+        "logs",
+        gateway,
+    )
 
 
 def test_websocket_connection_uses_effective_plan_and_device_interval():

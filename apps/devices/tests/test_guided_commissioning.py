@@ -1515,16 +1515,25 @@ class GuidedSetupViewTest(TestCase):
         mapping = save_device_datapoint_map(
             device=device,
             team=self.team,
-            datapoints=[{"key": "voltage", "address": 3028, "read_function_code": 3,
-                         "data_type": "float32", "unit": "V"}],
+            datapoints=[
+                {"key": "voltage", "address": 3028, "read_function_code": 3, "data_type": "float32", "unit": "V"}
+            ],
         )
-        result = {"status": "success", "mapping_checksum": mapping_checksum(device, mapping.datapoints),
-                  "signals": [{"key": "voltage", "status": "success", "decoded_value": 230.1}]}
+        result = {
+            "status": "success",
+            "mapping_checksum": mapping_checksum(device, mapping.datapoints),
+            "signals": [{"key": "voltage", "status": "success", "decoded_value": 230.1}],
+        }
         record_device_datapoint_validation(device=device, result=result, validated_by=self.user)
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=template,
             state=DeploymentSetupItem.State.AWAITING_CONFIRMATION,
-            connection=device.connection_config, datapoints=mapping.datapoints, validation_result=result,
+            connection=device.connection_config,
+            datapoints=mapping.datapoints,
+            validation_result=result,
         )
 
         self.assertEqual(generate_connector_config(self.gateway), [])
@@ -1540,16 +1549,28 @@ class GuidedSetupViewTest(TestCase):
 
     def test_site_defined_confirmation_rejects_untested_map(self):
         template = DeviceTemplate.objects.create(
-            name="Untested factory map", device_type="power_meter", protocol="modbus_tcp",
-            mapping_strategy="site_defined", register_map={}, created_by_team=self.team,
+            name="Untested factory map",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            mapping_strategy="site_defined",
+            register_map={},
+            created_by_team=self.team,
         )
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
         device = Device.objects.create(
-            team=self.team, gateway=self.gateway, site=self.site, name="Factory meter",
-            template=template, device_type="power_meter", protocol="modbus_tcp",
+            team=self.team,
+            gateway=self.gateway,
+            site=self.site,
+            name="Factory meter",
+            template=template,
+            device_type="power_meter",
+            protocol="modbus_tcp",
         )
         item = DeploymentSetupItem.objects.create(
-            team=self.team, run=run, device=device, selected_template=template,
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=template,
             state=DeploymentSetupItem.State.AWAITING_CONFIRMATION,
             validation_result={"status": "success", "signals": [{"key": "voltage", "status": "success"}]},
         )

@@ -1039,8 +1039,7 @@ def step_3_discover(request, team_slug):
                 or result.get("status") != "success"
                 or not signals
                 or any(
-                    signal.get("status") not in {"success", "warning"} or signal.get("blocking")
-                    for signal in signals
+                    signal.get("status") not in {"success", "warning"} or signal.get("blocking") for signal in signals
                 )
             ):
                 messages.error(request, "Complete a successful live test before confirming this template.")

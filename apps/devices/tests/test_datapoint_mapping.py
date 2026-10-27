@@ -504,9 +504,7 @@ class DeviceDatapointMappingTest(TestCase):
     def test_repeating_confirmation_of_unchanged_map_is_idempotent(self):
         first = self._save_and_confirm()
 
-        second = confirm_device_datapoint_map(
-            device=self.device, team=self.team, confirmed_by=self.user
-        )
+        second = confirm_device_datapoint_map(device=self.device, team=self.team, confirmed_by=self.user)
 
         self.assertEqual(second.pk, first.pk)
         self.assertEqual(second.confirmed_checksum, first.confirmed_checksum)

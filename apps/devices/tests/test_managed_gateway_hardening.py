@@ -118,21 +118,36 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
         deprovision.assert_not_called()
         self.gateway.refresh_from_db()
 
-        self.assertIsNone(acknowledge_gateway_release(self.gateway, {
-            "gateway_release_status": "reset_complete",
-            "gateway_release_request_id": str(release.request_id),
-            "gateway_release_claim_id": "another-claim",
-        }))
-        self.assertIsNone(acknowledge_gateway_release(self.gateway, {
-            "gateway_release_status": "reset_complete",
-            "gateway_release_request_id": str(uuid.uuid4()),
-            "gateway_release_claim_id": gateway_claim_id(self.gateway),
-        }))
-        self.assertIsNotNone(acknowledge_gateway_release(self.gateway, {
-            "gateway_release_status": "reset_complete",
-            "gateway_release_request_id": str(release.request_id),
-            "gateway_release_claim_id": gateway_claim_id(self.gateway),
-        }))
+        self.assertIsNone(
+            acknowledge_gateway_release(
+                self.gateway,
+                {
+                    "gateway_release_status": "reset_complete",
+                    "gateway_release_request_id": str(release.request_id),
+                    "gateway_release_claim_id": "another-claim",
+                },
+            )
+        )
+        self.assertIsNone(
+            acknowledge_gateway_release(
+                self.gateway,
+                {
+                    "gateway_release_status": "reset_complete",
+                    "gateway_release_request_id": str(uuid.uuid4()),
+                    "gateway_release_claim_id": gateway_claim_id(self.gateway),
+                },
+            )
+        )
+        self.assertIsNotNone(
+            acknowledge_gateway_release(
+                self.gateway,
+                {
+                    "gateway_release_status": "reset_complete",
+                    "gateway_release_request_id": str(release.request_id),
+                    "gateway_release_claim_id": gateway_claim_id(self.gateway),
+                },
+            )
+        )
         dispatch_gateway_release(release.pk)
         release.refresh_from_db()
         self.assertEqual(release.status, "completed")

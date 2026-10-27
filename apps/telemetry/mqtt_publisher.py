@@ -195,6 +195,7 @@ def publish_gateway_activation(activation, operational_password):
     """
     gateway = activation.gateway
     from apps.telemetry.claim_identity import gateway_claim_id
+
     request_id = str(activation.request_id)
     topic = f"v1/gateway/{gateway.serial_number}/bootstrap/activate"
     payload = {
