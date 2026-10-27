@@ -4,6 +4,8 @@ Last reviewed: 2026-10-28 (after factory-energy, cold-room, and facilities/HVAC 
 
 This is the practical plan for putting Novena Hub on a public server. First prove the stack privately, then open a controlled investor showcase with labelled sample data. Invite three customers only as a supervised, read-only pilot after the release and each site's equipment pass the acceptance checks below. Use the same maintainable deployment rather than a throwaway demo environment.
 
+The physical E2E fixes are merged into Hub `main` through PR #30 and Gateway `main` through PR #16. Neither merge installs the public stack or updates the CM4 automatically; choose exact reviewed commits for the deployment branch and verify that pair on the target systems.
+
 The matching repo-backed checklist is `docs/production_readiness_kit.md`.
 
 ## CTO Recommendation
@@ -110,7 +112,7 @@ Use a modern Docker Compose version. The production Compose file uses `env_file.
 
 ## Freeze the release before cloning
 
-Record one reviewed Hub Git SHA, one compatible Gateway Git SHA, their migrations, production image digests, and a rollback pair. Do not deploy a moving development branch or rely on the latest local checkout. As of this review, GitHub Hub `main` includes the committed E2E work through PR #29, but the latest secure-release and HVAC fixes are still uncommitted. Gateway `main` does not include three committed read/recovery fixes or its latest uncommitted secure-release and discovery changes. Neither current `main` alone reproduces the final physical replay. Review, commit, test, and promote a matching pair before the first server build. Keep write-back and OTA disabled for the initial read-only pilot.
+Record one reviewed Hub Git SHA, one compatible Gateway Git SHA, their migrations, production image digests, and a rollback pair. Do not deploy a moving development branch or rely on the latest local checkout. As of this review, the E2E baseline is on Hub `main` at `86f8e20` (PR #30) and Gateway `main` at `f2f7f84` (PR #16). Branch from those reviewed commits, freeze the resulting image and CM4 build, and verify the pair on the target systems before inviting anyone. Keep write-back and OTA disabled for the initial read-only pilot.
 
 Before publishing the app, prove two disposable tenants cannot see each other's devices, telemetry, templates or MQTT topics. Verify a released Gateway loses its old operational credentials and site configuration and can be claimed by the new tenant; an offline release must remain pending. Do not seed customer accounts or manufacturing claim codes into a public demo.
 
