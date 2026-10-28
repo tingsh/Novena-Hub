@@ -197,15 +197,15 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Marketing assets and resources ready"))
 
     def refresh_pages(self, home, img):
-        home.hero_tagline = "Industrial operations, made visible"
-        home.hero_title = "Industrial visibility, from equipment to action."
+        home.hero_tagline = "From equipment to action"
+        home.hero_title = "Bring physical operations into view."
         home.hero_subtitle = "Connect field equipment to Novena Hub. Claim a Gateway, apply a device template, and give your team a clear view of what needs attention."
         home.hero_cta_text, home.hero_cta_url = "Request demo", "/about/#contact"
         home.hero_secondary_cta_text, home.hero_secondary_cta_url = "Sign up", "/accounts/signup/"
         home.hero_image = img.get("operations") or img["factory"]
         home.hero_image_alt = home.hero_image.title
-        home.seo_title = "Industrial visibility, from equipment to action"
-        home.search_description = "Novena connects industrial equipment to clear monitoring and alerts through Gateway claim, reusable templates, and Novena Hub."
+        home.seo_title = "Bring physical operations into view"
+        home.search_description = "Novena connects field equipment to clear monitoring and alerts through Gateway claim, reusable templates, and Novena Hub."
         home.body = [
             media(
                 img["factory"],
@@ -260,7 +260,7 @@ class Command(BaseCommand):
         product = pages["product"]
         product.hero_tagline = "The Novena platform"
         product.hero_title = "From field signals to confident decisions."
-        product.hero_subtitle = "A managed Gateway brings industrial readings into Novena Hub, where teams can check setup, see trends, and act on exceptions."
+        product.hero_subtitle = "A managed Gateway brings equipment readings into Novena Hub, where teams can check setup, see trends, and act on exceptions."
         product.hero_image = img.get("operations") or img["factory"]
         product.hero_image_alt = product.hero_image.title
         product.body = [
@@ -447,7 +447,7 @@ class Command(BaseCommand):
         ]
         about = pages["about"]
         about.hero_tagline = "About Novena"
-        about.hero_title = "Industrial software should make the field easier to understand."
+        about.hero_title = "Physical operations should be easier to understand."
         about.hero_subtitle = "Novena is building a practical edge-to-cloud platform for lean operations teams in Singapore and the region."
         about.hero_image = img["factory"]
         about.hero_image_alt = img["factory"].title
