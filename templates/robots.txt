@@ -1,3 +1,12 @@
 User-Agent: *
-Disallow: {% url 'admin:index' %}  # disable crawling django admin
-Disallow: {% url 'wagtailadmin_home' %}  # and wagtail admin
+Disallow: {% url 'admin:index' %}
+Disallow: {% url 'wagtailadmin_home' %}
+Disallow: /a/
+Disallow: /accounts/
+Disallow: /users/
+Disallow: /subscriptions/
+Disallow: /teams/
+Disallow: /support/
+Disallow: /terms/
+Disallow: /privacy/
+Sitemap: {{ marketing_origin }}/sitemap.xml

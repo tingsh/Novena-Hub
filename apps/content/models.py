@@ -16,6 +16,10 @@ from apps.content.blocks import (
     FinalCTABlock,
     HeroBlock,
     LeadCaptureBlock,
+    MarketingJourneyBlock,
+    MarketingMediaBlock,
+    MarketingPhotoGridBlock,
+    MarketingSolutionBlock,
     MetricBandBlock,
     PlatformCapabilitiesBlock,
     PricingComparisonBlock,
@@ -73,7 +77,7 @@ class BlogIndexPage(BaseContentPage):
     content_panels = Page.content_panels + [FieldPanel("intro", classname="full")]
 
     def get_ordered_blog_posts(self):
-        return self.get_children().live().order_by("-first_published_at")
+        return self.get_children().live().specific().order_by("-first_published_at")
 
 
 class BlogPage(BaseContentPage):
@@ -172,6 +176,10 @@ class NovenaHomePage(BaseContentPage):
     hero_cta_url = models.CharField(max_length=255, default="/accounts/signup/", blank=True)
     hero_secondary_cta_text = models.CharField(max_length=100, default="Explore Platform", blank=True)
     hero_secondary_cta_url = models.CharField(max_length=255, default="#features", blank=True)
+    hero_image = models.ForeignKey(
+        "wagtailimages.Image", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    hero_image_alt = models.CharField(max_length=255, blank=True)
     show_terminal_simulator = models.BooleanField(
         default=True, help_text="Show the interactive terminal simulator on the right side of the hero."
     )
@@ -179,6 +187,10 @@ class NovenaHomePage(BaseContentPage):
     body = StreamField(
         [
             ("trusted_by", TrustedByBlock()),
+            ("marketing_media", MarketingMediaBlock()),
+            ("marketing_photo_grid", MarketingPhotoGridBlock()),
+            ("marketing_journey", MarketingJourneyBlock()),
+            ("marketing_solution", MarketingSolutionBlock()),
             ("metric_band", MetricBandBlock()),
             ("product_visual", ProductVisualBlock()),
             ("process", ProcessBlock()),
@@ -202,6 +214,8 @@ class NovenaHomePage(BaseContentPage):
         FieldPanel("hero_cta_url"),
         FieldPanel("hero_secondary_cta_text"),
         FieldPanel("hero_secondary_cta_url"),
+        FieldPanel("hero_image"),
+        FieldPanel("hero_image_alt"),
         FieldPanel("show_terminal_simulator"),
         FieldPanel("body", classname="full"),
     ]
@@ -239,10 +253,18 @@ class MarketingStandardPage(BaseContentPage):
     hero_tagline = models.CharField(max_length=255, blank=True)
     hero_title = models.CharField(max_length=255, blank=True)
     hero_subtitle = models.TextField(blank=True)
+    hero_image = models.ForeignKey(
+        "wagtailimages.Image", null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    hero_image_alt = models.CharField(max_length=255, blank=True)
 
     body = StreamField(
         [
             ("hero", HeroBlock()),
+            ("marketing_media", MarketingMediaBlock()),
+            ("marketing_photo_grid", MarketingPhotoGridBlock()),
+            ("marketing_journey", MarketingJourneyBlock()),
+            ("marketing_solution", MarketingSolutionBlock()),
             ("trusted_by", TrustedByBlock()),
             ("metric_band", MetricBandBlock()),
             ("product_visual", ProductVisualBlock()),
@@ -268,5 +290,7 @@ class MarketingStandardPage(BaseContentPage):
         FieldPanel("hero_tagline"),
         FieldPanel("hero_title"),
         FieldPanel("hero_subtitle"),
+        FieldPanel("hero_image"),
+        FieldPanel("hero_image_alt"),
         FieldPanel("body", classname="full"),
     ]

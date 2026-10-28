@@ -297,6 +297,7 @@ LOGIN_REDIRECT_URL = "/"
 
 # Domain and Subdomain settings for production routing
 APP_DOMAIN = env("APP_DOMAIN", default=None)
+MARKETING_SITE_DOMAIN = env("MARKETING_SITE_DOMAIN", default="www.novenaplatform.com")
 SESSION_COOKIE_DOMAIN = env("SESSION_COOKIE_DOMAIN", default=None)
 
 # Password validation

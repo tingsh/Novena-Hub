@@ -1,6 +1,7 @@
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from wagtail import blocks
+from wagtail.images.blocks import ImageChooserBlock
 
 
 class CaptionBlock(blocks.TextBlock):
@@ -16,6 +17,81 @@ class CaptionBlock(blocks.TextBlock):
 
     class Meta:
         icon = "info-circle"
+
+
+class MarketingMediaBlock(blocks.StructBlock):
+    eyebrow = blocks.CharBlock(required=False)
+    title = blocks.CharBlock()
+    body = blocks.TextBlock(required=False)
+    image = ImageChooserBlock()
+    image_alt = blocks.CharBlock(help_text="Describe the image for people using screen readers.")
+    caption = blocks.CharBlock(required=False)
+    kind = blocks.ChoiceBlock(choices=[("photo", "Field photography"), ("product", "Real product screen")])
+    reverse = blocks.BooleanBlock(required=False)
+    points = blocks.ListBlock(blocks.CharBlock(), required=False)
+    link_text = blocks.CharBlock(required=False)
+    link_url = blocks.CharBlock(required=False)
+
+    class Meta:
+        template = "content/blocks/marketing_media.html"
+        icon = "image"
+        label = "Marketing image and text"
+
+
+class MarketingPhotoCardBlock(blocks.StructBlock):
+    image = ImageChooserBlock()
+    image_alt = blocks.CharBlock()
+    label = blocks.CharBlock()
+    title = blocks.CharBlock()
+    link_url = blocks.CharBlock()
+
+
+class MarketingPhotoGridBlock(blocks.StructBlock):
+    eyebrow = blocks.CharBlock(required=False)
+    title = blocks.CharBlock()
+    intro = blocks.TextBlock(required=False)
+    cards = blocks.ListBlock(MarketingPhotoCardBlock())
+
+    class Meta:
+        template = "content/blocks/marketing_photo_grid.html"
+        icon = "grip"
+        label = "Photo grid"
+
+
+class MarketingJourneyStepBlock(blocks.StructBlock):
+    number = blocks.CharBlock()
+    title = blocks.CharBlock()
+    detail = blocks.CharBlock()
+
+
+class MarketingJourneyBlock(blocks.StructBlock):
+    eyebrow = blocks.CharBlock(required=False)
+    title = blocks.CharBlock()
+    intro = blocks.TextBlock(required=False)
+    steps = blocks.ListBlock(MarketingJourneyStepBlock())
+
+    class Meta:
+        template = "content/blocks/marketing_journey.html"
+        icon = "list-ol"
+        label = "Gateway to value journey"
+
+
+class MarketingSolutionBlock(blocks.StructBlock):
+    anchor_id = blocks.CharBlock(help_text="Anchor used by links, without the # character.")
+    eyebrow = blocks.CharBlock()
+    title = blocks.CharBlock()
+    body = blocks.TextBlock()
+    image = ImageChooserBlock()
+    image_alt = blocks.CharBlock()
+    screenshot = ImageChooserBlock(required=False)
+    screenshot_alt = blocks.CharBlock(required=False)
+    points = blocks.ListBlock(blocks.CharBlock())
+    reverse = blocks.BooleanBlock(required=False)
+
+    class Meta:
+        template = "content/blocks/marketing_solution.html"
+        icon = "image"
+        label = "Photo-led solution"
 
 
 class TrustedByBlock(blocks.StructBlock):

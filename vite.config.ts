@@ -21,6 +21,7 @@ export default defineConfig({
         'site-base': path.resolve(__dirname, './assets/site-base.js'),
         'site-tailwind': path.resolve(__dirname, './assets/site-tailwind.js'),
         'site': path.resolve(__dirname, './assets/javascript/site.js'),
+        'marketing': path.resolve(__dirname, './assets/marketing.js'),
         'app': path.resolve(__dirname, './assets/javascript/app.js'),
       },
       output: {

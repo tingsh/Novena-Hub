@@ -1,17 +1,1 @@
-{% load i18n %}
-<section class="bg-slate-950 py-20 text-white">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-    <div class="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
-      <div>
-        <h2 class="max-w-3xl text-3xl font-bold font-heading tracking-normal text-white sm:text-4xl">{{ self.title }}</h2>
-        <p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">{{ self.subtitle }}</p>
-      </div>
-      <div class="flex flex-col gap-3 sm:flex-row lg:justify-end">
-        <a href="{{ self.primary_cta_url }}" class="btn btn-primary rounded-md px-6 font-bold">{{ self.primary_cta_text }}</a>
-        {% if self.secondary_cta_url %}
-          <a href="{{ self.secondary_cta_url }}" class="btn btn-outline rounded-md border-white/25 px-6 font-bold text-white hover:bg-white hover:text-slate-950">{{ self.secondary_cta_text }}</a>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</section>
+<section class="m-final-cta"><div class="m-wrap m-final-cta-inner"><div><p class="m-eyebrow">Your first site</p><h2>{{ self.title }}</h2><p>{{ self.subtitle }}</p></div><div class="m-actions"><a class="m-button m-button-primary" href="{{ self.primary_cta_url }}">{{ self.primary_cta_text }}</a>{% if self.secondary_cta_url %}<a class="m-button m-button-outline" href="{{ self.secondary_cta_url }}">{{ self.secondary_cta_text }}</a>{% endif %}</div></div></section>

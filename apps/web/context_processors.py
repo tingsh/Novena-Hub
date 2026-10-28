@@ -21,6 +21,12 @@ def project_meta(request):
         login_url = reverse("account_login")
         signup_url = reverse("account_signup")
 
+    if settings.DEBUG:
+        marketing_origin = f"{request.scheme}://{request.get_host()}"
+    else:
+        marketing_origin = f"https://{settings.MARKETING_SITE_DOMAIN}"
+    marketing_page_url = f"{marketing_origin}{request.path}"
+
     from apps.subscriptions.metadata import ACTIVE_PRODUCTS
 
     return {
@@ -38,6 +44,8 @@ def project_meta(request):
         "use_i18n": getattr(settings, "USE_I18N", False) and len(getattr(settings, "LANGUAGES", [])) > 1,
         "login_url": login_url,
         "signup_url": signup_url,
+        "marketing_origin": marketing_origin,
+        "marketing_page_url": marketing_page_url,
         "active_products": ACTIVE_PRODUCTS,
         "public_mqtt_broker": {
             "scheme": settings.PUBLIC_MQTT_BROKER_SCHEME,

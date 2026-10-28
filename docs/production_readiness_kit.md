@@ -119,6 +119,7 @@ Then fill real values. Important groups:
 - `DEBUG=False`
 - `SECRET_KEY`
 - `ALLOWED_HOSTS=novenaplatform.com,www.novenaplatform.com,app.novenaplatform.com`
+- `MARKETING_SITE_DOMAIN=www.novenaplatform.com` (canonical public host; redirect apex to `www`)
 - `APP_DOMAIN=app.novenaplatform.com`
 - `SESSION_COOKIE_DOMAIN=.novenaplatform.com`
 - `APP_BASE_URL=https://app.novenaplatform.com`
@@ -361,7 +362,7 @@ Teacher note: a database restore recovers rows. It does not automatically recove
 
 For a controlled investor showcase, use clearly labelled sample data and complete production preflight, HTTPS/WebSocket, MQTT TLS if a Gateway is attached, tenant/access isolation, and backup/rollback checks. Before inviting customers, complete the full list:
 
-1. `https://novenaplatform.com` loads the public site.
+1. `https://www.novenaplatform.com` loads the public site, and the apex redirects there.
 2. `https://app.novenaplatform.com` loads login/signup.
 3. `/health/?token=<token>` returns healthy.
 4. `production_readiness_check` has no `FAIL` results.

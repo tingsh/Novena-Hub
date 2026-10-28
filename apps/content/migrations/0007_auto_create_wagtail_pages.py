@@ -5,7 +5,7 @@ def create_wagtail_pages(apps, schema_editor):
     from wagtail.models import Page
     from django.contrib.contenttypes.models import ContentType
     from django.db import connection
-    from apps.content.models import MarketingStandardPage
+    MarketingStandardPage = apps.get_model('content', 'MarketingStandardPage')
 
     # 1. Convert homepage ID=2 to NovenaHomePage using raw SQL
     try:
@@ -365,16 +365,21 @@ def create_wagtail_pages(apps, schema_editor):
 
     for pdata in subpages_data:
         if not MarketingStandardPage.objects.filter(slug=pdata["slug"]).exists():
+            marketing_page_ct, _ = ContentType.objects.get_or_create(
+                app_label='content', model='marketingstandardpage'
+            )
             sp = MarketingStandardPage(
                 title=pdata["title"],
                 slug=pdata["slug"],
+                content_type_id=marketing_page_ct.id,
+                locale_id=homepage.locale_id,
+                live=True,
                 hero_tagline=pdata["hero_tagline"],
                 hero_title=pdata["hero_title"],
                 hero_subtitle=pdata["hero_subtitle"],
                 body=pdata["body"]
             )
             homepage.add_child(instance=sp)
-            sp.save_revision().publish()
 
     # Update content type mapping after Wagtail tree operations finish.
     try:
@@ -387,7 +392,7 @@ def create_wagtail_pages(apps, schema_editor):
         print(f"Error updating homepage content type in migration: {e}")
 
 def remove_wagtail_pages(apps, schema_editor):
-    from apps.content.models import MarketingStandardPage
+    MarketingStandardPage = apps.get_model('content', 'MarketingStandardPage')
     from wagtail.models import Page
     from django.contrib.contenttypes.models import ContentType
     from django.db import connection
