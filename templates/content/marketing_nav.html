@@ -1,0 +1,27 @@
+{% load static %}
+<header class="m-nav" id="top"><div class="m-wrap m-nav-inner">
+  <a class="m-brand" href="/" aria-label="Novena Platform home"><img src="{% static 'marketing/novena-mark.svg' %}" width="38" height="38" alt=""><span>novena<span class="m-brand-dot">.</span><small>PLATFORM</small></span></a>
+  <nav class="m-nav-links" aria-label="Main navigation"><a href="/product/" {% if page.slug == 'product' %}aria-current="page"{% endif %}>Platform</a><a href="/solutions/" {% if page.slug == 'solutions' %}aria-current="page"{% endif %}>Solutions</a><a href="/pricing/" {% if page.slug == 'pricing' %}aria-current="page"{% endif %}>Pricing</a><a href="/resources/" {% if page.slug == 'resources' %}aria-current="page"{% endif %}>Resources</a><a href="/about/" {% if page.slug == 'about' %}aria-current="page"{% endif %}>About</a></nav>
+  <div class="m-nav-actions"><a class="m-signin" href="{{ login_url }}">Sign in</a><a class="m-button m-button-light" href="{{ signup_url }}">Sign up</a><a class="m-button m-button-primary" href="/about/#contact">Request demo</a></div>
+  <details class="m-mobile-menu"><summary aria-label="Open menu"><span></span><span></span><span></span></summary><nav aria-label="Mobile navigation"><a href="/product/">Platform</a><a href="/solutions/">Solutions</a><a href="/pricing/">Pricing</a><a href="/resources/">Resources</a><a href="/about/">About</a><a href="{{ login_url }}">Sign in</a><a href="{{ signup_url }}">Sign up</a><a href="/about/#contact">Request demo</a></nav></details>
+</div></header>
+<script>
+  if (!window.novenaMarketingNavBound) {
+  window.novenaMarketingNavBound = true;
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') {
+      const menu = document.querySelector('.m-mobile-menu[open]');
+      if (menu) { menu.open = false; menu.querySelector('summary').focus(); }
+    }
+  });
+  document.addEventListener('click', function (event) {
+    const menu = document.querySelector('.m-mobile-menu[open]');
+    if (menu && !menu.contains(event.target)) menu.open = false;
+  });
+  document.addEventListener('toggle', function (event) {
+    if (event.target.matches('.m-mobile-menu')) {
+      event.target.querySelector('summary').setAttribute('aria-label', event.target.open ? 'Close menu' : 'Open menu');
+    }
+  }, true);
+  }
+</script>

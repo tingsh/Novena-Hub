@@ -33,8 +33,8 @@ Use at least 4 GB RAM. Prefer 8 GB RAM if the price is still comfortable, becaus
 
 Use the common SaaS split you proposed:
 
-- `novenaplatform.com`: public marketing site.
-- `www.novenaplatform.com`: marketing alias.
+- `www.novenaplatform.com`: canonical public marketing site.
+- `novenaplatform.com`: redirect to the `www` marketing site.
 - `app.novenaplatform.com`: Django app login, onboarding, dashboards, APIs, webhooks.
 - `mqtt.novenaplatform.com`: public MQTT endpoint for gateways.
 
@@ -350,7 +350,7 @@ Then perform one restore drill before inviting customers. A backup that has neve
 
 For the controlled investor showcase, complete items 1–6, the production preflight, tenant/access isolation, and restore/rollback checks with labelled sample data. Do not imply that the sample equipment is live customer hardware. Before inviting the first three technical canary customers, complete the full list on the frozen release:
 
-1. `https://novenaplatform.com` loads.
+1. `https://www.novenaplatform.com` loads, and `https://novenaplatform.com` redirects there.
 2. `https://app.novenaplatform.com` loads signup/login.
 3. `https://app.novenaplatform.com/health/?token=<token>` returns healthy.
 4. `production_readiness_check` has no `FAIL`.
