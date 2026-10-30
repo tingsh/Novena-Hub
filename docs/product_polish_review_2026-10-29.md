@@ -1,6 +1,6 @@
 # Product polish review — 29 October 2026
 
-**Current status (30 October 2026):** The P1/P2 implementation is on Hub branch `fix/product-polish-p1-p2` at `0d117d9` (draft [PR #34](https://github.com/tingsh/Novena-Hub/pull/34)). The original findings and recommendations below are the **pre-fix baseline**, not a description of the current UI. Thirteen of the seventeen findings have a local code fix, one has a partial safety mitigation, and three remain open. None of these changes is yet a deployed/customer-hardware acceptance.
+**Current status (30 October 2026):** This audit checked the P1/P2 implementation at Hub commit `0d117d9` on branch `fix/product-polish-p1-p2` (draft [PR #34](https://github.com/tingsh/Novena-Hub/pull/34)). The original findings and recommendations below are the **pre-fix baseline**, not a description of the current UI. Thirteen of the seventeen findings have a local code fix, one has a partial safety mitigation, and three remain open. None of these changes is yet a deployed/customer-hardware acceptance.
 
 ## Current disposition of every finding — 30 October 2026
 
