@@ -1,6 +1,7 @@
 import csv
 
-from django.http import HttpResponse, JsonResponse
+from django.db import connection
+from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from waffle import flag_is_active
 
@@ -8,6 +9,7 @@ from apps.devices.datapoint_maps import effective_register_map
 from apps.devices.models import Device, Site
 from apps.devices.solution_profiles import get_site_profile
 from apps.teams.decorators import login_and_team_required
+from apps.teams.roles import visible_sites
 from apps.utils.timezones import format_site_datetime, site_timezone_metadata
 
 from .models import TelemetryData
@@ -74,7 +76,9 @@ def _device_telemetry_columns(device):
 @login_and_team_required
 def get_chart_partial(request, team_slug, device_id, key):
     # Security: Ensure device belongs to the team
-    device = get_object_or_404(Device, id=device_id, team__slug=team_slug)
+    device = get_object_or_404(
+        visible_sites(Device.objects.filter(team=request.team), request.user, request.team), id=device_id
+    )
 
     chart_data = get_latest_telemetry_for_chart(device, key)
 
@@ -87,7 +91,9 @@ def get_chart_partial(request, team_slug, device_id, key):
 
 @login_and_team_required
 def get_kpi_partial(request, team_slug, device_id, key):
-    device = get_object_or_404(Device, id=device_id, team__slug=team_slug)
+    device = get_object_or_404(
+        visible_sites(Device.objects.filter(team=request.team), request.user, request.team), id=device_id
+    )
     value = get_latest_telemetry_value(device, key)
 
     units = {"voltage": "V", "active_power": "W", "frequency": "Hz", "solar_generation": "W"}
@@ -105,7 +111,9 @@ def telemetry_analyzer(request, team_slug, device_id):
     """
     Main view for the historical data analyzer.
     """
-    device = get_object_or_404(Device, id=device_id, team__slug=team_slug)
+    device = get_object_or_404(
+        visible_sites(Device.objects.filter(team=request.team), request.user, request.team), id=device_id
+    )
 
     context = {
         "device": device,
@@ -122,7 +130,9 @@ def device_metrics_api(request, team_slug, device_id):
     """
     JSON endpoint returning available telemetry metrics (keys, labels, units) for a device.
     """
-    device = get_object_or_404(Device, id=device_id, team__slug=team_slug)
+    device = get_object_or_404(
+        visible_sites(Device.objects.filter(team=request.team), request.user, request.team), id=device_id
+    )
 
     metrics = []
     register_map = effective_register_map(device)
@@ -150,7 +160,9 @@ def device_telemetry_samples_api(request, team_slug, device_id):
     TelemetryData is stored as one row per key, so this endpoint pivots rows
     with the same timestamp into a table-friendly sample row.
     """
-    device = get_object_or_404(Device, id=device_id, team__slug=team_slug)
+    device = get_object_or_404(
+        visible_sites(Device.objects.filter(team=request.team), request.user, request.team), id=device_id
+    )
     limit = _normalize_sample_limit(request.GET.get("limit", DEFAULT_SAMPLE_LIMIT))
     columns, column_keys = _device_telemetry_columns(device)
 
@@ -200,7 +212,9 @@ def device_telemetry_history_api(request, team_slug, device_id):
     """
     from django.utils import timezone
 
-    device = get_object_or_404(Device, id=device_id, team__slug=team_slug)
+    device = get_object_or_404(
+        visible_sites(Device.objects.filter(team=request.team), request.user, request.team), id=device_id
+    )
     key = request.GET.get("key", "active_power")
     try:
         hours = max(1, int(request.GET.get("hours", 24)))
@@ -217,23 +231,32 @@ def device_telemetry_history_api(request, team_slug, device_id):
     if hours > max_hours:
         hours = max_hours
 
-    qs = TelemetryData.objects.filter(device=device)
-    if key:
-        qs = qs.filter(key=key)
-
     cutoff = timezone.now() - timezone.timedelta(hours=hours)
-    qs = qs.filter(timestamp__gte=cutoff).order_by("-timestamp")[:1000]
-
-    # Reverse to keep chronological order
-    points = list(reversed(list(qs)))
+    # Pick one observed point per time bucket across the entire requested
+    # window. A newest-N limit silently omitted the early part of long ranges.
+    bucket_seconds = max(60, int(hours * 3600 / 720))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT timestamp, value_numeric, value_bool, value_string FROM (
+                   SELECT timestamp, value_numeric, value_bool, value_string,
+                          row_number() OVER (
+                              PARTITION BY key, floor(extract(epoch FROM timestamp) / %s)
+                              ORDER BY timestamp DESC
+                          ) AS sample_rank
+                   FROM telemetry_telemetrydata
+                   WHERE device_id = %s AND (%s = '' OR key = %s) AND timestamp >= %s
+                 ) sampled WHERE sample_rank = 1 ORDER BY timestamp""",
+            [bucket_seconds, device.id, key, key, cutoff],
+        )
+        points = cursor.fetchall()
 
     labels = []
     labels_local = []
     values = []
-    for point in points:
-        labels.append(point.timestamp.isoformat())
-        labels_local.append(format_site_datetime(point.timestamp, device.site, "%H:%M:%S"))
-        values.append(_telemetry_point_value(point))
+    for sample_at, numeric, boolean, string in points:
+        labels.append(sample_at.isoformat())
+        labels_local.append(format_site_datetime(sample_at, device.site, "%H:%M:%S"))
+        values.append(numeric if numeric is not None else boolean if boolean is not None else string)
 
     return JsonResponse(
         {
@@ -241,6 +264,11 @@ def device_telemetry_history_api(request, team_slug, device_id):
             "labels_local": labels_local,
             "values": values,
             "key": key,
+            "requested_hours": hours,
+            "sample_count": len(points),
+            "first_sample_at": labels[0] if labels else None,
+            "last_sample_at": labels[-1] if labels else None,
+            "sampling": f"Latest observed reading in each {bucket_seconds}-second bucket",
             **site_timezone_metadata(device.site),
         }
     )
@@ -253,8 +281,13 @@ def export_telemetry_csv(request, team_slug, device_id):
     """
     from django.utils import timezone
 
-    device = get_object_or_404(Device, id=device_id, team__slug=team_slug)
-    days = int(request.GET.get("days", 7))
+    device = get_object_or_404(
+        visible_sites(Device.objects.filter(team=request.team), request.user, request.team), id=device_id
+    )
+    try:
+        days = max(1, int(request.GET.get("days", 7)))
+    except (TypeError, ValueError):
+        days = 7
 
     plan_days = get_retention_limit_days(request.team)
     # CSV export follows the same visible-history rule as charts/API queries;
@@ -262,11 +295,6 @@ def export_telemetry_csv(request, team_slug, device_id):
     if days > plan_days:
         days = plan_days
 
-    response = HttpResponse(content_type="text/csv")
-    response["Content-Disposition"] = f'attachment; filename="{device.name}_telemetry.csv"'
-
-    writer = csv.writer(response)
-    writer.writerow(["Timestamp", "Metric", "Key", "Value", "Unit"])
     columns, _ = _device_telemetry_columns(device)
     metric_meta = {
         column["key"]: {
@@ -277,20 +305,24 @@ def export_telemetry_csv(request, team_slug, device_id):
     }
 
     cutoff = timezone.now() - timezone.timedelta(days=days)
-    qs = TelemetryData.objects.filter(device=device, timestamp__gte=cutoff).order_by("-timestamp")
-    for point in qs[:5000]:  # Limit export for safety
-        val = point.value_numeric if point.value_numeric is not None else (point.value_string or point.value_bool)
-        meta = metric_meta.get(point.key, {"label": point.key.replace("_", " ").title(), "unit": ""})
-        writer.writerow(
-            [
-                format_site_datetime(point.timestamp, device.site),
-                meta["label"],
-                point.key,
-                val,
-                meta["unit"],
-            ]
-        )
+    qs = TelemetryData.objects.filter(device=device, timestamp__gte=cutoff).order_by("timestamp", "pk")
 
+    class Echo:
+        def write(self, value):
+            return value
+
+    def rows():
+        writer = csv.writer(Echo())
+        yield writer.writerow(["Timestamp", "Metric", "Key", "Value", "Unit"])
+        for point in qs.iterator(chunk_size=2000):
+            val = _telemetry_point_value(point)
+            meta = metric_meta.get(point.key, {"label": point.key.replace("_", " ").title(), "unit": ""})
+            yield writer.writerow(
+                [format_site_datetime(point.timestamp, device.site), meta["label"], point.key, val, meta["unit"]]
+            )
+
+    response = StreamingHttpResponse(rows(), content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{device.name}_telemetry.csv"'
     return response
 
 
@@ -365,7 +397,9 @@ def _site_profile_report_rows(site, days):
 
 @login_and_team_required
 def site_profile_report(request, team_slug, site_id):
-    site = get_object_or_404(Site, id=site_id, team=request.team)
+    site = get_object_or_404(
+        visible_sites(Site.objects.filter(team=request.team), request.user, request.team, lookup="id"), id=site_id
+    )
     if flag_is_active(request, "business_impact_roi"):
         return redirect("web_team:impact:site_detail", team_slug=team_slug, site_id=site_id)
     days = int(request.GET.get("days", 7))
@@ -380,7 +414,9 @@ def site_profile_report(request, team_slug, site_id):
 
 @login_and_team_required
 def export_site_profile_report_csv(request, team_slug, site_id):
-    site = get_object_or_404(Site, id=site_id, team__slug=team_slug)
+    site = get_object_or_404(
+        visible_sites(Site.objects.filter(team=request.team), request.user, request.team, lookup="id"), id=site_id
+    )
     days = int(request.GET.get("days", 7))
     report = _site_profile_report_rows(site, days)
 

@@ -1,8 +1,10 @@
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
+from apps.alerts.models import Alert
 from apps.dashboard.forms import SharedDashboardForm
 from apps.dashboard.models import SharedDashboard
+from apps.devices.models import Site
 from apps.teams.mixins import PermissionRequiredMixin
 
 
@@ -21,7 +23,15 @@ class SharedDashboardListView(PermissionRequiredMixin, ListView):
         return context
 
 
-class SharedDashboardCreateView(PermissionRequiredMixin, CreateView):
+class SharedDashboardPreviewMixin:
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["preview_sites"] = Site.objects.filter(team=self.request.team).order_by("name")
+        context["preview_alert_count"] = Alert.objects.filter(team=self.request.team, status="active").count()
+        return context
+
+
+class SharedDashboardCreateView(SharedDashboardPreviewMixin, PermissionRequiredMixin, CreateView):
     permission_required = "manage_shared_links"
     model = SharedDashboard
     form_class = SharedDashboardForm
@@ -40,7 +50,7 @@ class SharedDashboardCreateView(PermissionRequiredMixin, CreateView):
         return reverse_lazy("web_team:dashboard_team:list", args=[self.request.team.slug])
 
 
-class SharedDashboardUpdateView(PermissionRequiredMixin, UpdateView):
+class SharedDashboardUpdateView(SharedDashboardPreviewMixin, PermissionRequiredMixin, UpdateView):
     permission_required = "manage_shared_links"
     model = SharedDashboard
     form_class = SharedDashboardForm

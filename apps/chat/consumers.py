@@ -31,11 +31,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         # Resolve Team
         team_id = self.scope.get("session", {}).get("team")
         if team_id:
-            self.team = await Team.objects.filter(id=team_id, status=Team.Status.ACTIVE).afirst()
+            self.team = await Team.objects.filter(id=team_id, members=self.user, status=Team.Status.ACTIVE).afirst()
         else:
             self.team = await Team.objects.filter(members=self.user, status=Team.Status.ACTIVE).afirst()
 
         if not self.team:
+            await self.close()
+            return
+
+        from apps.teams.roles import visible_site_ids
+
+        if await database_sync_to_async(visible_site_ids)(self.user, self.team) is not None:
+            # The assistant tool executor operates on the whole team.
             await self.close()
             return
 

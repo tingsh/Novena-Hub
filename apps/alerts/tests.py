@@ -79,6 +79,9 @@ def test_alert_rule_form_uses_operator_labels():
     assert form.fields["telemetry_key"].label == "Reading to monitor"
     assert form.fields["condition"].label == "Alert when the reading is"
     assert dict(form.fields["condition"].choices)["gt"] == "above"
+    assert form.initial["is_active"] is False
+    assert form.initial["notify_email"] is False
+    assert form.initial["notify_whatsapp"] is False
 
 
 @pytest.mark.django_db
@@ -257,10 +260,16 @@ def test_template_suggestion_prefills_separate_alert_form_without_creating_rule(
     form_response = client.get(suggestion["url"])
     assert form_response.status_code == 200
     assert form_response.context["form"].initial["telemetry_key"] == "active_power"
+    assert form_response.context["form"].initial["is_active"] is False
+    assert form_response.context["form"].initial["notify_email"] is False
     assert b'id="alert-reading"' in form_response.content
     assert f'data-device-id="{device.pk}"'.encode() in form_response.content
     assert b"active_power" in form_response.content
     assert not AlertRule.objects.filter(device=device).exists()
+    device_form = client.get(reverse("web_team:alerts:rule_create", args=[team.slug]), {"device": device.pk})
+    assert device_form.context["form"].initial["device"] == device
+    assert device_form.context["form"].initial["site"] == site
+    assert device_form.context["form"].initial["is_active"] is False
 
     saved = client.post(
         reverse("web_team:alerts:rule_create", args=[team.slug]),

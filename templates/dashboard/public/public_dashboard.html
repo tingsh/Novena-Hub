@@ -39,7 +39,7 @@
                         {% for alert in active_alerts %}
                         <p class="text-xs text-red-700 dark:text-red-300">
                             <strong>{{ alert.device.name }}</strong>: {{ alert.rule.name }} 
-                            <span class="text-red-500 ml-2">{{ alert.triggered_value }}</span> 
+                            <span class="text-red-500 ml-2">{{ alert.trigger_value_display }}</span>
                             <span class="text-red-400/70 ml-2">({{ alert.triggered_at|timesince }} ago)</span>
                         </p>
                         {% endfor %}
@@ -57,19 +57,20 @@
                     <h2 class="text-lg font-bold text-gray-900 dark:text-white flex items-center">
                         <i class="fa fa-building text-indigo-500 mr-2"></i> {{ item.site.name }}
                     </h2>
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if item.stats.active_alerts > 0 or item.offline_count %}bg-red-100 text-red-800{% elif not item.monitoring_active %}bg-amber-100 text-amber-800{% else %}bg-green-100 text-green-800{% endif %}">
-                        {% if item.stats.active_alerts > 0 %}{{ item.stats.active_alerts }} active alerts{% elif item.offline_count %}{{ item.offline_count }} devices need attention{% elif not item.monitoring_active %}Monitoring not set up{% else %}No active alerts{% endif %}
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if item.active_alert_count > 0 or item.offline_count %}bg-red-100 text-red-800{% elif not item.monitoring_active %}bg-amber-100 text-amber-800{% else %}bg-green-100 text-green-800{% endif %}">
+                        {% if item.active_alert_count > 0 %}{{ item.active_alert_count }} active alerts{% elif item.offline_count %}{{ item.offline_count }} devices need attention{% elif not item.monitoring_active %}Monitoring not set up{% else %}No active alerts{% endif %}
                     </span>
                 </div>
                 <div class="p-6">
                     <dl class="grid grid-cols-2 gap-x-4 gap-y-6">
                         <div>
                             <dt class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Configured Devices</dt>
-                            <dd class="mt-1 text-3xl font-black tracking-tight text-gray-900 dark:text-white">{{ item.stats.total_devices }}</dd>
+                            <dd class="mt-1 text-3xl font-black tracking-tight text-gray-900 dark:text-white">{{ item.device_count }}</dd>
                         </div>
                         {% if item.energy_available %}<div>
-                           <dt class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Est. Energy (24h)</dt>
-                           <dd class="mt-1 text-3xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">{{ item.stats.total_kwh|default:"0" }} <span class="text-sm font-medium text-gray-500">kWh</span></dd>
+                           <dt class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Observed Energy Today</dt>
+                           <dd class="mt-1 text-3xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">{% if item.stats.daily_kwh is not None %}{{ item.stats.daily_kwh|floatformat:2 }} <span class="text-sm font-medium text-gray-500">kWh</span>{% else %}Unavailable{% endif %}</dd>
+                           <p class="text-xs text-gray-500">{% if item.stats.daily_kwh is not None %}{{ item.stats.energy_coverage_percent }}% coverage · last sample {{ item.stats.energy_last_sample_at|timesince }} ago{% else %}Needs a covered import-energy counter.{% endif %}</p>
                         </div>{% endif %}
                     </dl>
                 </div>
@@ -87,7 +88,7 @@
     <!-- Novena Branding Footer -->
     <footer class="bg-gray-900 py-6 text-center mt-auto">
         <p class="text-xs text-gray-400">
-            Powered by <a href="#" class="font-bold text-white hover:text-indigo-400 transition-colors">Novena IIoT</a>
+            Powered by <a href="/" class="font-bold text-white hover:text-indigo-400 transition-colors">Novena IIoT</a>
         </p>
         <p class="text-[10px] text-gray-500 mt-1 uppercase tracking-widest">Industrial Intelligence Platform</p>
     </footer>

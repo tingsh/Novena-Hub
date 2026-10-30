@@ -50,18 +50,18 @@
             </div>
         </div>
         <div class="mt-5 flex lg:ml-4 lg:mt-0 space-x-3">
-            {% if device.template.mapping_strategy == "site_defined" %}
+            {% if nav_permissions.manage_devices and device.template.mapping_strategy == "site_defined" %}
             <a href="{% url 'web_team:devices:device_datapoint_mapping' request.team.slug device.pk %}" class="btn btn-primary btn-sm">
                 <i class="fa fa-list-check mr-1.5"></i>Map signals
             </a>
             {% endif %}
-             <a href="{% url 'web_team:devices:device_edit' request.team.slug device.pk %}" class="inline-flex items-center rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">
+             {% if nav_permissions.manage_devices %}<a href="{% url 'web_team:devices:device_edit' request.team.slug device.pk %}" class="inline-flex items-center rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600">
                 <i class="fa fa-edit mr-1.5 flex-shrink-0 text-gray-400"></i>Edit
-            </a>
+            </a>{% endif %}
         </div>
     </div>
 
-    {% if latest_readings %}
+    {% if latest_readings and not widgets %}
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {% for reading in latest_readings %}
         <div class="rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm">

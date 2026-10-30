@@ -9,6 +9,9 @@ class DateRangeForm(forms.Form):
 
 
 class SharedDashboardForm(forms.ModelForm):
+    activation_confirmed = forms.BooleanField(
+        required=False, label="I reviewed the sites and alerts this link will show."
+    )
     raw_password = forms.CharField(
         required=False,
         label="Password to open link",
@@ -26,6 +29,16 @@ class SharedDashboardForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["is_active"].label = "Enable this public link"
+
+    def clean(self):
+        data = super().clean()
+        if (
+            data.get("is_active")
+            and not data.get("activation_confirmed")
+            and not (self.instance.pk and self.instance.is_active)
+        ):
+            self.add_error("activation_confirmed", "Review the audience and confirm before activating this link.")
+        return data
 
     def save(self, commit=True):
         instance = super().save(commit=False)

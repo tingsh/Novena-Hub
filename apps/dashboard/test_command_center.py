@@ -240,17 +240,19 @@ class CommandCenterRenderingTests(TestCase):
 
     @override_flag("command_center_customization", active=True)
     @override_flag("business_impact_roi", active=False)
-    def test_enabled_dashboard_renders_fixed_kpis_and_customizable_panels(self):
+    def test_single_device_dashboard_focuses_on_equipment(self):
         response = self.client.get(reverse("web_team:home", args=[self.team.slug]))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "data-fixed-kpi-strip")
-        self.assertContains(response, "data-command-center-kpi-link", count=5)
-        self.assertContains(response, 'hx-boost="false" data-command-center-kpi-link', count=5)
+        self.assertContains(response, 'aria-label="Equipment overview"')
+        self.assertNotContains(response, "data-fixed-kpi-strip")
         self.assertContains(response, 'id="command-center-customize"')
         self.assertContains(response, 'id="command-center-grid" class="grid-stack"')
         self.assertContains(response, 'data-panel-id="needs_attention"')
         self.assertContains(response, 'id="command-center-panel-drawer"')
         self.assertNotContains(response, 'data-panel-id="business_impact"')
+        panels = {panel["id"]: panel for panel in response.context["command_center_panels"]}
+        for panel_id in ("asset_mix", "device_fleet", "sites_actions"):
+            self.assertTrue(panels[panel_id]["hidden"])
 
     @override_flag("command_center_customization", active=False)
     def test_disabled_dashboard_keeps_static_fallback(self):

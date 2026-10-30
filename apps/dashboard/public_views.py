@@ -61,7 +61,14 @@ def public_dashboard(request, token):
             .filter(Q(site=site) | Q(device__site=site) | Q(site__isnull=True, device__isnull=True))
             .exists()
         )
-        energy_keys = {"energy", "energy_kwh", "total_energy", "active_power", "power"}
+        energy_keys = {
+            "energy_import",
+            "import_energy",
+            "energy_import_total",
+            "active_power_total",
+            "active_power",
+            "power",
+        }
         energy_available = any(
             device.energy_category != "none" or energy_keys.intersection(effective_register_map(device))
             for device in devices
@@ -70,6 +77,8 @@ def public_dashboard(request, token):
             {
                 "site": site,
                 "stats": stats,
+                "device_count": len(devices),
+                "active_alert_count": Alert.objects.filter(device__site=site, status="active").count(),
                 "offline_count": offline_count,
                 "monitoring_active": monitoring_active,
                 "energy_available": energy_available,

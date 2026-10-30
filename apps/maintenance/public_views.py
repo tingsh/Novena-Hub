@@ -115,9 +115,17 @@ def public_update_status(request, token):
     ticket = link.ticket
     new_status = request.POST.get("status")
 
-    if new_status in MaintenanceTicket.StatusChoices.values:
-        # Check compliance constraints if marking resolved or closed
-        if new_status in [MaintenanceTicket.StatusChoices.RESOLVED, MaintenanceTicket.StatusChoices.CLOSED]:
+    contractor_statuses = {
+        MaintenanceTicket.StatusChoices.OPEN,
+        MaintenanceTicket.StatusChoices.IN_PROGRESS,
+        MaintenanceTicket.StatusChoices.WAITING,
+        MaintenanceTicket.StatusChoices.RESOLVED,
+    }
+    if new_status not in contractor_statuses:
+        return HttpResponse("Contractor links cannot close tickets.", status=403)
+
+    if new_status in contractor_statuses:
+        if new_status == MaintenanceTicket.StatusChoices.RESOLVED:
             checklist = ticket.checklist_state or []
             incomplete_required = [item["task"] for item in checklist if item.get("required") and not item.get("done")]
             if incomplete_required:
@@ -137,7 +145,10 @@ def public_update_status(request, token):
             team=link.team,
             ticket=ticket,
             author=None,
-            content=f"Changed status from '{old_status}' to '{ticket.get_status_display()}' (via Shareable Link).",
+            content=(
+                f"External link action (via Shareable Link): changed status from '{old_status}' "
+                f"to '{ticket.get_status_display()}'."
+            ),
             is_system_generated=True,
         )
 
@@ -148,10 +159,7 @@ def public_update_status(request, token):
         messages.success(request, f"Ticket status updated to {ticket.get_status_display()}.")
 
         # Handle auto-revocation
-        if link.auto_revoke_on_resolve and new_status in [
-            MaintenanceTicket.StatusChoices.RESOLVED,
-            MaintenanceTicket.StatusChoices.CLOSED,
-        ]:
+        if link.auto_revoke_on_resolve and new_status == MaintenanceTicket.StatusChoices.RESOLVED:
             link.is_active = False
             link.save()
 

@@ -87,13 +87,32 @@ def test_websocket_connection_uses_effective_plan_and_device_interval():
 
     with (
         patch("apps.telemetry.consumers.Device.objects.select_related") as select_related,
+        patch("apps.teams.roles.has_permission", return_value=True) as permitted,
         patch("apps.telemetry.consumers.get_effective_polling_interval_seconds", return_value=2.0) as effective,
     ):
         select_related.return_value.get.return_value = device
         async_to_sync(consumer.connect)()
 
     effective.assert_called_once_with(device)
+    permitted.assert_called_once_with(user, device.team, "view_devices", site=device.site)
     consumer.send_json.assert_awaited_once_with({"type": "connection_established", "min_interval": 2.0})
+
+
+def test_websocket_denies_device_outside_membership_site():
+    user = MagicMock(is_authenticated=True, email="limited@example.com")
+    device = MagicMock(id=42)
+    consumer = TelemetryConsumer()
+    consumer.scope = {"url_route": {"kwargs": {"device_id": 42}}, "user": user}
+    consumer.close = AsyncMock()
+    consumer.accept = AsyncMock()
+    with (
+        patch("apps.telemetry.consumers.Device.objects.select_related") as select_related,
+        patch("apps.teams.roles.has_permission", return_value=False),
+    ):
+        select_related.return_value.get.return_value = device
+        async_to_sync(consumer.connect)()
+    consumer.close.assert_awaited_once()
+    consumer.accept.assert_not_awaited()
 
 
 @pytest.mark.django_db
@@ -1042,7 +1061,8 @@ def test_telemetry_csv_export_uses_site_local_timestamp():
     response = export_telemetry_csv(request, team.slug, device.id)
 
     assert response.status_code == 200
-    assert format_site_datetime(timestamp, site, "%Y-%m-%d %H:%M:%S %Z") in response.content.decode()
+    content = b"".join(response.streaming_content).decode() if response.streaming else response.content.decode()
+    assert format_site_datetime(timestamp, site, "%Y-%m-%d %H:%M:%S %Z") in content
 
 
 @pytest.mark.django_db

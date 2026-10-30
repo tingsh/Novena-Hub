@@ -37,7 +37,12 @@ class AlertRuleForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         team = kwargs.pop("team", None)
+        explicit_initial = kwargs.get("initial", {})
         super().__init__(*args, **kwargs)
+        if not self.is_bound and not self.instance.pk:
+            for field in ("is_active", "notify_email", "notify_whatsapp", "create_maintenance_ticket"):
+                if field not in explicit_initial:
+                    self.initial[field] = False
         self.available_signals = []
         labels = {
             "name": "Alert name",

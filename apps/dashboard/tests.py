@@ -123,6 +123,32 @@ class SharedDashboardTests(TestCase):
         self.assertContains(response, "Own Cold Room")
         self.assertNotContains(response, "Other Team Private Site")
 
+    def test_public_summary_contract_alert_value_and_brand_link(self):
+        from apps.alerts.models import Alert, AlertRule
+        from apps.devices.models import Device, Site
+
+        site = Site.objects.create(team=self.team, name="Cold Room")
+        device = Device.objects.create(
+            team=self.team, site=site, name="Sensor One", device_type="sensor", protocol="modbus_tcp"
+        )
+        rule = AlertRule.objects.create(
+            team=self.team,
+            site=site,
+            device=device,
+            name="High temperature",
+            telemetry_key="temperature",
+            condition="gt",
+            threshold=4,
+            severity="warning",
+        )
+        Alert.objects.create(team=self.team, rule=rule, device=device, trigger_value=7.5, status="active")
+        with patch("apps.telemetry.services.get_site_summary_stats", return_value={"daily_kwh": None}):
+            response = self.client.get(reverse("dashboard_public:view", args=[self.link.token]))
+        self.assertContains(response, "1 active alerts")
+        self.assertContains(response, "7.5")
+        self.assertContains(response, "Configured Devices")
+        self.assertContains(response, 'href="/"')
+
     def test_public_dashboard_kiosk_mode(self):
         url = reverse("dashboard_public:view", args=[self.link.token]) + "?kiosk=1"
         response = self.client.get(url)

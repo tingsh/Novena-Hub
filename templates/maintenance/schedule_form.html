@@ -59,6 +59,12 @@
                     {% render_field form.interval %}
                     {% render_field form.next_due_at %}
                 </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-250/60 dark:border-gray-700/80">
+                    {% render_field form.is_usage_based class="checkbox checkbox-primary checkbox-sm" %}
+                    <p class="text-xs text-base-content/60">Usage schedules trigger when a mapped cumulative reading increases by the chosen amount from the last trigger. Confirm the starting reading and reset behavior before activating.</p>
+                    {% render_field form.usage_telemetry_key %}
+                    {% render_field form.usage_threshold %}
+                </div>
 
                 <div class="pt-4 border-t border-gray-250/60 dark:border-gray-700/80">
                     {% render_field form.is_active class="checkbox checkbox-primary checkbox-sm" %}

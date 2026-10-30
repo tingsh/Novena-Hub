@@ -19,7 +19,7 @@ ROLE_CHOICES = (
 ROLE_DESCRIPTIONS = {
     ROLE_OWNER: "Full access to all features, including billing and team ownership transfer.",
     ROLE_ADMIN: "Full access to manage devices, alerts, and teams.",
-    ROLE_MANAGER: "Can manage devices and alerts for assigned sites.",
+    ROLE_MANAGER: "Can manage devices and alerts. Site-assigned members currently have read-only monitoring access.",
     ROLE_OPERATOR: "Real-time monitoring and alert acknowledgment.",
     ROLE_VIEWER: "Read-only access to dashboards and reports.",
 }
@@ -96,3 +96,19 @@ def has_permission(user: CustomUser, team, permission: str, *, site=None) -> boo
         return True
     except Membership.DoesNotExist:
         return False
+
+
+def visible_site_ids(user, team):
+    """Return None for unrestricted members, otherwise their permitted site ids."""
+    from .models import Membership
+
+    membership = Membership.objects.filter(user=user, team=team).first()
+    if membership is None:
+        return []
+    ids = list(membership.site_access.filter(team=team).values_list("site_id", flat=True))
+    return ids if ids else None
+
+
+def visible_sites(queryset, user, team, *, lookup="site_id"):
+    ids = visible_site_ids(user, team)
+    return queryset if ids is None else queryset.filter(**{f"{lookup}__in": ids})
