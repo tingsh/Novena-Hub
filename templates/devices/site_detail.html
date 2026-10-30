@@ -5,7 +5,7 @@
     <nav class="flex mb-8" aria-label="Breadcrumb">
         <ol role="list" class="flex items-center space-x-4">
             <li>
-                <a href="/" class="text-base-content/40 hover:text-primary-500 transition-colors">
+                <a href="{% url 'web_team:home' request.team.slug %}" aria-label="Dashboard" class="text-base-content/40 hover:text-primary-500 transition-colors">
                     <i class="fa fa-home"></i>
                 </a>
             </li>

@@ -69,6 +69,12 @@
     {% translate "Maintenance" %}
   </a>
 </li>
+<li>
+  <button type="button" onclick="document.getElementById('contact-support-modal').showModal()">
+    <i class="fa fa-life-ring h-4 w-4"></i>
+    {% translate "Contact Support" %}
+  </button>
+</li>
 {% if nav_permissions.view_automations %}<li>
   <a href="{% url 'web_team:automations:list' team.slug %}" {% if active_tab == 'automations' %}class="menu-active"{% endif %}>
     <i class="fa fa-bolt h-4 w-4"></i>

@@ -54,7 +54,7 @@
                         {% endif %}
                     </div>
                     <div class="flex justify-end space-x-3">
-                        <a href="javascript:history.back()" class="btn btn-ghost rounded-xl">
+                        <a href="{% if object %}{% url 'web_team:devices:site_detail' request.team.slug object.pk %}{% else %}{% url 'web_team:devices:site_list' request.team.slug %}{% endif %}" class="btn btn-ghost rounded-xl">
                             Cancel
                         </a>
                         <button type="submit" class="btn btn-primary rounded-xl px-6 shadow-lg shadow-indigo-600/20">

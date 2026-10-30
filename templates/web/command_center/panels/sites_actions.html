@@ -14,8 +14,10 @@
         </a>
         {% endfor %}
     </div>
+    {% if nav_permissions.manage_devices or can_manage_alerts %}
     <div class="grid gap-2 border-t border-base-content/10 p-4 panel-standard-only sm:grid-cols-2">
-        <a href="{% url 'web_team:onboarding:setup_start' team.slug %}" class="btn btn-primary btn-sm rounded-md"><i class="fa fa-plus mr-2"></i>Add Hardware</a>
+        {% if nav_permissions.manage_devices %}<a href="{% url 'web_team:onboarding:setup_start' team.slug %}" class="btn btn-primary btn-sm rounded-md"><i class="fa fa-plus mr-2"></i>Add Hardware</a>{% endif %}
         {% if can_manage_alerts %}<a href="{% url 'web_team:alerts:rule_create' team.slug %}" class="btn btn-ghost btn-sm rounded-md"><i class="fa fa-bell mr-2"></i>Create Alert Rule</a>{% endif %}
     </div>
+    {% endif %}
 </div>

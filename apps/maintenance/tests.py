@@ -363,6 +363,26 @@ class ComplianceWorkflowTests(TestCase):
         )
         self.assertEqual(self.client.post(url, {"status": "resolved"}).status_code, 404)
 
+    @patch("apps.maintenance.public_views.send_manager_resolution_email")
+    def test_contractor_resolves_then_manager_closes(self, notify_manager):
+        link = SharedTicketLink.objects.create(
+            team=self.team, ticket=self.ticket, created_by=self.manager, expires_at=timezone.now() + timedelta(days=1)
+        )
+        guest_url = reverse("maintenance_public:public_update_status", args=[str(link.token)])
+        self.assertEqual(self.client.post(guest_url, {"status": "closed"}).status_code, 403)
+        self.ticket.checklist_state[0]["done"] = True
+        self.ticket.save(update_fields=["checklist_state"])
+        self.assertEqual(self.client.post(guest_url, {"status": "resolved"}).status_code, 302)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, "resolved")
+        notify_manager.assert_called_once()
+        self.client.force_login(self.manager)
+        manager_url = reverse("web_team:maintenance:ticket_status_update", args=[self.team.slug, self.ticket.pk])
+        self.assertEqual(self.client.post(manager_url, {"status": "closed"}).status_code, 302)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, "closed")
+        self.assertTrue(self.ticket.comments.filter(author=self.manager, content__contains="Closed").exists())
+
     def test_template_checklist_edits_affect_future_tickets_only(self):
         form = TicketTemplateForm(
             data={
@@ -500,11 +520,83 @@ class PreventiveTriggerTests(TestCase):
             usage_schedule.save()
         self.assertEqual(usage_schedule.last_trigger_usage_value, 100)
         TelemetryData.objects.create(device=self.device, key="run_hours", timestamp=timezone.now(), value_numeric=110)
-        generate_preventive_tickets()
-        generate_preventive_tickets()
+        with patch(
+            "apps.devices.datapoint_maps.effective_register_map",
+            return_value={"run_hours": {"type": "float32", "unit": "h"}},
+        ):
+            generate_preventive_tickets()
+            generate_preventive_tickets()
         self.assertEqual(MaintenanceTicket.objects.filter(schedule_reference=usage_schedule).count(), 1)
         usage_schedule.refresh_from_db()
         self.assertEqual(usage_schedule.last_trigger_usage_value, 110)
+
+        replacement = Device.objects.create(
+            team=self.team, site=self.site, name="Lift 2", device_type="custom", protocol="modbus_tcp"
+        )
+        TelemetryData.objects.create(device=replacement, key="run_hours", timestamp=timezone.now(), value_numeric=900)
+        with patch(
+            "apps.devices.datapoint_maps.effective_register_map",
+            return_value={"run_hours": {"type": "float32", "unit": "h"}},
+        ):
+            changed_device = PreventiveScheduleForm(
+                data={
+                    "device": replacement.pk,
+                    "title": usage_schedule.title,
+                    "is_active": "on",
+                    "is_usage_based": "on",
+                    "usage_telemetry_key": "run_hours",
+                    "usage_threshold": 10,
+                },
+                team=self.team,
+                instance=usage_schedule,
+            )
+            self.assertTrue(changed_device.is_valid(), changed_device.errors)
+            changed_device.save()
+        usage_schedule.refresh_from_db()
+        self.assertEqual(usage_schedule.last_trigger_usage_value, 900)
+
+    def test_usage_schedule_rejects_non_cumulative_readings_and_skips_legacy_configuration(self):
+        from apps.maintenance.tasks import generate_preventive_tickets
+
+        mapping = {
+            "temperature": {"type": "float32", "unit": "degC"},
+            "active_power_total": {"type": "float32", "unit": "W"},
+            "energy_import": {"type": "float32", "unit": "kWh"},
+            "import_energy": {"type": "string", "unit": "kWh"},
+        }
+        data = {
+            "device": self.device.pk,
+            "title": "Usage service",
+            "is_active": "on",
+            "is_usage_based": "on",
+            "usage_telemetry_key": "temperature",
+            "usage_threshold": 10,
+        }
+        TelemetryData.objects.create(device=self.device, key="temperature", timestamp=timezone.now(), value_numeric=115)
+        with patch("apps.devices.datapoint_maps.effective_register_map", return_value=mapping):
+            form = PreventiveScheduleForm(data=data, team=self.team)
+            self.assertFalse(form.is_valid())
+            self.assertIn("usage_telemetry_key", form.errors)
+            self.assertNotIn("temperature", [value for value, _ in form.fields["usage_telemetry_key"].widget.choices])
+            data["usage_telemetry_key"] = "active_power_total"
+            form = PreventiveScheduleForm(data=data, team=self.team)
+            self.assertFalse(form.is_valid())
+            self.assertIn("usage_telemetry_key", form.errors)
+            self.assertIn("energy_import", [value for value, _ in form.fields["usage_telemetry_key"].widget.choices])
+            self.assertNotIn("import_energy", [value for value, _ in form.fields["usage_telemetry_key"].widget.choices])
+
+            legacy = PreventiveSchedule.objects.create(
+                team=self.team,
+                device=self.device,
+                title="Legacy temperature schedule",
+                is_active=True,
+                is_usage_based=True,
+                usage_telemetry_key="temperature",
+                usage_threshold=10,
+                last_trigger_usage_value=100,
+            )
+            generate_preventive_tickets()
+        self.assertFalse(MaintenanceTicket.objects.filter(schedule_reference=legacy).exists())
 
     def test_manual_trigger_unauthorized(self):
         # Viewer (view-only role) should not be able to trigger

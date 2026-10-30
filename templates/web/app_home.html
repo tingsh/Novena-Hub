@@ -72,10 +72,10 @@
             <div class="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <i class="fa fa-server text-2xl"></i>
             </div>
-            <h2 class="text-xl font-bold text-base-content">Connect your first gateway</h2>
-            <p class="mt-2 text-sm text-base-content/60">Claim a Novena Gateway, detect field devices, and start seeing live operational data.</p>
+            <h2 class="text-xl font-bold text-base-content">{% if nav_permissions.manage_devices %}Connect your first gateway{% else %}No equipment at your assigned sites yet{% endif %}</h2>
+            <p class="mt-2 text-sm text-base-content/60">{% if nav_permissions.manage_devices %}Claim a Novena Gateway, detect field devices, and start seeing live operational data.{% else %}Ask an unrestricted team manager to configure equipment for these sites.{% endif %}</p>
             <div class="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <a href="{% url 'web_team:onboarding:setup_start' team.slug %}" class="btn btn-primary btn-sm rounded-md px-5"><i class="fa fa-plus mr-2"></i>{% trans "Start Setup" %}</a>
+                {% if nav_permissions.manage_devices %}<a href="{% url 'web_team:onboarding:setup_start' team.slug %}" class="btn btn-primary btn-sm rounded-md px-5"><i class="fa fa-plus mr-2"></i>{% trans "Start Setup" %}</a>{% endif %}
                 <a href="{% url 'web_team:devices:device_list' team.slug %}" class="btn btn-ghost btn-sm rounded-md px-5">{% trans "Device Directory" %}</a>
             </div>
         </div>

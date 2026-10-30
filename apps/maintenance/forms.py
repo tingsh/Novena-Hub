@@ -5,6 +5,7 @@ from django.core.validators import FileExtensionValidator
 from django.utils import timezone
 
 from .models import MaintenanceTicket, PreventiveSchedule, SharedTicketLink, TicketComment, TicketTemplate
+from .usage import is_usage_counter
 
 
 class MaintenanceTicketForm(forms.ModelForm):
@@ -203,16 +204,20 @@ class PreventiveScheduleForm(forms.ModelForm):
             self.fields["assigned_to"].queryset = CustomUser.objects.filter(membership__team=team)
             from apps.devices.datapoint_maps import effective_register_map
 
-            choices = [("", "Choose a mapped numeric reading")]
+            choices = [("", "Choose a cumulative usage counter")]
             seen = set()
             for device in self.fields["device"].queryset.select_related("template"):
                 for key, config in effective_register_map(device).items():
                     if key in seen or not isinstance(config, dict):
                         continue
-                    if (config.get("data_type") or config.get("type")) == "bool":
+                    if not is_usage_counter(key, config):
                         continue
                     choices.append((key, f"{key.replace('_', ' ').title()} ({config.get('unit') or 'units'})"))
                     seen.add(key)
+            if self.instance.pk and self.instance.usage_telemetry_key and self.instance.usage_telemetry_key not in seen:
+                choices.append(
+                    (self.instance.usage_telemetry_key, "Previously saved reading — review before activating")
+                )
             self.fields["usage_telemetry_key"].widget = forms.Select(choices=choices)
 
     def clean(self):
@@ -228,7 +233,7 @@ class PreventiveScheduleForm(forms.ModelForm):
         if cleaned_data.get("is_active"):
             if cleaned_data.get("is_usage_based"):
                 if not cleaned_data.get("usage_telemetry_key"):
-                    self.add_error("usage_telemetry_key", "Choose a mapped numeric reading.")
+                    self.add_error("usage_telemetry_key", "Choose a mapped cumulative usage counter.")
                 if not cleaned_data.get("usage_threshold") or cleaned_data["usage_threshold"] <= 0:
                     self.add_error("usage_threshold", "Enter a positive usage increase.")
                 device = cleaned_data.get("device")
@@ -237,12 +242,16 @@ class PreventiveScheduleForm(forms.ModelForm):
 
                     key = cleaned_data.get("usage_telemetry_key")
                     config = effective_register_map(device).get(key, {})
-                    if not config or (config.get("data_type") or config.get("type")) == "bool":
-                        self.add_error("usage_telemetry_key", "This reading is not mapped on the selected equipment.")
+                    if not is_usage_counter(key, config):
+                        self.add_error(
+                            "usage_telemetry_key",
+                            "Choose a cumulative run-hours or import-energy counter mapped on this equipment.",
+                        )
                     elif (
                         not self.instance.pk
                         or not self.instance.is_usage_based
                         or self.instance.usage_telemetry_key != key
+                        or self.instance.device_id != device.pk
                     ):
                         from apps.telemetry.models import TelemetryData
 

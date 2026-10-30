@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from .models import PreventiveSchedule
 from .services import advance_schedule_due_date, create_pm_ticket
+from .usage import is_usage_counter
 
 logger = logging.getLogger("novena_hub")
 
@@ -32,6 +33,12 @@ def generate_preventive_tickets():
 
     usage_schedules = PreventiveSchedule.objects.filter(is_active=True, is_usage_based=True)
     for schedule in usage_schedules:
+        from apps.devices.datapoint_maps import effective_register_map
+
+        if not is_usage_counter(
+            schedule.usage_telemetry_key, effective_register_map(schedule.device).get(schedule.usage_telemetry_key)
+        ):
+            continue
         point = (
             TelemetryData.objects.filter(
                 device=schedule.device,
