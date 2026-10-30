@@ -8,11 +8,17 @@ from django.utils import timezone
 
 from apps.alerts.models import Alert, AlertRule
 from apps.devices.models import Device, Site
-from apps.maintenance.forms import MaintenanceTicketForm
+from apps.maintenance.forms import (
+    MaintenanceTicketForm,
+    PreventiveScheduleForm,
+    SharedTicketLinkForm,
+    TicketTemplateForm,
+)
 from apps.maintenance.models import MaintenanceTicket, PreventiveSchedule, SharedTicketLink, TicketTemplate
 from apps.maintenance.services import auto_create_ticket, process_incoming_whatsapp
 from apps.teams.models import Membership, Team
 from apps.teams.roles import ROLE_MANAGER, ROLE_VIEWER
+from apps.telemetry.models import TelemetryData
 from apps.users.models import CustomUser
 
 
@@ -92,7 +98,7 @@ class MaintenanceTests(TestCase):
         self.assertFalse(ticket.checklist_state[0]["done"])
 
     def test_ticket_form_validation_channels(self):
-        # Validation should fail if both send_email_notification and send_whatsapp_notification are False
+        # Work can be logged without dispatching a message.
         data = {
             "device": self.device.id,
             "title": "Broken Switch",
@@ -102,14 +108,31 @@ class MaintenanceTests(TestCase):
             "send_whatsapp_notification": False,
         }
         form = MaintenanceTicketForm(data=data, team=self.team)
-        self.assertFalse(form.is_valid())
-        self.assertIn("__all__", form.errors)
-        self.assertIn("at least one notification channel", form.errors["__all__"][0])
+        self.assertTrue(form.is_valid(), form.errors)
 
-        # Validation should pass if at least one is True
+        # A selected channel requires an assignee with that contact method.
         data["send_email_notification"] = True
         form = MaintenanceTicketForm(data=data, team=self.team)
-        self.assertTrue(form.is_valid())
+        self.assertFalse(form.is_valid())
+        self.assertIn("assigned_to", form.errors)
+        data["assigned_to"] = self.manager.id
+        form = MaintenanceTicketForm(data=data, team=self.team)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    @patch("apps.maintenance.services.send_ticket_assignment_email")
+    @patch("apps.maintenance.services.send_ticket_assignment_whatsapp")
+    def test_unassigned_manual_ticket_sends_nothing(self, whatsapp, email):
+        form = MaintenanceTicketForm(
+            data={"device": self.device.pk, "title": "Log inspection", "priority": "medium", "status": "open"},
+            team=self.team,
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        ticket = form.save(commit=False)
+        ticket.team, ticket.reported_by = self.team, self.manager
+        ticket.save()
+        self.assertIsNone(ticket.assigned_to)
+        email.assert_not_called()
+        whatsapp.assert_not_called()
 
     @patch("apps.alerts.tasks.send_whatsapp_message_task")
     @patch("apps.maintenance.services.send_tracked_email")
@@ -320,6 +343,100 @@ class ComplianceWorkflowTests(TestCase):
         mail_args = mock_send_tracked_email.call_args[1]
         self.assertEqual(mail_args["recipients"], [self.manager.email])
 
+    def test_public_link_cannot_close_or_mutate_audit(self):
+        link = SharedTicketLink.objects.create(
+            team=self.team, ticket=self.ticket, created_by=self.manager, expires_at=timezone.now() + timedelta(days=1)
+        )
+        url = reverse("maintenance_public:public_update_status", args=[str(link.token)])
+        old_comments = self.ticket.comments.count()
+        response = self.client.post(url, {"status": "closed"})
+        self.assertEqual(response.status_code, 403)
+        self.ticket.refresh_from_db()
+        link.refresh_from_db()
+        self.assertEqual(self.ticket.status, "open")
+        self.assertEqual(self.ticket.comments.count(), old_comments)
+        self.assertTrue(link.is_active)
+        link.expires_at = timezone.now() - timedelta(seconds=1)
+        link.save(update_fields=["expires_at"])
+        self.assertEqual(
+            self.client.get(reverse("maintenance_public:public_ticket_view", args=[str(link.token)])).status_code, 404
+        )
+        self.assertEqual(self.client.post(url, {"status": "resolved"}).status_code, 404)
+
+    @patch("apps.maintenance.public_views.send_manager_resolution_email")
+    def test_contractor_resolves_then_manager_closes(self, notify_manager):
+        link = SharedTicketLink.objects.create(
+            team=self.team, ticket=self.ticket, created_by=self.manager, expires_at=timezone.now() + timedelta(days=1)
+        )
+        guest_url = reverse("maintenance_public:public_update_status", args=[str(link.token)])
+        self.assertEqual(self.client.post(guest_url, {"status": "closed"}).status_code, 403)
+        self.ticket.checklist_state[0]["done"] = True
+        self.ticket.save(update_fields=["checklist_state"])
+        self.assertEqual(self.client.post(guest_url, {"status": "resolved"}).status_code, 302)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, "resolved")
+        notify_manager.assert_called_once()
+        self.client.force_login(self.manager)
+        manager_url = reverse("web_team:maintenance:ticket_status_update", args=[self.team.slug, self.ticket.pk])
+        self.assertEqual(self.client.post(manager_url, {"status": "closed"}).status_code, 302)
+        self.ticket.refresh_from_db()
+        self.assertEqual(self.ticket.status, "closed")
+        self.assertTrue(self.ticket.comments.filter(author=self.manager, content__contains="Closed").exists())
+
+    def test_template_checklist_edits_affect_future_tickets_only(self):
+        form = TicketTemplateForm(
+            data={
+                "name": "Inspection",
+                "estimated_duration_minutes": 30,
+                "checklist_steps": "* Inspect guard\nRecord vibration",
+            }
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        template = form.save(commit=False)
+        template.team = self.team
+        template.save()
+        self.assertEqual(template.checklist[0], {"task": "Inspect guard", "required": True})
+        first = MaintenanceTicketForm(
+            data={
+                "device": self.device.pk,
+                "title": "First",
+                "priority": "medium",
+                "status": "open",
+                "template": template.pk,
+            },
+            team=self.team,
+        )
+        self.assertTrue(first.is_valid(), first.errors)
+        ticket = first.save(commit=False)
+        ticket.team, ticket.reported_by = self.team, self.manager
+        ticket.save()
+        edited = TicketTemplateForm(
+            data={
+                "name": "Inspection",
+                "estimated_duration_minutes": 30,
+                "checklist_steps": "* Inspect cover\nRecord vibration",
+            },
+            instance=template,
+        )
+        self.assertTrue(edited.is_valid(), edited.errors)
+        edited.save()
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.checklist_state[0]["task"], "Inspect guard")
+        self.assertEqual(template.checklist[0]["task"], "Inspect cover")
+        bad = TicketTemplateForm(data={"name": "Inspection", "estimated_duration_minutes": 30, "checklist_steps": "* "})
+        self.assertFalse(bad.is_valid())
+
+    def test_active_calendar_schedule_requires_due_date_and_contractor_link_expiry(self):
+        form = PreventiveScheduleForm(
+            data={"device": self.device.pk, "title": "Inspection", "interval": "weekly", "is_active": True},
+            team=self.team,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("next_due_at", form.errors)
+        link_form = SharedTicketLinkForm(data={"auto_revoke_on_resolve": True})
+        self.assertFalse(link_form.is_valid())
+        self.assertIn("expires_at", link_form.errors)
+
     def test_guest_comment_upload(self):
         link = SharedTicketLink.objects.create(team=self.team, ticket=self.ticket, created_by=self.manager)
         url = reverse("maintenance_public:public_add_comment", args=[str(link.token)])
@@ -366,6 +483,120 @@ class PreventiveTriggerTests(TestCase):
             next_due_at=timezone.now() + timedelta(days=365),
             is_active=True,
         )
+
+    def test_calendar_due_runs_once_and_advances(self):
+        from apps.maintenance.tasks import generate_preventive_tickets
+
+        self.schedule.next_due_at = timezone.now() - timedelta(minutes=1)
+        self.schedule.save(update_fields=["next_due_at"])
+        generate_preventive_tickets()
+        generate_preventive_tickets()
+        self.assertEqual(MaintenanceTicket.objects.filter(schedule_reference=self.schedule).count(), 1)
+        self.schedule.refresh_from_db()
+        self.assertGreater(self.schedule.next_due_at, timezone.now())
+
+    def test_usage_schedule_baseline_and_delta_trigger_once(self):
+        from apps.maintenance.tasks import generate_preventive_tickets
+
+        TelemetryData.objects.create(device=self.device, key="run_hours", timestamp=timezone.now(), value_numeric=100)
+        with patch(
+            "apps.devices.datapoint_maps.effective_register_map",
+            return_value={"run_hours": {"type": "float32", "unit": "h"}},
+        ):
+            form = PreventiveScheduleForm(
+                data={
+                    "device": self.device.pk,
+                    "title": "Run hours service",
+                    "is_active": "on",
+                    "is_usage_based": "on",
+                    "usage_telemetry_key": "run_hours",
+                    "usage_threshold": 10,
+                },
+                team=self.team,
+            )
+            self.assertTrue(form.is_valid(), form.errors)
+            usage_schedule = form.save(commit=False)
+            usage_schedule.team = self.team
+            usage_schedule.save()
+        self.assertEqual(usage_schedule.last_trigger_usage_value, 100)
+        TelemetryData.objects.create(device=self.device, key="run_hours", timestamp=timezone.now(), value_numeric=110)
+        with patch(
+            "apps.devices.datapoint_maps.effective_register_map",
+            return_value={"run_hours": {"type": "float32", "unit": "h"}},
+        ):
+            generate_preventive_tickets()
+            generate_preventive_tickets()
+        self.assertEqual(MaintenanceTicket.objects.filter(schedule_reference=usage_schedule).count(), 1)
+        usage_schedule.refresh_from_db()
+        self.assertEqual(usage_schedule.last_trigger_usage_value, 110)
+
+        replacement = Device.objects.create(
+            team=self.team, site=self.site, name="Lift 2", device_type="custom", protocol="modbus_tcp"
+        )
+        TelemetryData.objects.create(device=replacement, key="run_hours", timestamp=timezone.now(), value_numeric=900)
+        with patch(
+            "apps.devices.datapoint_maps.effective_register_map",
+            return_value={"run_hours": {"type": "float32", "unit": "h"}},
+        ):
+            changed_device = PreventiveScheduleForm(
+                data={
+                    "device": replacement.pk,
+                    "title": usage_schedule.title,
+                    "is_active": "on",
+                    "is_usage_based": "on",
+                    "usage_telemetry_key": "run_hours",
+                    "usage_threshold": 10,
+                },
+                team=self.team,
+                instance=usage_schedule,
+            )
+            self.assertTrue(changed_device.is_valid(), changed_device.errors)
+            changed_device.save()
+        usage_schedule.refresh_from_db()
+        self.assertEqual(usage_schedule.last_trigger_usage_value, 900)
+
+    def test_usage_schedule_rejects_non_cumulative_readings_and_skips_legacy_configuration(self):
+        from apps.maintenance.tasks import generate_preventive_tickets
+
+        mapping = {
+            "temperature": {"type": "float32", "unit": "degC"},
+            "active_power_total": {"type": "float32", "unit": "W"},
+            "energy_import": {"type": "float32", "unit": "kWh"},
+            "import_energy": {"type": "string", "unit": "kWh"},
+        }
+        data = {
+            "device": self.device.pk,
+            "title": "Usage service",
+            "is_active": "on",
+            "is_usage_based": "on",
+            "usage_telemetry_key": "temperature",
+            "usage_threshold": 10,
+        }
+        TelemetryData.objects.create(device=self.device, key="temperature", timestamp=timezone.now(), value_numeric=115)
+        with patch("apps.devices.datapoint_maps.effective_register_map", return_value=mapping):
+            form = PreventiveScheduleForm(data=data, team=self.team)
+            self.assertFalse(form.is_valid())
+            self.assertIn("usage_telemetry_key", form.errors)
+            self.assertNotIn("temperature", [value for value, _ in form.fields["usage_telemetry_key"].widget.choices])
+            data["usage_telemetry_key"] = "active_power_total"
+            form = PreventiveScheduleForm(data=data, team=self.team)
+            self.assertFalse(form.is_valid())
+            self.assertIn("usage_telemetry_key", form.errors)
+            self.assertIn("energy_import", [value for value, _ in form.fields["usage_telemetry_key"].widget.choices])
+            self.assertNotIn("import_energy", [value for value, _ in form.fields["usage_telemetry_key"].widget.choices])
+
+            legacy = PreventiveSchedule.objects.create(
+                team=self.team,
+                device=self.device,
+                title="Legacy temperature schedule",
+                is_active=True,
+                is_usage_based=True,
+                usage_telemetry_key="temperature",
+                usage_threshold=10,
+                last_trigger_usage_value=100,
+            )
+            generate_preventive_tickets()
+        self.assertFalse(MaintenanceTicket.objects.filter(schedule_reference=legacy).exists())
 
     def test_manual_trigger_unauthorized(self):
         # Viewer (view-only role) should not be able to trigger

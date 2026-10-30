@@ -516,20 +516,23 @@ def _build_attention_items(team, devices, gateways, active_alerts, open_tickets,
     return items[:8]
 
 
-def build_team_operations_dashboard(team, *, include_impact=False, impact_site_ids=None):
+def build_team_operations_dashboard(team, *, include_impact=False, impact_site_ids=None, visible_site_ids=None):
     from apps.alerts.models import Alert, AlertRule
     from apps.automations.models import Automation
     from apps.devices.models import Device, Gateway, Site
     from apps.events.models import ActivityLog
     from apps.maintenance.models import MaintenanceTicket, PreventiveSchedule
 
-    sites = list(Site.objects.filter(team=team).order_by("name"))
-    devices = list(
-        Device.objects.filter(team=team)
-        .select_related("site", "gateway", "template")
-        .order_by("-last_telemetry_at", "name")
-    )
-    gateways = list(Gateway.objects.filter(team=team).select_related("site"))
+    site_qs = Site.objects.filter(team=team)
+    device_qs = Device.objects.filter(team=team)
+    gateway_qs = Gateway.objects.filter(team=team)
+    if visible_site_ids is not None:
+        site_qs = site_qs.filter(id__in=visible_site_ids)
+        device_qs = device_qs.filter(site_id__in=visible_site_ids)
+        gateway_qs = gateway_qs.filter(site_id__in=visible_site_ids)
+    sites = list(site_qs.order_by("name"))
+    devices = list(device_qs.select_related("site", "gateway", "template").order_by("-last_telemetry_at", "name"))
+    gateways = list(gateway_qs.select_related("site"))
 
     device_health = {"live": 0, "delayed": 0, "offline": 0, "alarm": 0}
     for device in devices:
@@ -543,17 +546,31 @@ def build_team_operations_dashboard(team, *, include_impact=False, impact_site_i
         .select_related("device", "rule")
         .order_by("-triggered_at")
     )
+    if visible_site_ids is not None:
+        active_alerts_qs = active_alerts_qs.filter(device__site_id__in=visible_site_ids)
     active_alerts_count = active_alerts_qs.count()
-    active_rules = list(AlertRule.objects.filter(team=team, is_active=True).select_related("device"))
+    active_rules_qs = AlertRule.objects.filter(team=team, is_active=True).select_related("device")
+    if visible_site_ids is not None:
+        from django.db.models import Q
+
+        active_rules_qs = active_rules_qs.filter(
+            Q(site_id__in=visible_site_ids) | Q(device__site_id__in=visible_site_ids)
+        ).distinct()
+    active_rules = list(active_rules_qs)
     active_rule_count = len(active_rules)
     active_alerts = list(active_alerts_qs[:10])
-    recent_alerts = list(
-        Alert.objects.filter(device__team=team).select_related("device", "rule").order_by("-triggered_at")[:5]
-    )
-    open_tickets = MaintenanceTicket.objects.filter(team=team, status__in=["open", "in_progress", "waiting"]).count()
-    overdue_pms = PreventiveSchedule.objects.filter(team=team, is_active=True, next_due_at__lt=timezone.now()).count()
-    active_automations = Automation.objects.filter(team=team, is_active=True).count()
-    total_automations = Automation.objects.filter(team=team).count()
+    recent_alerts_qs = Alert.objects.filter(device__team=team).select_related("device", "rule")
+    ticket_qs = MaintenanceTicket.objects.filter(team=team)
+    pm_qs = PreventiveSchedule.objects.filter(team=team)
+    if visible_site_ids is not None:
+        recent_alerts_qs = recent_alerts_qs.filter(device__site_id__in=visible_site_ids)
+        ticket_qs = ticket_qs.filter(device__site_id__in=visible_site_ids)
+        pm_qs = pm_qs.filter(device__site_id__in=visible_site_ids)
+    recent_alerts = list(recent_alerts_qs.order_by("-triggered_at")[:5])
+    open_tickets = ticket_qs.filter(status__in=["open", "in_progress", "waiting"]).count()
+    overdue_pms = pm_qs.filter(is_active=True, next_due_at__lt=timezone.now()).count()
+    active_automations = Automation.objects.filter(team=team, is_active=True).count() if visible_site_ids is None else 0
+    total_automations = Automation.objects.filter(team=team).count() if visible_site_ids is None else 0
 
     classifications = {}
     metric_groups = {}
@@ -635,7 +652,7 @@ def build_team_operations_dashboard(team, *, include_impact=False, impact_site_i
             team, devices, gateways, active_alerts, open_tickets, overdue_pms, active_rule_count
         ),
         "site_cards": site_cards,
-        "logs": ActivityLog.objects.filter(team=team).order_by("-timestamp")[:15],
+        "logs": ActivityLog.objects.filter(team=team).order_by("-timestamp")[:15] if visible_site_ids is None else [],
         "impact_summary": impact_summary,
     }
 

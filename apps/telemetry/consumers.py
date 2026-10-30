@@ -25,8 +25,10 @@ class TelemetryConsumer(AsyncJsonWebsocketConsumer):
         from asgiref.sync import sync_to_async
 
         try:
-            device = await sync_to_async(Device.objects.select_related("team").get)(id=self.device_id)
-            has_access = await sync_to_async(user.teams.filter(id=device.team_id).exists)()
+            device = await sync_to_async(Device.objects.select_related("team", "site").get)(id=self.device_id)
+            from apps.teams.roles import has_permission
+
+            has_access = await sync_to_async(has_permission)(user, device.team, "view_devices", site=device.site)
             if not has_access:
                 logger.warning(f"User {user.email} denied access to device {self.device_id} (team mismatch).")
                 await self.close()

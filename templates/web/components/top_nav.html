@@ -62,9 +62,9 @@
     </div>
   </div>
 
-  <div x-cloak x-show="mobileOpen" class="fixed inset-0 z-[200] md:hidden">
-    <div class="fixed inset-0 bg-slate-950/30" @click="mobileOpen = false"></div>
-    <div class="fixed inset-y-0 right-0 w-full max-w-sm bg-[#f3f6fa] p-6 shadow-xl" x-transition>
+  <div x-cloak x-show="mobileOpen" class="fixed inset-0 z-[200] md:hidden" style="height: 100dvh;">
+    <div class="fixed inset-0 bg-slate-950/30" style="height: 100dvh;" @click="mobileOpen = false"></div>
+    <div class="fixed inset-y-0 right-0 w-full max-w-sm overflow-y-auto bg-[#f3f6fa] p-6 shadow-xl" style="height: 100dvh;" x-transition>
       <div class="flex items-center justify-between">
         <span class="text-lg font-bold text-[#243043]">Novena Platform</span>
         <button type="button" class="btn btn-ghost btn-sm btn-circle" @click="mobileOpen = false" aria-label="Close menu">

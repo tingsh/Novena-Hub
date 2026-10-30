@@ -58,6 +58,12 @@ class PreventiveSchedule(BaseTeamModel):
     def __str__(self):
         return f"PM: {self.title} on {self.device.name}"
 
+    @property
+    def needs_setup(self):
+        if self.is_usage_based:
+            return not self.usage_telemetry_key or not self.usage_threshold or self.usage_threshold <= 0
+        return not self.next_due_at or not self.interval
+
 
 class MaintenanceTicket(BaseTeamModel):
     """The core ticket model representing a reactive or scheduled maintenance job."""

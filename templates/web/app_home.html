@@ -8,7 +8,7 @@
     <div class="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
             <h1 class="text-2xl font-bold text-base-content">Command Center</h1>
-            <p class="mt-1 text-sm text-base-content/60">Near-live fleet health across gateways, devices, sites, alerts, and work orders.</p>
+            <p class="mt-1 text-sm text-base-content/60">{% if single_device_mode %}Your equipment reading, trend and next action.{% else %}Near-live fleet health across gateways, devices, sites, alerts, and work orders.{% endif %}</p>
         </div>
         <div class="flex flex-col gap-2 xl:items-end">
             <div class="flex flex-wrap items-center justify-end gap-2">
@@ -72,14 +72,33 @@
             <div class="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <i class="fa fa-server text-2xl"></i>
             </div>
-            <h2 class="text-xl font-bold text-base-content">Connect your first gateway</h2>
-            <p class="mt-2 text-sm text-base-content/60">Claim a Novena Gateway, detect field devices, and start seeing live operational data.</p>
+            <h2 class="text-xl font-bold text-base-content">{% if nav_permissions.manage_devices %}Connect your first gateway{% else %}No equipment at your assigned sites yet{% endif %}</h2>
+            <p class="mt-2 text-sm text-base-content/60">{% if nav_permissions.manage_devices %}Claim a Novena Gateway, detect field devices, and start seeing live operational data.{% else %}Ask an unrestricted team manager to configure equipment for these sites.{% endif %}</p>
             <div class="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <a href="{% url 'web_team:onboarding:setup_start' team.slug %}" class="btn btn-primary btn-sm rounded-md px-5"><i class="fa fa-plus mr-2"></i>{% trans "Start Setup" %}</a>
+                {% if nav_permissions.manage_devices %}<a href="{% url 'web_team:onboarding:setup_start' team.slug %}" class="btn btn-primary btn-sm rounded-md px-5"><i class="fa fa-plus mr-2"></i>{% trans "Start Setup" %}</a>{% endif %}
                 <a href="{% url 'web_team:devices:device_list' team.slug %}" class="btn btn-ghost btn-sm rounded-md px-5">{% trans "Device Directory" %}</a>
             </div>
         </div>
         {% else %}
+        {% if single_device_mode %}
+        {% with card=top_devices.0 %}
+        <section class="mb-5 rounded-2xl border border-base-content/10 bg-base-100 p-5 shadow-sm sm:p-7" aria-label="Equipment overview">
+            <div class="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-wide text-base-content/50">{{ card.device.site.name }} · {{ card.classification.label }}</p>
+                    <h2 class="mt-2 text-2xl font-bold">{{ card.device.name }}</h2>
+                    <p class="mt-1 text-sm text-base-content/60">{{ card.freshness.display }}</p>
+                    {% if card.latest_reading %}<div class="mt-5"><p class="text-xs font-semibold text-base-content/55">{{ card.latest_reading.label }}</p><p class="mt-1 font-mono text-4xl font-bold">{{ card.latest_reading.display_value }} <span class="text-lg font-medium text-base-content/50">{{ card.latest_reading.unit }}</span></p><p class="mt-1 text-xs text-base-content/50">{% if card.latest_reading.timestamp %}Last sample {{ card.latest_reading.timestamp|timesince }} ago{% else %}Waiting for a sample{% endif %}</p></div>{% endif %}
+                </div>
+                <div class="flex flex-col gap-2 sm:items-end">
+                    <a class="btn btn-primary btn-sm" href="{% url 'web_team:devices:device_detail' team.slug card.device.pk %}">View equipment trend</a>
+                    {% if can_manage_alerts and not active_rule_count %}<a class="btn btn-outline btn-sm" href="{% url 'web_team:alerts:rule_create' team.slug %}?device={{ card.device.pk }}">Configure monitoring</a>{% endif %}
+                </div>
+            </div>
+        </section>
+        {% endwith %}
+        {% endif %}
+        {% if not single_device_mode %}
         <div class="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5" data-fixed-kpi-strip>
             <a href="{% url 'web_team:devices:device_list' team.slug %}" class="rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm transition hover:border-primary/40" hx-boost="false" data-command-center-kpi-link>
                 <p class="text-[11px] font-bold uppercase tracking-wide text-base-content/50">Fleet Health</p>
@@ -101,12 +120,14 @@
                 <div class="mt-2 font-mono text-3xl font-bold">{{ open_tickets }}</div>
                 <p class="mt-1 text-xs text-base-content/50">{{ overdue_pms }} overdue PMs</p>
             </a>
-            <a href="{% url 'web_team:automations:list' team.slug %}" class="col-span-2 rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm transition hover:border-primary/40 lg:col-span-1" hx-boost="false" data-command-center-kpi-link>
+            {% if nav_permissions.view_automations %}<a href="{% url 'web_team:automations:list' team.slug %}" class="col-span-2 rounded-lg border border-base-content/10 bg-base-100 p-4 shadow-sm transition hover:border-primary/40 lg:col-span-1" hx-boost="false" data-command-center-kpi-link>
                 <p class="text-[11px] font-bold uppercase tracking-wide text-base-content/50">Automations</p>
                 <div class="mt-2 font-mono text-3xl font-bold">{{ active_automations }}</div>
                 <p class="mt-1 text-xs text-base-content/50">of {{ total_automations }} active</p>
             </a>
+            {% endif %}
         </div>
+        {% endif %}
 
         <div id="command-center-grid" class="{% if command_center_customization_enabled %}grid-stack{% else %}command-center-static-grid{% endif %}" data-customization-enabled="{{ command_center_customization_enabled|yesno:'true,false' }}">
             {% for panel in command_center_panels %}

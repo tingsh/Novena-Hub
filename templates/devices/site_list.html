@@ -8,7 +8,7 @@
             <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Sites</h1>
             <p class="mt-2 text-sm text-gray-700 dark:text-gray-300">Management for your physical locations and facilities.</p>
         </div>
-        {% if can_manage %}
+        {% if can_manage and not nav_permissions.site_limited %}
         <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
             <a href="{% url 'web_team:devices:site_create' request.team.slug %}"
                class="inline-flex items-center justify-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 sm:w-auto">
@@ -47,7 +47,7 @@
                             {{ site.gateways.count }} Gateway{{ site.gateways.count|pluralize:"s" }}
                         </span>
                     </div>
-                    {% if can_manage %}
+                    {% if can_manage and not nav_permissions.site_limited %}
                     <div class="flex space-x-3">
                         <a href="{% url 'web_team:devices:site_edit' request.team.slug site.pk %}" class="hover:text-primary-600 relative z-10" aria-label="Edit {{ site.name }}">
                             <i class="fa fa-edit"></i>
@@ -65,7 +65,7 @@
             <i class="fa fa-map-marker-alt text-4xl text-gray-400 mb-4"></i>
             <h3 class="mt-2 text-sm font-medium text-gray-900 dark:text-white">No sites found</h3>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Get started by creating your first site.</p>
-            {% if can_manage %}
+            {% if can_manage and not nav_permissions.site_limited %}
             <div class="mt-6">
                 <a href="{% url 'web_team:devices:site_create' request.team.slug %}" class="inline-flex items-center rounded-md border border-transparent bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700">
                     <i class="fa fa-plus mr-2"></i> New Site

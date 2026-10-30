@@ -29,7 +29,7 @@
                 <button onclick="setRange(720)" class="range-btn text-[10px] font-black px-4 py-2 rounded-xl transition-all disabled:cursor-not-allowed disabled:opacity-40" data-hours="720" {% if retention_days < 30 %}disabled title="Your plan includes {{ retention_days }} days of history"{% endif %}>30D</button>
             </div>
             <button onclick="exportCSV()" class="btn btn-primary rounded-2xl font-black shadow-lg shadow-indigo-500/30">
-                <i class="fa fa-download mr-2"></i> EXPORT ALL METRICS CSV
+                <i class="fa fa-download mr-2"></i> EXPORT VISIBLE WINDOW CSV
             </button>
         </div>
     </div>
@@ -82,6 +82,7 @@
                     </div>
                 </div>
             </div>
+            <p id="history-coverage" class="mt-4 text-xs text-base-content/50" role="status"></p>
         </div>
     </div>
 </div>
@@ -164,6 +165,9 @@
             const data = await response.json();
             if (requestId !== historyRequest) return;
             updateChart(data.labels, data.values, displayUnit(currentMetric.unit));
+            document.getElementById('history-coverage').textContent = data.sample_count
+                ? `${data.sample_count} displayed readings · ${data.sampling} · ${new Date(data.first_sample_at).toLocaleString()} to ${new Date(data.last_sample_at).toLocaleString()}`
+                : 'No readings in this window.';
         } catch (e) {
             console.error(e);
             if (requestId === historyRequest) document.getElementById('chart-stats').textContent = 'History is temporarily unavailable.';

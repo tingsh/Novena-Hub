@@ -44,7 +44,7 @@
                 <div class="text-sm text-gray-500 dark:text-gray-400">{{ gateway.site.name }}</div>
             </div>
         </div>
-        <div class="mt-5 flex lg:ml-4 lg:mt-0 space-x-3">
+        {% if not nav_permissions.site_limited %}<div class="mt-5 flex lg:ml-4 lg:mt-0 space-x-3">
             <a href="{% url 'web_team:devices:gateway_control_center' request.team.slug gateway.pk %}" class="btn btn-warning btn-sm rounded-xl text-sm font-bold">
                 <i class="fa fa-shield mr-1.5"></i> Remote Control Safety
             </a>
@@ -61,6 +61,7 @@
                 <i class='fa fa-trash mr-1.5'></i> Delete Gateway
             </a>
         </div>
+        {% endif %}
     </div>
 
     {% if gateway.lifecycle_status == "release_pending" %}

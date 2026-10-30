@@ -5,7 +5,7 @@
     <nav class="flex mb-8" aria-label="Breadcrumb">
         <ol role="list" class="flex items-center space-x-4">
             <li>
-                <a href="/" class="text-base-content/40 hover:text-primary-500 transition-colors">
+                <a href="{% url 'web_team:home' request.team.slug %}" aria-label="Dashboard" class="text-base-content/40 hover:text-primary-500 transition-colors">
                     <i class="fa fa-home"></i>
                 </a>
             </li>
@@ -36,7 +36,7 @@
             <a href="{% url 'web_team:telemetry:site_profile_report' request.team.slug site.pk %}" class="inline-flex items-center rounded-2xl bg-base-100 px-5 py-2.5 text-sm font-bold text-base-content shadow-sm ring-1 ring-inset ring-base-content/10 hover:bg-base-200 transition-all">
                 <i class="fa fa-file-lines mr-2 text-base-content/40"></i>Value Report
             </a>
-            <a href="{% url 'web_team:devices:site_edit' request.team.slug site.pk %}" class="inline-flex items-center rounded-2xl bg-base-100 px-5 py-2.5 text-sm font-bold text-base-content shadow-sm ring-1 ring-inset ring-base-content/10 hover:bg-base-200 transition-all">
+            {% if nav_permissions.manage_devices %}<a href="{% url 'web_team:devices:site_edit' request.team.slug site.pk %}" class="inline-flex items-center rounded-2xl bg-base-100 px-5 py-2.5 text-sm font-bold text-base-content shadow-sm ring-1 ring-inset ring-base-content/10 hover:bg-base-200 transition-all">
                 <i class="fa fa-edit mr-2 text-base-content/40"></i>Edit Site
             </a>
             <a href="{% url 'web_team:devices:site_delete' request.team.slug site.pk %}" class="inline-flex items-center rounded-2xl bg-base-100 px-5 py-2.5 text-sm font-bold text-error shadow-sm ring-1 ring-inset ring-error/20 hover:bg-error/10 transition-all">
@@ -45,6 +45,7 @@
             <a href="{% url 'web_team:onboarding:setup_start' request.team.slug %}?site_id={{ site.id }}" class="inline-flex items-center rounded-2xl bg-primary-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-primary-600/30 hover:bg-primary-700 hover:scale-105 active:scale-95 transition-all">
                 <i class="fa fa-plus-circle mr-2 text-white/70"></i>Add Infrastructure
             </a>
+            {% endif %}
         </div>
     </div>
 
@@ -57,7 +58,8 @@
                 </div>
                 <div class="ml-5">
                     <dt class="text-xs font-bold text-base-content/40 uppercase tracking-widest mb-1">Current Demand</dt>
-                    <dd class="text-2xl font-black text-base-content font-mono">{{ stats.current_power|floatformat:1 }} <span class="text-sm font-normal text-base-content/50">W</span></dd>
+                    <dd class="text-2xl font-black text-base-content font-mono">{% if stats.current_power is not None %}{{ stats.current_power|floatformat:1 }} <span class="text-sm font-normal text-base-content/50">W</span>{% else %}Unavailable{% endif %}</dd>
+                    {% if stats.power_last_sample_at %}<p class="text-xs text-base-content/50">Last sample {{ stats.power_last_sample_at|timesince }} ago</p>{% endif %}
                 </div>
             </div>
         </div>
@@ -69,7 +71,8 @@
                 </div>
                 <div class="ml-5">
                     <dt class="text-xs font-bold text-base-content/40 uppercase tracking-widest mb-1">Consumption Today</dt>
-                    <dd class="text-2xl font-black text-base-content font-mono">{{ stats.daily_kwh|floatformat:2 }} <span class="text-sm font-normal text-base-content/50">kWh</span></dd>
+                    <dd class="text-2xl font-black text-base-content font-mono">{% if stats.daily_kwh is not None %}{{ stats.daily_kwh|floatformat:2 }} <span class="text-sm font-normal text-base-content/50">kWh</span>{% else %}Unavailable{% endif %}</dd>
+                    <p class="text-xs text-base-content/50">{% if stats.daily_kwh is not None %}Observed counter change · {{ stats.energy_coverage_percent }}% coverage · last sample {{ stats.energy_last_sample_at|timesince }} ago{% else %}Requires a fresh mapped import-energy counter with sufficient coverage.{% endif %}</p>
                 </div>
             </div>
         </div>
@@ -101,21 +104,21 @@
 
         {% if recent_alerts %}
         <div>
-            <div class="bg-base-100 rounded-3xl border border-red-500/20 shadow-xl overflow-hidden flex flex-col h-full">
-                <div class="px-6 py-5 bg-red-500/5 border-b border-red-500/10 flex items-center">
-                    <i class="fa fa-exclamation-triangle text-red-500 mr-3"></i>
-                    <h3 class="text-xs font-black uppercase tracking-[0.2em] text-red-600 dark:text-red-400">Critical Alerts</h3>
+            <div class="bg-base-100 rounded-3xl border border-base-content/10 shadow-xl overflow-hidden flex flex-col h-full">
+                <div class="px-6 py-5 bg-base-200/30 border-b border-base-content/10 flex items-center">
+                    <i class="fa fa-bell text-base-content/60 mr-3"></i>
+                    <h3 class="text-xs font-black uppercase tracking-[0.2em] text-base-content/70">Active Alerts</h3>
                 </div>
                 <div class="flex-1 overflow-auto">
                     <ul class="divide-y divide-base-content/5">
                         {% for alert in recent_alerts %}
-                        <li class="px-6 py-4 hover:bg-red-500/5 transition-colors">
+                        <li class="px-6 py-4 hover:bg-base-200/40 transition-colors">
                             <div class="flex items-start justify-between">
                                 <div>
-                                    <p class="text-sm font-bold text-base-content">{{ alert.rule.name }}</p>
+                                    <p class="text-sm font-bold text-base-content">{{ alert.rule.name }} <span class="text-xs {% if alert.rule.severity == 'critical' %}text-red-600{% elif alert.rule.severity == 'warning' %}text-amber-600{% else %}text-blue-600{% endif %}">{{ alert.rule.get_severity_display }}</span></p>
                                     <p class="text-[10px] text-base-content/40 uppercase tracking-widest mt-1 font-mono">{{ alert.device.name }} • {{ alert.triggered_at|timesince }} ago</p>
                                 </div>
-                                <span class="text-sm font-black text-red-600 font-mono">{{ alert.trigger_value|floatformat:1 }}</span>
+                                <span class="text-sm font-black {% if alert.rule.severity == 'critical' %}text-red-600{% elif alert.rule.severity == 'warning' %}text-amber-600{% else %}text-blue-600{% endif %} font-mono">{{ alert.trigger_value_display }}</span>
                             </div>
                         </li>
                         {% endfor %}
@@ -147,9 +150,9 @@
                 </div>
                 <h4 class="text-xl font-bold text-base-content font-heading mb-2">No Gateways Configured</h4>
                 <p class="text-base-content/50 max-w-sm mx-auto text-sm leading-relaxed mb-8">Deploy your first Novena gateway to this site to start monitoring your industrial assets.</p>
-                <a href="{% url 'web_team:onboarding:setup_start' request.team.slug %}?site_id={{ site.id }}" class="inline-flex items-center px-6 py-3 bg-primary-600 text-white rounded-2xl font-bold text-sm hover:bg-primary-700 transition shadow-lg shadow-primary-600/30">
+                {% if nav_permissions.manage_devices %}<a href="{% url 'web_team:onboarding:setup_start' request.team.slug %}?site_id={{ site.id }}" class="inline-flex items-center px-6 py-3 bg-primary-600 text-white rounded-2xl font-bold text-sm hover:bg-primary-700 transition shadow-lg shadow-primary-600/30">
                     <i class="fa fa-plus-circle mr-2"></i>Add Gateway
-                </a>
+                </a>{% endif %}
             </div>
             {% endfor %}
         </div>
