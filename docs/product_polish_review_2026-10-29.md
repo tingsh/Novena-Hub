@@ -1,6 +1,6 @@
 # Product polish review — 29 October 2026
 
-**Current status (30 October 2026):** This review tracks branch `fix/product-polish-p1-p2` (draft [PR #34](https://github.com/tingsh/Novena-Hub/pull/34)). The original findings and recommendations below are the **pre-fix baseline**, not a description of the current UI. Fourteen of the seventeen findings have a local code fix, one has a partial safety mitigation, and two remain open. The three release-candidate acceptance tracks below used a disposable local database and synthetic accounts; deployment and customer-hardware acceptance remain pending.
+**Current status (14 November 2026):** [PR #34](https://github.com/tingsh/Novena-Hub/pull/34) is merged into Hub `main` at `3fc7bf8`. Its frontend, code-style and Django PR checks passed after the SQLite history-query and site-boundary corrections; the local full Hub suite passed 528 tests with six skips. Fourteen of the seventeen findings below have a code fix, one has a partial safety mitigation, and two remain open. The original findings and recommendations are the **pre-fix baseline**, not a description of the current UI. The three release-candidate acceptance tracks used a disposable local database and synthetic accounts; deployment and customer-hardware acceptance remain pending.
 
 ## Current disposition of every finding — 30 October 2026
 
