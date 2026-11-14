@@ -17,7 +17,7 @@
         </div>
     </div>
 
-    <form method="post" class="space-y-8">
+    <form method="post" id="alert-rule-form" class="space-y-8">
         {% csrf_token %}
         
         <!-- Step 1: Identification -->
@@ -93,10 +93,11 @@
                         <select id="alert-reading" name="telemetry_key" class="select select-bordered w-full rounded-2xl font-bold text-sm" required>
                             <option value="">Select equipment or site first</option>
                             {% for signal in form.available_signals %}
-                                <option value="{{ signal.key }}" data-device-id="{{ signal.device_id }}" data-site-id="{{ signal.site_id }}" data-site-wide-safe="{{ signal.site_wide_safe|yesno:'true,false' }}" data-device-label="{{ signal.device_name }}{% if signal.device_name %} · {% endif %}{{ signal.label }}{% if signal.unit %} ({{ signal.unit }}){% endif %}" data-site-label="{{ signal.label }}{% if signal.unit %} ({{ signal.unit }}){% endif %}" {% if signal.selected %}selected{% endif %}>{{ signal.device_name }}{% if signal.device_name %} · {% endif %}{{ signal.label }}{% if signal.unit %} ({{ signal.unit }}){% endif %}</option>
+                                <option value="{{ signal.key }}" data-device-id="{{ signal.device_id }}" data-site-id="{{ signal.site_id }}" data-unit="{{ signal.unit }}" data-site-wide-safe="{{ signal.site_wide_safe|yesno:'true,false' }}" data-device-label="{{ signal.device_name }}{% if signal.device_name %} · {% endif %}{{ signal.label }}{% if signal.unit %} ({{ signal.unit }}){% endif %}" data-site-label="{{ signal.label }}{% if signal.unit %} ({{ signal.unit }}){% endif %}" {% if signal.selected %}selected{% endif %}>{{ signal.device_name }}{% if signal.device_name %} · {% endif %}{{ signal.label }}{% if signal.unit %} ({{ signal.unit }}){% endif %}</option>
                             {% endfor %}
                         </select>
                         <p class="text-[10px] text-base-content/40 mt-2">A site-wide rule applies to every equipment here that reports this reading. Choose one equipment when units differ.</p>
+                        <p id="selected-reading-example" class="text-xs text-base-content/60 mt-2" role="status">Select a reading to see its recent value.</p>
                     </div>
                     <!-- Condition -->
                     <div>
@@ -276,6 +277,11 @@
             </div>
         </div>
 
+        <section class="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 text-sm text-indigo-950" aria-label="Review alert before saving">
+            <h3 class="font-bold">Review before saving</h3>
+            <p id="alert-rule-review" class="mt-2">Review the reading, limit, duration and response actions above.</p>
+        </section>
+
         <!-- Sticky Actions -->
         <div class="sticky bottom-0 bg-white dark:bg-gray-800 p-6 border-t border-gray-100 dark:border-gray-700 -mx-8 sm:-mx-8 mt-8 z-20 flex items-center justify-end space-x-4 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] rounded-b-3xl">
             <a href="{% url 'web_team:alerts:alert_list' request.team.slug %}" class="btn btn-ghost rounded-2xl font-black text-xs uppercase tracking-widest">Cancel</a>
@@ -293,7 +299,45 @@
     const site = document.getElementById('alert-site');
     const device = document.getElementById('alert-device');
     const reading = document.getElementById('alert-reading');
+    const form = document.getElementById('alert-rule-form');
+    const review = document.getElementById('alert-rule-review');
+    const example = document.getElementById('selected-reading-example');
     if (!site || !device || !reading) return;
+    let sampleRequest = 0;
+    function updateReview() {
+        const selected = reading.selectedOptions[0];
+        const condition = form.querySelector('[name="condition"]');
+        const threshold = form.querySelector('[name="threshold"]');
+        const duration = form.querySelector('[name="duration_seconds"]');
+        const active = form.querySelector('[name="is_active"]').checked;
+        const actions = [];
+        if (form.querySelector('[name="notify_email"]').checked) actions.push('email');
+        if (form.querySelector('[name="notify_whatsapp"]').checked) actions.push('WhatsApp');
+        if (form.querySelector('[name="notify_webhook_toggle"]').checked) actions.push('external webhook');
+        if (form.querySelector('[name="create_maintenance_ticket"]').checked) actions.push('maintenance ticket');
+        const recipients = form.querySelectorAll('input[name="recipients"]').length;
+        review.textContent = `${active ? 'Enable now' : 'Save paused'} · ${selected && selected.value ? selected.textContent : 'No reading selected'} ${condition.selectedOptions[0].textContent} ${threshold.value || '—'} ${selected?.dataset.unit || ''} for ${duration.value || 0}s · ${recipients} recipient(s) · ${actions.join(', ') || 'no response actions'}.`;
+    }
+    async function updateExample() {
+        const selected = reading.selectedOptions[0];
+        const requestId = ++sampleRequest;
+        if (!selected || !selected.value || !selected.dataset.deviceId) {
+            example.textContent = 'Select a mapped reading to see its recent value.';
+            return;
+        }
+        example.textContent = 'Checking the recent reading…';
+        try {
+            const url = `{% url 'web_team:telemetry:device_telemetry_history_api' request.team.slug 0 %}`.replace('/0/', `/${selected.dataset.deviceId}/`);
+            const response = await fetch(`${url}?key=${encodeURIComponent(selected.value)}&hours=1`);
+            const data = await response.json();
+            if (requestId !== sampleRequest) return;
+            const last = data.values?.length - 1;
+            const age = last >= 0 ? (Date.now() - new Date(data.labels[last]).getTime()) / 1000 : Infinity;
+            example.textContent = age <= 300 ? `Recent example: ${data.values[last]} ${selected.dataset.unit || ''} · ${Math.round(age)}s ago` : 'No recent sample. Check the equipment reading before enabling.';
+        } catch (_) {
+            if (requestId === sampleRequest) example.textContent = 'Recent example unavailable.';
+        }
+    }
     function filterReadings() {
         const selected = reading.selectedOptions[0];
         const seenSiteKeys = new Set();
@@ -314,12 +358,22 @@
         reading.options[0].textContent = device.value || site.value
             ? 'Choose a mapped reading'
             : 'Select equipment or site first';
+        updateReview();
+        updateExample();
     }
     site.addEventListener('change', filterReadings);
     device.addEventListener('change', () => {
         const mapped = [...reading.options].find(option => option.dataset.deviceId === device.value);
         if (mapped) site.value = mapped.dataset.siteId;
         filterReadings();
+    });
+    reading.addEventListener('change', () => { updateReview(); updateExample(); });
+    form.addEventListener('input', updateReview);
+    form.addEventListener('change', updateReview);
+    form.addEventListener('click', () => setTimeout(updateReview, 0));
+    form.addEventListener('submit', event => {
+        updateReview();
+        if (form.querySelector('[name="is_active"]').checked && !window.confirm(`Enable this alert now?\n\n${review.textContent}`)) event.preventDefault();
     });
     filterReadings();
 })();

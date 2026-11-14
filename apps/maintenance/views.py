@@ -7,6 +7,7 @@ from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from apps.teams.decorators import login_and_team_required
 from apps.teams.mixins import PermissionRequiredMixin
+from apps.teams.roles import visible_sites
 
 from .forms import (
     MaintenanceTicketForm,
@@ -27,7 +28,12 @@ class TicketListView(PermissionRequiredMixin, ListView):
     context_object_name = "tickets"
 
     def get_queryset(self):
-        qs = MaintenanceTicket.objects.filter(team=self.request.team)
+        qs = visible_sites(
+            MaintenanceTicket.objects.filter(team=self.request.team),
+            self.request.user,
+            self.request.team,
+            lookup="device__site_id",
+        )
 
         status_filter = self.request.GET.get("status")
         if status_filter:
@@ -41,7 +47,12 @@ class TicketListView(PermissionRequiredMixin, ListView):
         context["status_filter"] = self.request.GET.get("status", "")
 
         # Fetch and group all tickets for the Kanban view
-        all_tickets = MaintenanceTicket.objects.filter(team=self.request.team).order_by("-created_at")
+        all_tickets = visible_sites(
+            MaintenanceTicket.objects.filter(team=self.request.team),
+            self.request.user,
+            self.request.team,
+            lookup="device__site_id",
+        ).order_by("-created_at")
         context["open_tickets"] = all_tickets.filter(status=MaintenanceTicket.StatusChoices.OPEN)
         context["in_progress_tickets"] = all_tickets.filter(status=MaintenanceTicket.StatusChoices.IN_PROGRESS)
         context["waiting_tickets"] = all_tickets.filter(status=MaintenanceTicket.StatusChoices.WAITING)
@@ -70,7 +81,12 @@ class TicketDetailView(PermissionRequiredMixin, DetailView):
     context_object_name = "ticket"
 
     def get_queryset(self):
-        return MaintenanceTicket.objects.filter(team=self.request.team)
+        return visible_sites(
+            MaintenanceTicket.objects.filter(team=self.request.team),
+            self.request.user,
+            self.request.team,
+            lookup="device__site_id",
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -168,7 +184,12 @@ class ScheduleListView(PermissionRequiredMixin, ListView):
     context_object_name = "schedules"
 
     def get_queryset(self):
-        return PreventiveSchedule.objects.filter(team=self.request.team).order_by("next_due_at")
+        return visible_sites(
+            PreventiveSchedule.objects.filter(team=self.request.team),
+            self.request.user,
+            self.request.team,
+            lookup="device__site_id",
+        ).order_by("next_due_at")
 
     def get_context_data(self, **kwargs):
         from datetime import timedelta
@@ -267,6 +288,16 @@ class TemplateCreateView(PermissionRequiredMixin, CreateView):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "maintenance"
         return context
+
+
+class TemplateUpdateView(PermissionRequiredMixin, UpdateView):
+    permission_required = "manage_maintenance"
+    model = TicketTemplate
+    form_class = TicketTemplateForm
+    template_name = "maintenance/template_form.html"
+
+    def get_success_url(self):
+        return reverse("web_team:maintenance:template_list", args=[self.request.team.slug])
 
 
 @require_POST

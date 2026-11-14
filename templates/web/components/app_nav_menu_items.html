@@ -3,12 +3,13 @@
 <li class="menu-title">
   <span>{% translate "IoT Monitoring" %}</span>
 </li>
-<li class="mb-4 px-2">
+{% if nav_permissions.manage_devices %}<li class="mb-4 px-2">
   <a href="{% url 'web_team:onboarding:setup_start' team.slug %}" class="btn btn-primary btn-sm flex items-center justify-center gap-2 rounded-xl border-none shadow-lg shadow-primary-500/20 hover:scale-105 active:scale-95 transition-all">
     <i class="fa fa-plus-circle"></i>
     {% translate "Setup" %}
   </a>
 </li>
+{% endif %}
 <li>
   <a href="{% url 'web_team:home' team.slug %}" {% if active_tab == 'dashboard' %}class="menu-active"{% endif %}>
     <i class="fa fa-home h-4 w-4"></i>
@@ -27,12 +28,13 @@
     {% translate "Devices" %}
   </a>
 </li>
-<li>
+{% if not nav_permissions.site_limited %}<li>
   <a href="{% url 'web_team:devices:template_library' team.slug %}" {% if active_tab == 'templates' %}class="menu-active"{% endif %}>
     <i class="fa fa-layer-group h-4 w-4"></i>
     {% translate "Device Template Library" %}
   </a>
 </li>
+{% endif %}
 <li>
   <a href="{% url 'web_team:devices:gateway_list' team.slug %}" {% if active_tab == 'gateways' %}class="menu-active"{% endif %}>
     <i class="fa fa-server h-4 w-4"></i>
@@ -45,21 +47,22 @@
     {% translate "Alerts" %}
   </a>
 </li>
-{% flag "business_impact_roi" %}
+{% if not nav_permissions.site_limited %}{% flag "business_impact_roi" %}
 <li>
   <a href="{% url 'web_team:impact:overview' team.slug %}" {% if active_tab == 'impact' %}class="menu-active"{% endif %}>
     <i class="fa fa-chart-line h-4 w-4"></i>
     {% translate "Business Impact" %}
   </a>
 </li>
-{% endflag %}
+{% endflag %}{% endif %}
 
-<li>
+{% if nav_permissions.manage_shared_links %}<li>
   <a href="{% url 'web_team:dashboard_team:list' team.slug %}" {% if active_tab == 'shared-links' %}class="menu-active"{% endif %}>
     <i class="fa fa-share-nodes h-4 w-4"></i>
     {% translate "Shared Links" %}
   </a>
 </li>
+{% endif %}
 <li>
   <a href="{% url 'web_team:maintenance:ticket_list' team.slug %}" {% if active_tab == 'maintenance' %}class="menu-active"{% endif %}>
     <i class="fa fa-wrench h-4 w-4"></i>
@@ -67,11 +70,18 @@
   </a>
 </li>
 <li>
+  <button type="button" onclick="document.getElementById('contact-support-modal').showModal()">
+    <i class="fa fa-life-ring h-4 w-4"></i>
+    {% translate "Contact Support" %}
+  </button>
+</li>
+{% if nav_permissions.view_automations %}<li>
   <a href="{% url 'web_team:automations:list' team.slug %}" {% if active_tab == 'automations' %}class="menu-active"{% endif %}>
     <i class="fa fa-bolt h-4 w-4"></i>
     {% translate "Automations" %}
   </a>
 </li>
+{% endif %}
 
 {% endif %}
 

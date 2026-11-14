@@ -22,6 +22,7 @@ urlpatterns = [
     # Templates
     path("templates/", views.TemplateListView.as_view(), name="template_list"),
     path("templates/create/", views.TemplateCreateView.as_view(), name="template_create"),
+    path("templates/<int:pk>/edit/", views.TemplateUpdateView.as_view(), name="template_edit"),
     # Preventive Schedules
     path("schedules/", views.ScheduleListView.as_view(), name="schedule_list"),
     path("schedules/create/", views.ScheduleCreateView.as_view(), name="schedule_create"),

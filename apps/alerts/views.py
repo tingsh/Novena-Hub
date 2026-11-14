@@ -12,6 +12,7 @@ from apps.devices.models import Device
 from apps.devices.solution_profiles import recommended_alerts_for_device
 from apps.teams.decorators import require_permission
 from apps.teams.mixins import PermissionRequiredMixin
+from apps.teams.roles import visible_site_ids, visible_sites
 
 from .forms import AlertRuleForm
 from .models import Alert, AlertRule
@@ -24,12 +25,18 @@ class AlertListView(PermissionRequiredMixin, ListView):
     context_object_name = "alerts"
 
     def get_queryset(self):
-        return Alert.objects.filter(team=self.request.team).order_by("-triggered_at")
+        return visible_sites(
+            Alert.objects.filter(team=self.request.team), self.request.user, self.request.team, lookup="device__site_id"
+        ).order_by("-triggered_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "alerts"
-        context["rules"] = AlertRule.objects.filter(team=self.request.team)
+        ids = visible_site_ids(self.request.user, self.request.team)
+        rules = AlertRule.objects.filter(team=self.request.team)
+        context["rules"] = (
+            rules if ids is None else rules.filter(Q(site_id__in=ids) | Q(device__site_id__in=ids)).distinct()
+        )
         context["active_rule_count"] = context["rules"].filter(is_active=True).count()
         return context
 
@@ -107,14 +114,18 @@ class AlertRuleListView(PermissionRequiredMixin, ListView):
     context_object_name = "rules"
 
     def get_queryset(self):
-        return AlertRule.objects.filter(team=self.request.team)
+        ids = visible_site_ids(self.request.user, self.request.team)
+        rules = AlertRule.objects.filter(team=self.request.team)
+        return rules if ids is None else rules.filter(Q(site_id__in=ids) | Q(device__site_id__in=ids)).distinct()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "alert_rules"
         suggestions = []
         create_url = reverse("web_team:alerts:rule_create", args=[self.request.team.slug])
-        for device in Device.objects.filter(team=self.request.team).select_related("site", "template"):
+        for device in visible_sites(
+            Device.objects.filter(team=self.request.team), self.request.user, self.request.team
+        ).select_related("site", "template"):
             for index, preset in enumerate(_suggestions_for_device(device)):
                 suggestions.append(
                     {
@@ -136,9 +147,10 @@ class AlertRuleCreateView(PermissionRequiredMixin, CreateView):
 
     def get_initial(self):
         initial = super().get_initial()
+        initial.update({"is_active": False, "notify_email": False, "notify_whatsapp": False})
         device_id = self.request.GET.get("device")
         preset_index = self.request.GET.get("preset")
-        if not device_id or preset_index is None:
+        if not device_id:
             return initial
         try:
             device = (
@@ -148,6 +160,9 @@ class AlertRuleCreateView(PermissionRequiredMixin, CreateView):
             return initial
         if not device:
             return initial
+        initial.update({"device": device, "site": device.site})
+        if preset_index is None:
+            return initial
         try:
             index = int(preset_index)
             if index < 0:
@@ -156,7 +171,7 @@ class AlertRuleCreateView(PermissionRequiredMixin, CreateView):
         except (ValueError, IndexError):
             return initial
         initial.update(preset)
-        initial.update({"device": device, "site": device.site, "is_active": False, "notify_email": False})
+        initial.update({"is_active": False, "notify_email": False})
         return initial
 
     def get_form_kwargs(self):

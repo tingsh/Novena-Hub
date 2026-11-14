@@ -222,7 +222,7 @@
                 <div class="bg-gray-800 border border-gray-800/80 shadow-md rounded-2xl p-6">
                     <h3 class="text-sm font-black text-gray-400 uppercase tracking-wider mb-4">{% translate "Work Submission" %}</h3>
                     <p class="text-xs text-gray-400 leading-relaxed mb-6">
-                        {% translate "Once the procedural checklist is complete and all compliance logsheets have been uploaded, submit this ticket as Resolved for the property manager to verify and close." %}
+                        {% translate "Complete the required checklist tasks and attach any applicable compliance records, then submit this ticket as Resolved for the manager to verify and close." %}
                     </p>
 
                     <form method="post" action="{% url 'maintenance_public:public_update_status' link.token %}" class="space-y-4">
@@ -254,7 +254,7 @@
     <!-- Novena Branding Footer -->
     <footer class="bg-gray-950 py-6 text-center mt-auto border-t border-gray-800/40">
         <p class="text-xs text-gray-500">
-            Powered by <a href="#" class="font-bold text-white hover:text-indigo-400 transition-colors">Novena Platform</a>
+            Powered by <a href="/" class="font-bold text-white hover:text-indigo-400 transition-colors">Novena Platform</a>
         </p>
         <p class="text-[9px] text-gray-650 mt-1 uppercase tracking-widest">Industrial Intelligence & SLA Compliance Portal</p>
     </footer>

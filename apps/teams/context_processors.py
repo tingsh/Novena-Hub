@@ -4,8 +4,29 @@ from apps.teams.helpers import get_open_invitations_for_user
 
 
 def team(request):
+    current_team = getattr(request, "team", None)
+    permissions = {}
+    if current_team and request.user.is_authenticated:
+        from apps.teams.roles import has_permission, visible_site_ids
+
+        permissions = {
+            name: has_permission(request.user, current_team, name)
+            for name in (
+                "manage_devices",
+                "view_dashboard",
+                "view_devices",
+                "manage_shared_links",
+                "view_maintenance",
+                "view_automations",
+            )
+        }
+        if visible_site_ids(request.user, current_team) is not None:
+            permissions["site_limited"] = True
+            for name in ("manage_devices", "manage_shared_links", "view_automations"):
+                permissions[name] = False
     return {
-        "team": getattr(request, "team", None),
+        "team": current_team,
+        "nav_permissions": permissions,
     }
 
 

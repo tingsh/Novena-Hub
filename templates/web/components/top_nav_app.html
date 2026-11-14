@@ -6,11 +6,8 @@
   <i class="fa fa-bars text-lg"></i>
 </button>
 {% endblock %}
-{% block mobile_nav %}
-<li class="menu-title">
-  <span>Site</span>
-</li>
-{{ block.super }}
-{% include 'web/components/app_nav_menu_items.html' %}
-{% block mobile_nav_links %}{% endblock %}
+{% block mobile_nav_links %}
+<ul class="menu w-full rounded-box bg-base-100 p-2 text-sm">
+  {% include 'web/components/app_nav_menu_items.html' %}
+</ul>
 {% endblock %}

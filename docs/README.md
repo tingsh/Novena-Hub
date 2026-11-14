@@ -12,6 +12,7 @@ This index separates current source-of-truth material from historical records. H
 - [Customer template sharing and review](product/customer_template_review.md) — private map consent, Novena qualification, publication and first-time setup fallback.
 - [Template system v2](product/template_system_v2.md) — team library maps, paid setup-help requests, staff delivery and private-document release procedure.
 - [Pilot launch checklist](20_customer_pilot_launch_checklist_2026-07-31.md) — controlled pilot gates and evidence requirements.
+- [Product polish review (29 Oct 2026)](product_polish_review_2026-10-29.md) — current P1/P2/P3 disposition, local verification and remaining acceptance, with the original pre-fix backlog retained.
 
 ## Architecture and protocol
 

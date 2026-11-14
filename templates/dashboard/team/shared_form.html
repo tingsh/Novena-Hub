@@ -18,6 +18,11 @@
             <div class="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
                 This link shows a read-only summary of <strong>all sites</strong> and active alerts in this account to anyone who has its URL. Add a password and expiry if it will be shared outside your team. New links stay inactive until you choose to enable them.
             </div>
+            <section class="mb-6 rounded-lg border border-gray-200 p-4" aria-label="Public link audience preview">
+                <h4 class="font-bold">Audience preview</h4>
+                <p class="text-sm">Anyone with this link can see {{ preview_sites|length }} site{{ preview_sites|length|pluralize }} and {{ preview_alert_count }} active alert{{ preview_alert_count|pluralize }}.</p>
+                <ul class="mt-2 list-disc pl-5 text-sm">{% for site in preview_sites %}<li>{{ site.name }}</li>{% empty %}<li>No sites yet</li>{% endfor %}</ul>
+            </section>
             <div class="space-y-6">
                 {% render_field form.name %}
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -25,6 +30,7 @@
                     {% render_field form.raw_password %}
                 </div>
                 {% render_field form.is_active %}
+                {% render_field form.activation_confirmed %}
             </div>
             
             <div class="mt-8 flex justify-end space-x-3 border-t border-gray-100 dark:border-gray-700 pt-6">

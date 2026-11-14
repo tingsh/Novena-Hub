@@ -22,6 +22,7 @@ from django.views.generic import CreateView, DeleteView, DetailView, ListView, U
 
 from apps.teams.decorators import require_permission
 from apps.teams.mixins import PermissionRequiredMixin
+from apps.teams.roles import visible_sites
 
 from .models import (
     ControlActivation,
@@ -194,6 +195,9 @@ class SiteListView(PermissionRequiredMixin, ListView):
     template_name = "devices/site_list.html"
     context_object_name = "sites"
 
+    def get_queryset(self):
+        return visible_sites(super().get_queryset(), self.request.user, self.request.team, lookup="id")
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "sites"
@@ -206,6 +210,9 @@ class SiteDetailView(PermissionRequiredMixin, DetailView):
     template_name = "devices/site_detail.html"
     context_object_name = "site"
 
+    def get_queryset(self):
+        return visible_sites(super().get_queryset(), self.request.user, self.request.team, lookup="id")
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["active_tab"] = "sites"
@@ -217,7 +224,14 @@ class SiteDetailView(PermissionRequiredMixin, DetailView):
         context["stats"] = get_site_summary_stats(self.object)
         site_devices = list(self.object.devices.select_related("template", "gateway"))
         context["direct_devices"] = [device for device in site_devices if device.gateway_id is None]
-        energy_keys = {"active_power", "power", "energy", "total_energy", "energy_kwh"}
+        energy_keys = {
+            "active_power_total",
+            "active_power",
+            "power",
+            "energy_import",
+            "import_energy",
+            "energy_import_total",
+        }
         context["has_energy_readings"] = any(
             device.energy_category != "none" or energy_keys.intersection(effective_register_map(device))
             for device in site_devices
@@ -297,7 +311,9 @@ class GatewayListView(PermissionRequiredMixin, ListView):
     context_object_name = "gateways"
 
     def get_queryset(self):
-        return super().get_queryset().exclude(lifecycle_status="released")
+        return visible_sites(super().get_queryset(), self.request.user, self.request.team).exclude(
+            lifecycle_status="released"
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -310,6 +326,9 @@ class GatewayDetailView(PermissionRequiredMixin, DetailView):
     model = Gateway
     template_name = "devices/gateway_detail.html"
     context_object_name = "gateway"
+
+    def get_queryset(self):
+        return visible_sites(super().get_queryset(), self.request.user, self.request.team)
 
     def get(self, request, *args, **kwargs):
         self.object = self.get_object()
@@ -738,7 +757,9 @@ class DeviceListView(PermissionRequiredMixin, ListView):
     context_object_name = "devices"
 
     def get_queryset(self):
-        return super().get_queryset().select_related("site", "gateway", "template")
+        return visible_sites(super().get_queryset(), self.request.user, self.request.team).select_related(
+            "site", "gateway", "template"
+        )
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -757,6 +778,9 @@ class DeviceDetailView(PermissionRequiredMixin, DetailView):
     model = Device
     template_name = "devices/device_detail.html"
     context_object_name = "device"
+
+    def get_queryset(self):
+        return visible_sites(super().get_queryset(), self.request.user, self.request.team)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

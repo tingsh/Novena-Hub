@@ -6,7 +6,7 @@ site health targets, and verify NetworkManager profiles and both uplink
 layouts on hardware before enabling automatic failover for a customer. The
 factory CM4 replay alone does not close this gate.
 
-Last reviewed: 2026-10-28 (after three local CM4 E2E scenarios)
+Last reviewed: 2026-10-30 (product polish candidate; public acceptance still pending)
 
 This guide documents the repo-backed production assets and checks for Novena Hub. Use it together with `docs/production_deployment_plan.md`.
 
@@ -381,6 +381,10 @@ For a controlled investor showcase, use clearly labelled sample data and complet
 14. Stripe webhook signature validation is configured before paid rollout.
 15. Two disposable tenants prove HTTP, template, telemetry and serial-scoped MQTT isolation; secure Gateway release/reclaim and offline-pending behavior work on the release pair.
 16. Each first-customer exact device map is compared against a physical display or independent reference, including units and CT/PT scaling.
+17. On the deployed Hub, use a site-limited disposable member to verify Site A list, detail, history, CSV and WebSocket access while direct Site B URLs and POSTs are denied. Site-limited accounts are intentionally read-only outside the audited monitoring routes; do not assign them to a pilot that requires setup or actions until those workflows have object-level site approval.
+18. Confirm the Site and public Shared Link display observed kWh only with fresh, sufficiently covered import-energy counters; gaps and counter resets show unavailable. Compare a local-day boundary and two meters against physical readings. A Shared Link must be previewed before activation, then password, expiry, revocation, alert value and tenant scope must be browser checked before external use.
+19. Verify alert creation begins paused with notifications off, review/enable is deliberate, and no onboarding step creates a rule. Check an unassigned work item sends nothing, a contractor token cannot close a ticket, and calendar/usage preventive schedules trigger exactly once with a valid baseline.
+20. Test a seven-day chart with early and late samples and a CSV above 5,000 rows on the deployed database. Streaming CSV now returns the selected visible window; monitor export duration and memory with production-sized data.
 
 ## Hardware Replay Handoff
 

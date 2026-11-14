@@ -40,6 +40,7 @@
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                         Assignee Notification Channels
                     </label>
+                    <p class="text-xs text-gray-500 mb-3">On first assignment or when the assignee changes, selected channels notify that person. Leave both off to log work without dispatch.</p>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <label class="flex items-center space-x-3 cursor-pointer">
                             <input type="checkbox" name="send_email_notification" class="checkbox checkbox-primary checkbox-sm" {% if form.send_email_notification.value %}checked{% endif %}>
@@ -55,6 +56,7 @@
                             {{ form.non_field_errors }}
                         </div>
                     {% endif %}
+                    {{ form.send_email_notification.errors }}{{ form.send_whatsapp_notification.errors }}{{ form.assigned_to.errors }}
                 </div>
             </div>
             
