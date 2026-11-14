@@ -231,24 +231,45 @@ def device_telemetry_history_api(request, team_slug, device_id):
     if hours > max_hours:
         hours = max_hours
 
-    cutoff = timezone.now() - timezone.timedelta(hours=hours)
+    now = timezone.now()
+    cutoff = now - timezone.timedelta(hours=hours)
     # Pick one observed point per time bucket across the entire requested
     # window. A newest-N limit silently omitted the early part of long ranges.
     bucket_seconds = max(60, int(hours * 3600 / 720))
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """SELECT timestamp, value_numeric, value_bool, value_string FROM (
-                   SELECT timestamp, value_numeric, value_bool, value_string,
-                          row_number() OVER (
-                              PARTITION BY key, floor(extract(epoch FROM timestamp) / %s)
-                              ORDER BY timestamp DESC
-                          ) AS sample_rank
-                   FROM telemetry_telemetrydata
-                   WHERE device_id = %s AND (%s = '' OR key = %s) AND timestamp >= %s
-                 ) sampled WHERE sample_rank = 1 ORDER BY timestamp""",
-            [bucket_seconds, device.id, key, key, cutoff],
-        )
-        points = cursor.fetchall()
+    if connection.vendor == "sqlite":
+        # Django's CI test database is SQLite. Keep the same latest-per-bucket
+        # rule here; production PostgreSQL samples in SQL below.
+        samples = TelemetryData.objects.filter(device=device, timestamp__gte=cutoff, timestamp__lte=now)
+        if key:
+            samples = samples.filter(key=key)
+        buckets = {}
+        for sample in samples.order_by("timestamp", "pk").values_list(
+            "key", "timestamp", "value_numeric", "value_bool", "value_string"
+        ):
+            sample_key, sample_at, numeric, boolean, string = sample
+            buckets[(sample_key, int(sample_at.timestamp() // bucket_seconds))] = (
+                sample_at,
+                numeric,
+                boolean,
+                string,
+            )
+        points = sorted(buckets.values(), key=lambda point: point[0])
+    else:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT timestamp, value_numeric, value_bool, value_string FROM (
+                       SELECT timestamp, value_numeric, value_bool, value_string,
+                              row_number() OVER (
+                                  PARTITION BY key, floor(extract(epoch FROM timestamp) / %s)
+                                  ORDER BY timestamp DESC, id DESC
+                              ) AS sample_rank
+                       FROM telemetry_telemetrydata
+                       WHERE device_id = %s AND (%s = '' OR key = %s)
+                         AND timestamp >= %s AND timestamp <= %s
+                     ) sampled WHERE sample_rank = 1 ORDER BY timestamp""",
+                [bucket_seconds, device.id, key, key, cutoff, now],
+            )
+            points = cursor.fetchall()
 
     labels = []
     labels_local = []

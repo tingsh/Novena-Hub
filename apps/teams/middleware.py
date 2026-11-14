@@ -58,6 +58,8 @@ class SiteBoundaryMiddleware(MiddlewareMixin):
         "web_team:telemetry:site_profile_report",
         "web_team:telemetry:export_site_profile_report_csv",
         "web_team:telemetry:telemetry_analyzer",
+        "web_team:impact:summary_json",
+        "web_team:impact:report_detail",
     }
 
     def process_view(self, request, view_func, view_args, view_kwargs):
@@ -66,7 +68,7 @@ class SiteBoundaryMiddleware(MiddlewareMixin):
         from apps.teams.roles import visible_site_ids
 
         team = request.team
-        if not team or visible_site_ids(request.user, team) is None:
+        if not team or not request.team_membership or visible_site_ids(request.user, team) is None:
             return None
         if request.method not in ("GET", "HEAD") or request.resolver_match.view_name not in self.SAFE_ROUTES:
             return HttpResponseForbidden("This route is unavailable to site-limited members.")
