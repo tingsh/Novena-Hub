@@ -192,23 +192,28 @@ Teacher note: signing keys prove that Hub created a command/config envelope. The
 Issue HTTPS certificates for the web domains:
 
 ```bash
-sudo certbot --nginx -d novenaplatform.com -d www.novenaplatform.com -d app.novenaplatform.com
+sudo certbot certonly --nginx --cert-name novenaplatform.com \
+  -d novenaplatform.com -d www.novenaplatform.com -d app.novenaplatform.com
 ```
 
-Issue a certificate for MQTT:
+Issue a certificate for MQTT using Nginx for the HTTP challenge (Mosquitto will use the resulting certificate on port 8883):
 
 ```bash
-sudo certbot certonly --standalone -d mqtt.novenaplatform.com
+sudo certbot certonly --nginx --cert-name mqtt.novenaplatform.com -d mqtt.novenaplatform.com
 ```
 
-If Certbot cannot bind port 80 because Nginx is running, temporarily use the Nginx plugin or stop Nginx during the MQTT certificate challenge.
+After installing the final Nginx site, run `sudo certbot renew --dry-run` to prove both certificates can renew.
 
-The Compose file expects MQTT certificate files here:
+Mosquitto runs as UID/GID 1883 and cannot read Certbot's root-only private key directly. Copy the MQTT certificate into a broker-readable, restricted directory before starting Compose:
 
-```text
-/etc/letsencrypt/live/mqtt.novenaplatform.com/fullchain.pem
-/etc/letsencrypt/live/mqtt.novenaplatform.com/privkey.pem
+```bash
+sudo bash deploy/mosquitto/sync_tls_cert.sh
+sudo install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+sudo install -o root -g root -m 0755 deploy/certbot/novena-deploy-hook.sh \
+  /etc/letsencrypt/renewal-hooks/deploy/novena
 ```
+
+The copied files live under `deploy/mosquitto/certs/`, which is ignored by Git. The private key is readable only by root and broker GID 1883; never make it world-readable. The deploy hook refreshes the copy and recreates a running Mosquitto container after MQTT renewal. It reloads Nginx after web-certificate renewal. Reinstall the hook when its repo source changes. The broker restart briefly disconnects MQTT clients, so verify Gateway reconnection after a renewal.
 
 ## Mosquitto Dynamic Security
 

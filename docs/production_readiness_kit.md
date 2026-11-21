@@ -76,6 +76,8 @@ Production assets in this repo:
 | `deploy/env/production.env.example` | Production-safe env template with placeholders only. |
 | `deploy/nginx/novena.conf.example` | Host Nginx HTTPS reverse proxy with WebSocket headers. |
 | `deploy/mosquitto/mosquitto.prod.conf` | Mosquitto listeners for internal Hub traffic, private Dynamic Security control, and public TLS MQTT. |
+| `deploy/mosquitto/sync_tls_cert.sh` | Copies the Let's Encrypt MQTT certificate into a restricted broker-readable directory. |
+| `deploy/certbot/novena-deploy-hook.sh` | Refreshes the broker certificate copy and restarts Mosquitto after renewal; reloads Nginx after web-certificate renewal. |
 | `deploy/mosquitto/dynamic-security.example.json` | Safe seed/example for Dynamic Security roles. Real credentials must be generated on the server. |
 | `deploy/backups/backup_postgres.sh` | Compressed Postgres/TimescaleDB backup. |
 | `deploy/backups/backup_private_media.sh` | Backup for confidential reports and equipment-request files. |
@@ -234,6 +236,8 @@ physical hardware to another customer.
 Teacher note: Celery Beat is the scheduler. It is what keeps background recovery work happening even if a web request or worker crashes halfway through a Gateway operation.
 
 ## First Server Build
+
+Before starting Mosquitto, run `sudo bash deploy/mosquitto/sync_tls_cert.sh` and install `deploy/certbot/novena-deploy-hook.sh` into `/etc/letsencrypt/renewal-hooks/deploy/novena` as root with mode `0755`. The broker certificate copy at `deploy/mosquitto/certs/` must remain excluded from Git. Certbot's original private key is root-only; do not relax its permissions. Run `sudo certbot renew --dry-run` after the final Nginx site is active.
 
 From `/opt/novena/Novena-Hub` on the VPS:
 
