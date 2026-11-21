@@ -268,6 +268,8 @@ Build the app image:
 docker compose -f docker-compose.prod.yml build
 ```
 
+The build context excludes the live production environment file, copied MQTT private key, broker identity state, private media, and backups through `.dockerignore`. Keep these runtime files on the host; they must not be copied into either the frontend or app image.
+
 Start the infrastructure services:
 
 ```bash
