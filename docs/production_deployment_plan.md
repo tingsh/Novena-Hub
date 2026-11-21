@@ -231,7 +231,7 @@ Initialize the live Dynamic Security file from the admin credentials already in 
 sudo python3 deploy/mosquitto/init_dynsec.py
 ```
 
-The initializer creates the admin client using Mosquitto's own password hashing, sets deny-by-default ACLs, and adds an empty `gateway` role. It refuses to overwrite an existing state file and never prints the password. The example JSON documents role structure but is not a live credential file. The live state contains:
+The initializer creates the admin client using Mosquitto's own password hashing, sets deny-by-default ACLs, and adds an empty `gateway` role. It refuses to overwrite an existing state file and never prints the password. It leaves the data directory writable by broker UID 1883 while the repository owner retains group read/traverse access. Compose runs the broker as UID/GID 1883 so its entrypoint does not change that directory ownership. The example JSON documents role structure but is not a live credential file. The live state contains:
 
 - one admin client matching `MQTT_DYNSEC_ADMIN_USER` and `MQTT_DYNSEC_ADMIN_PASS`;
 - a `gateway` baseline role with no broad publish ACLs;

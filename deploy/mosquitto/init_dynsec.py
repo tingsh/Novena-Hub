@@ -4,7 +4,6 @@
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -36,10 +35,12 @@ def main() -> None:
         raise SystemExit("MQTT admin credentials must not contain whitespace.")
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    os.chown(DATA_DIR, BROKER_ID, ROOT.stat().st_gid)
+    DATA_DIR.chmod(0o750)
     try:
         subprocess.run(
             [
-                "docker", "run", "--rm", "-i",
+                "docker", "run", "--rm", "-i", "--user", "1883:1883",
                 "--mount", f"type=bind,src={DATA_DIR},dst=/mosquitto/data",
                 "eclipse-mosquitto:2", "mosquitto_ctrl", "dynsec", "init",
                 "/mosquitto/data/.dynamic-security-initial.json", username,
@@ -66,8 +67,6 @@ def main() -> None:
         os.chown(STAGED_FILE, BROKER_ID, BROKER_ID)
         STAGED_FILE.chmod(0o600)
         STAGED_FILE.replace(STATE_FILE)
-        os.chown(DATA_DIR, BROKER_ID, BROKER_ID)
-        DATA_DIR.chmod(0o700)
     except subprocess.CalledProcessError as exc:
         raise SystemExit(f"Mosquitto initialization failed (exit {exc.returncode}).") from exc
     finally:
