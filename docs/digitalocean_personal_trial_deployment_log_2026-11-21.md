@@ -42,6 +42,8 @@ The Droplet Hub checkout is a clean detached checkout at `08fea1b3f8191a96ac12b3
 
 ## Deferred work and launch gates
 
+PR #35 was reviewed on 2026-11-21 before full-stack startup. The changed scripts passed Bash/Python syntax checks, the production Compose file passed `config --quiet`, the diff passed whitespace checks, and a local Django check showed no allauth deprecation warnings. Three focused signup tests passed. Two pre-existing broker isolation tests could not complete locally because their temporary configuration directory is inaccessible after the local Mosquitto process drops privileges; this is a test-fixture limitation, not a passing broker ACL test. The live Droplet broker's healthy status, public TLS verification, and anonymous rejection remain the available deployment evidence. No blocking defect was found for owner-only full-stack startup. The legacy example Dynamic Security JSON was clarified in the deployment guide; its `roleName` field is not the current live-state format.
+
 | Item | Current decision / next action |
 | --- | --- |
 | Start and smoke-test full app | Run `sudo docker compose -f docker-compose.prod.yml up -d`, inspect `ps` and service logs, then test HTTPS, login/signup, static assets, health endpoint, and WebSockets. This was the next step when this log was written. |
