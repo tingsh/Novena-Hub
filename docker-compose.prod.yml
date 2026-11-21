@@ -28,15 +28,15 @@ services:
       retries: 10
 
   mosquitto:
-    image: eclipse-mosquitto:2
+    image: eclipse-mosquitto:2.1.4-alpine
+    user: "1883:1883"
     restart: unless-stopped
     ports:
       - "8883:8883"
     volumes:
       - ./deploy/mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf:ro
       - ./deploy/mosquitto/data:/mosquitto/data
-      - /etc/letsencrypt/live/mqtt.novenaplatform.com/fullchain.pem:/mosquitto/certs/fullchain.pem:ro
-      - /etc/letsencrypt/live/mqtt.novenaplatform.com/privkey.pem:/mosquitto/certs/privkey.pem:ro
+      - ./deploy/mosquitto/certs:/mosquitto/certs:ro
       - mosquitto_log:/mosquitto/log
     healthcheck:
       test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -t '$$SYS/#' -C 1 -W 5 >/dev/null 2>&1 || exit 1"]

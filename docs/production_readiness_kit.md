@@ -76,6 +76,9 @@ Production assets in this repo:
 | `deploy/env/production.env.example` | Production-safe env template with placeholders only. |
 | `deploy/nginx/novena.conf.example` | Host Nginx HTTPS reverse proxy with WebSocket headers. |
 | `deploy/mosquitto/mosquitto.prod.conf` | Mosquitto listeners for internal Hub traffic, private Dynamic Security control, and public TLS MQTT. |
+| `deploy/mosquitto/sync_tls_cert.sh` | Copies the Let's Encrypt MQTT certificate into a restricted broker-readable directory. |
+| `deploy/mosquitto/init_dynsec.py` | Initializes private broker state from the production admin credentials without printing the password. |
+| `deploy/certbot/novena-deploy-hook.sh` | Refreshes the broker certificate copy and restarts Mosquitto after renewal; reloads Nginx after web-certificate renewal. |
 | `deploy/mosquitto/dynamic-security.example.json` | Safe seed/example for Dynamic Security roles. Real credentials must be generated on the server. |
 | `deploy/backups/backup_postgres.sh` | Compressed Postgres/TimescaleDB backup. |
 | `deploy/backups/backup_private_media.sh` | Backup for confidential reports and equipment-request files. |
@@ -235,6 +238,8 @@ Teacher note: Celery Beat is the scheduler. It is what keeps background recovery
 
 ## First Server Build
 
+Before starting Mosquitto, run `sudo bash deploy/mosquitto/sync_tls_cert.sh` and install `deploy/certbot/novena-deploy-hook.sh` into `/etc/letsencrypt/renewal-hooks/deploy/novena` as root with mode `0755`. The broker certificate copy at `deploy/mosquitto/certs/` must remain excluded from Git. Certbot's original private key is root-only; do not relax its permissions. Run `sudo certbot renew --dry-run` after the final Nginx site is active.
+
 From `/opt/novena/Novena-Hub` on the VPS:
 
 ```bash
@@ -243,6 +248,10 @@ docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d postgres redis mosquitto
 docker compose -f docker-compose.prod.yml run --rm web python manage.py migrate
 docker compose -f docker-compose.prod.yml run --rm web python manage.py verify_timescale
+APP_GID=$(docker compose -f docker-compose.prod.yml run --rm --no-deps web id -g)
+sudo chgrp "$APP_GID" static_root media private_media
+sudo chmod 2775 static_root media
+sudo chmod 2770 private_media
 docker compose -f docker-compose.prod.yml run --rm web python manage.py collectstatic --noinput
 docker compose -f docker-compose.prod.yml up -d
 ```

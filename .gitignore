@@ -25,6 +25,7 @@ novena_hub/local.py
 novena_hub/localsettings.py
 media/
 private_media/
+deploy/mosquitto/certs/
 backups/
 .dev-pids/
 *.log

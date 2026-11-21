@@ -1,5 +1,11 @@
 media
+private_media
 static_root
+backups
+deploy/env/production.env
+deploy/mosquitto/certs
+deploy/mosquitto/data
+.git
 node_modules
 npm-debug.log
 **/.env

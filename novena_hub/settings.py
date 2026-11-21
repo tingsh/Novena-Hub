@@ -323,9 +323,6 @@ AUTH_PASSWORD_VALIDATORS = [
 
 ACCOUNT_ADAPTER = "apps.teams.adapter.AcceptInvitationAdapter"
 HEADLESS_ADAPTER = "apps.users.adapter.CustomHeadlessAdapter"
-ACCOUNT_AUTHENTICATION_METHOD = "email"
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"]
 
