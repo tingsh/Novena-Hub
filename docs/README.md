@@ -27,6 +27,7 @@ The Gateway repository's `ARCHITECTURE.md` is the current edge-runtime guide. Hi
 
 ## Operations and deployment
 
+- [DigitalOcean personal-trial deployment log (21 Nov 2026)](digitalocean_personal_trial_deployment_log_2026-11-21.md) — actual server setup, fixes, verification, and deferred work; see the guides below for procedures.
 - [Production deployment plan](production_deployment_plan.md)
 - [Production readiness kit](production_readiness_kit.md)
 - [Backup and restore](production_backup_restore.md)
