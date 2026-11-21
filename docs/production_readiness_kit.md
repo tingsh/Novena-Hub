@@ -77,6 +77,7 @@ Production assets in this repo:
 | `deploy/nginx/novena.conf.example` | Host Nginx HTTPS reverse proxy with WebSocket headers. |
 | `deploy/mosquitto/mosquitto.prod.conf` | Mosquitto listeners for internal Hub traffic, private Dynamic Security control, and public TLS MQTT. |
 | `deploy/mosquitto/sync_tls_cert.sh` | Copies the Let's Encrypt MQTT certificate into a restricted broker-readable directory. |
+| `deploy/mosquitto/init_dynsec.py` | Initializes private broker state from the production admin credentials without printing the password. |
 | `deploy/certbot/novena-deploy-hook.sh` | Refreshes the broker certificate copy and restarts Mosquitto after renewal; reloads Nginx after web-certificate renewal. |
 | `deploy/mosquitto/dynamic-security.example.json` | Safe seed/example for Dynamic Security roles. Real credentials must be generated on the server. |
 | `deploy/backups/backup_postgres.sh` | Compressed Postgres/TimescaleDB backup. |

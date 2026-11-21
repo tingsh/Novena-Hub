@@ -225,7 +225,13 @@ deploy/mosquitto/data/dynamic-security.json
 
 Do not use development broker credentials.
 
-Create a real Dynamic Security file from `deploy/mosquitto/dynamic-security.example.json`, then add:
+Initialize the live Dynamic Security file from the admin credentials already in `deploy/env/production.env`:
+
+```bash
+sudo python3 deploy/mosquitto/init_dynsec.py
+```
+
+The initializer creates the admin client using Mosquitto's own password hashing, sets deny-by-default ACLs, and adds an empty `gateway` role. It refuses to overwrite an existing state file and never prints the password. The example JSON documents role structure but is not a live credential file. The live state contains:
 
 - one admin client matching `MQTT_DYNSEC_ADMIN_USER` and `MQTT_DYNSEC_ADMIN_PASS`;
 - a `gateway` baseline role with no broad publish ACLs;
