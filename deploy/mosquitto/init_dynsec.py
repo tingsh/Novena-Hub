@@ -42,7 +42,7 @@ def main() -> None:
             [
                 "docker", "run", "--rm", "-i", "--user", "1883:1883",
                 "--mount", f"type=bind,src={DATA_DIR},dst=/mosquitto/data",
-                "eclipse-mosquitto:2", "mosquitto_ctrl", "dynsec", "init",
+                "eclipse-mosquitto:2.1.4-alpine", "mosquitto_ctrl", "dynsec", "init",
                 "/mosquitto/data/.dynamic-security-initial.json", username,
             ],
             input=f"{password}\n{password}\n",

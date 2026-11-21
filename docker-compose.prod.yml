@@ -28,7 +28,7 @@ services:
       retries: 10
 
   mosquitto:
-    image: eclipse-mosquitto:2
+    image: eclipse-mosquitto:2.1.4-alpine
     user: "1883:1883"
     restart: unless-stopped
     ports:
