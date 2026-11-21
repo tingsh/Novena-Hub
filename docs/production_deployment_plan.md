@@ -270,6 +270,17 @@ docker compose -f docker-compose.prod.yml build
 
 The build context excludes the live production environment file, copied MQTT private key, broker identity state, private media, and backups through `.dockerignore`. Keep these runtime files on the host; they must not be copied into either the frontend or app image.
 
+The image runs Django as a non-root user. After building it, grant that user's group write access to the bind-mounted runtime directories. Preserve the host operator as owner, let Nginx read public static/media files, and keep private media inaccessible to other local users:
+
+```bash
+APP_GID=$(sudo docker compose -f docker-compose.prod.yml run --rm --no-deps web id -g)
+sudo chgrp "$APP_GID" static_root media private_media
+sudo chmod 2775 static_root media
+sudo chmod 2770 private_media
+```
+
+The leading `2` sets the directory setgid bit so new files and subdirectories inherit the Django group. Recheck this group ID after changing the base image or runtime user.
+
 Start the infrastructure services:
 
 ```bash

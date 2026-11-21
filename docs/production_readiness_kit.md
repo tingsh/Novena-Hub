@@ -248,6 +248,10 @@ docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml up -d postgres redis mosquitto
 docker compose -f docker-compose.prod.yml run --rm web python manage.py migrate
 docker compose -f docker-compose.prod.yml run --rm web python manage.py verify_timescale
+APP_GID=$(docker compose -f docker-compose.prod.yml run --rm --no-deps web id -g)
+sudo chgrp "$APP_GID" static_root media private_media
+sudo chmod 2775 static_root media
+sudo chmod 2770 private_media
 docker compose -f docker-compose.prod.yml run --rm web python manage.py collectstatic --noinput
 docker compose -f docker-compose.prod.yml up -d
 ```
