@@ -192,23 +192,28 @@ Teacher note: signing keys prove that Hub created a command/config envelope. The
 Issue HTTPS certificates for the web domains:
 
 ```bash
-sudo certbot --nginx -d novenaplatform.com -d www.novenaplatform.com -d app.novenaplatform.com
+sudo certbot certonly --nginx --cert-name novenaplatform.com \
+  -d novenaplatform.com -d www.novenaplatform.com -d app.novenaplatform.com
 ```
 
-Issue a certificate for MQTT:
+Issue a certificate for MQTT using Nginx for the HTTP challenge (Mosquitto will use the resulting certificate on port 8883):
 
 ```bash
-sudo certbot certonly --standalone -d mqtt.novenaplatform.com
+sudo certbot certonly --nginx --cert-name mqtt.novenaplatform.com -d mqtt.novenaplatform.com
 ```
 
-If Certbot cannot bind port 80 because Nginx is running, temporarily use the Nginx plugin or stop Nginx during the MQTT certificate challenge.
+After installing the final Nginx site, run `sudo certbot renew --dry-run` to prove both certificates can renew.
 
-The Compose file expects MQTT certificate files here:
+Mosquitto runs as UID/GID 1883 and cannot read Certbot's root-only private key directly. Copy the MQTT certificate into a broker-readable, restricted directory before starting Compose:
 
-```text
-/etc/letsencrypt/live/mqtt.novenaplatform.com/fullchain.pem
-/etc/letsencrypt/live/mqtt.novenaplatform.com/privkey.pem
+```bash
+sudo bash deploy/mosquitto/sync_tls_cert.sh
+sudo install -d -m 0755 /etc/letsencrypt/renewal-hooks/deploy
+sudo install -o root -g root -m 0755 deploy/certbot/novena-deploy-hook.sh \
+  /etc/letsencrypt/renewal-hooks/deploy/novena
 ```
+
+The copied files live under `deploy/mosquitto/certs/`, which is ignored by Git. The private key is readable only by root and broker GID 1883; never make it world-readable. The deploy hook refreshes the copy and recreates a running Mosquitto container after MQTT renewal. It reloads Nginx after web-certificate renewal. Reinstall the hook when its repo source changes. The broker restart briefly disconnects MQTT clients, so verify Gateway reconnection after a renewal.
 
 ## Mosquitto Dynamic Security
 
@@ -220,7 +225,13 @@ deploy/mosquitto/data/dynamic-security.json
 
 Do not use development broker credentials.
 
-Create a real Dynamic Security file from `deploy/mosquitto/dynamic-security.example.json`, then add:
+Initialize the live Dynamic Security file from the admin credentials already in `deploy/env/production.env`:
+
+```bash
+sudo python3 deploy/mosquitto/init_dynsec.py
+```
+
+The initializer creates the admin client using Mosquitto's own password hashing, sets deny-by-default ACLs, and adds an empty `gateway` role. It refuses to overwrite an existing state file and never prints the password. It leaves the data directory writable by broker UID 1883 while the repository owner retains group read/traverse access. Compose pins Mosquitto 2.1.4 and runs it as UID/GID 1883 so its entrypoint does not change that directory ownership. The broker loads Dynamic Security once and applies it to the private admin and public TLS listeners; the private Docker-network listener remains anonymous for Hub services. The example JSON illustrates role structure but uses legacy `roleName` fields; never copy it as a live state file. The live state contains:
 
 - one admin client matching `MQTT_DYNSEC_ADMIN_USER` and `MQTT_DYNSEC_ADMIN_PASS`;
 - a `gateway` baseline role with no broad publish ACLs;
@@ -256,6 +267,19 @@ Build the app image:
 ```bash
 docker compose -f docker-compose.prod.yml build
 ```
+
+The build context excludes the live production environment file, copied MQTT private key, broker identity state, private media, and backups through `.dockerignore`. Keep these runtime files on the host; they must not be copied into either the frontend or app image.
+
+The image runs Django as a non-root user. After building it, grant that user's group write access to the bind-mounted runtime directories. Preserve the host operator as owner, let Nginx read public static/media files, and keep private media inaccessible to other local users:
+
+```bash
+APP_GID=$(sudo docker compose -f docker-compose.prod.yml run --rm --no-deps web id -g)
+sudo chgrp "$APP_GID" static_root media private_media
+sudo chmod 2775 static_root media
+sudo chmod 2770 private_media
+```
+
+The leading `2` sets the directory setgid bit so new files and subdirectories inherit the Django group. Recheck this group ID after changing the base image or runtime user.
 
 Start the infrastructure services:
 
