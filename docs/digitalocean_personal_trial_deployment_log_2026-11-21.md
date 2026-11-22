@@ -4,6 +4,12 @@
 
 Do not add passwords, tokens, private keys, the production environment file, or live Dynamic Security JSON to this log or to Git.
 
+## 2026-11-23 marketing-page follow-up
+
+The owner reported that `www.novenaplatform.com` showed the navigation and hero styling but the content sections looked like plain text and had no photographs. The in-app browser confirmed that `/static/css/marketing.css` and the static logo loaded, while `/static/css/site-tailwind.css` was absent from the page. The content blocks use Tailwind classes. A read-only Droplet check confirmed that the generated Tailwind CSS exists in `static_root/css`, the tracked source images exist in `static/marketing`, and the Wagtail `media` directory has zero files. `collectstatic` only handles static assets; it does not import Wagtail images or set page image references.
+
+PR #35 now includes the missing Tailwind asset in `templates/content/marketing_base.html`; the local `npm run build` passed. The one-time `bootstrap_marketing --refresh --configure-domain` step from `docs/marketing_site_launch.md` and deployment of the template fix remain to be performed on the Droplet. Do not use `--refresh` again after editors change marketing content. Recheck the public site and image responses after both steps.
+
 ## Current state at this snapshot
 
 - DigitalOcean project: **Novena Hub**. One Ubuntu 24.04 LTS Droplet in Singapore, 2 vCPU, 4 GB RAM, 80 GB disk, about US$24/month. Public IPv4: `168.144.34.229`. Ubuntu operator: `shouheng`; root SSH login was disabled during host setup. The separate local SSH private key is `~/.ssh/novena_digitalocean_ed25519`; only its public half was added to DigitalOcean. The owner chose the web console for this first deployment and has not installed `doctl` yet.

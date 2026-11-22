@@ -256,6 +256,14 @@ docker compose -f docker-compose.prod.yml run --rm web python manage.py collects
 docker compose -f docker-compose.prod.yml up -d
 ```
 
+For the public marketing site on a fresh database, run the one-time content rollout in
+`docs/marketing_site_launch.md` after migrations. It imports the tracked images into
+Wagtail media and fills the public pages; `collectstatic` alone does not populate
+Wagtail media. Use `--refresh` only for the initial rollout, because it replaces
+edited page copy and images. Check that the public page loads both
+`/static/css/site-tailwind.css` and `/static/css/marketing.css`, and that its
+Wagtail images resolve under `/media/`.
+
 Deploy migrations before bringing the final app stack up. Web, worker, Beat, and MQTT consumer should run the same Git SHA.
 Record the reviewed Hub and Gateway SHAs and image digests before deploying. Hub `main` includes the E2E fixes through PR #30 (`86f8e20` at this review); Gateway `main` includes the matching edge fixes through PR #16 (`f2f7f84`). Build an immutable release pair from those commits or later reviewed commits, then run the public-server and CM4 smoke tests; merging source does not itself deploy it.
 For customer template sharing, apply `devices.0034_templatesharesubmission` before exposing the Hub UI. Confirm staff can see the Template share submissions admin queue and that customer submissions remain team-private. The new table is covered by PostgreSQL backup and restore; see `docs/product/customer_template_review.md` for review and rollback rules.
