@@ -6,7 +6,6 @@ import os
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path("/opt/novena/Novena-Hub")
 ENV_FILE = ROOT / "deploy/env/production.env"
 DATA_DIR = ROOT / "deploy/mosquitto/data"
@@ -40,10 +39,20 @@ def main() -> None:
     try:
         subprocess.run(
             [
-                "docker", "run", "--rm", "-i", "--user", "1883:1883",
-                "--mount", f"type=bind,src={DATA_DIR},dst=/mosquitto/data",
-                "eclipse-mosquitto:2.1.4-alpine", "mosquitto_ctrl", "dynsec", "init",
-                "/mosquitto/data/.dynamic-security-initial.json", username,
+                "docker",
+                "run",
+                "--rm",
+                "-i",
+                "--user",
+                "1883:1883",
+                "--mount",
+                f"type=bind,src={DATA_DIR},dst=/mosquitto/data",
+                "eclipse-mosquitto:2.1.4-alpine",
+                "mosquitto_ctrl",
+                "dynsec",
+                "init",
+                "/mosquitto/data/.dynamic-security-initial.json",
+                username,
             ],
             input=f"{password}\n{password}\n",
             text=True,
