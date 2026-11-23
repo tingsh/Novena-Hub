@@ -40,9 +40,13 @@ class ResendableEmailVerificationCodeView(ConfirmEmailVerificationCodeView):
         email = process.state.get("email")
         # A verification session must belong to the pending login (or the
         # authenticated account when confirming an additional address).
-        authorized = user and email and (
-            (self.stage and self.stage.login.user.pk == user.pk)
-            or (request.user.is_authenticated and request.user.pk == user.pk)
+        authorized = (
+            user
+            and email
+            and (
+                (self.stage and self.stage.login.user.pk == user.pk)
+                or (request.user.is_authenticated and request.user.pk == user.pk)
+            )
         )
         if not authorized or process.email_address.verified:
             return HttpResponseRedirect(reverse("account_login"))
