@@ -32,6 +32,9 @@ class ResendableEmailVerificationCodeView(ConfirmEmailVerificationCodeView):
         return context
 
     def post(self, request, *args, **kwargs):
+        if request.POST.get("action") == "restart":
+            self._process.abort()
+            return HttpResponseRedirect(reverse("account_login"))
         if request.POST.get("action") != "resend":
             return super().post(request, *args, **kwargs)
 

@@ -33,6 +33,13 @@
       <p class="mt-4 text-center text-sm text-gray-600 dark:text-gray-300">
         {% translate "The code expires in 15 minutes. If it expires, sign in again to request a new code." %}
       </p>
+      <form class="mt-4 text-center" method="post" action="{% url 'account_email_verification_sent' %}">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="restart">
+        <button class="text-sm underline text-gray-600 dark:text-gray-300" type="submit">
+          {% translate "Start over and sign in" %}
+        </button>
+      </form>
     </div>
   </div>
 {% endblock %}

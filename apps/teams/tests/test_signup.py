@@ -166,3 +166,26 @@ class TestSignupEmailVerificationCode(TestCase):
             self.assertFalse(EmailAddress.objects.get(email="resend@example.com").verified)
             self.client.post(verification_url, {"code": "333333"})
             self.assertTrue(EmailAddress.objects.get(email="resend@example.com").verified)
+
+    def test_start_over_clears_pending_code_and_allows_fresh_login(self):
+        verification_url = reverse("account_email_verification_sent")
+        self.client.post(
+            reverse("account_signup"),
+            data={
+                "email": "restart@example.com",
+                "password1": "Super Secret Pa$$word!",
+                "team_name": "Restart Team",
+                "terms_agreement": True,
+            },
+        )
+        self.assertContains(self.client.get(verification_url), "Start over and sign in")
+        response = self.client.post(verification_url, {"action": "restart"})
+        self.assertRedirects(response, reverse("account_login"), fetch_redirect_response=False)
+        self.assertNotIn("account_email_verification_code", self.client.session)
+        self.assertEqual(self.client.get(reverse("account_login")).status_code, 200)
+        response = self.client.post(
+            reverse("account_login"),
+            data={"login": "restart@example.com", "password": "Super Secret Pa$$word!"},
+        )
+        self.assertRedirects(response, verification_url, fetch_redirect_response=False)
+        self.assertIn("account_email_verification_code", self.client.session)
