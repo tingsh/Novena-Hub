@@ -14,11 +14,6 @@
           {{ form.non_field_errors }}
           {% render_field form.login %}
           {% render_field form.password %}
-          <div class="text-right">
-            <a class="text-sm muted-link" href="{% url 'account_reset_password' %}">
-              {% translate "Forgot password?" %}
-            </a>
-          </div>
           <div>
             <input class="btn btn-primary btn-block" type="submit" value="{% translate "Sign In" %}">
           </div>
