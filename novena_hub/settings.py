@@ -340,6 +340,8 @@ ACCOUNT_LOGOUT_ON_GET = True
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
 ACCOUNT_LOGIN_BY_CODE_ENABLED = True
 ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = env.bool("ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED", default=False)
+# Keep emailed password reset links short-lived; allauth uses Django's token generator.
+PASSWORD_RESET_TIMEOUT = 60 * 60
 ACCOUNT_USER_DISPLAY = lambda user: user.get_display_name()  # noqa: E731
 
 ACCOUNT_FORMS = {
