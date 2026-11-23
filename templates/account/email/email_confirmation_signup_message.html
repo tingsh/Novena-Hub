@@ -1,8 +1,15 @@
 {% extends 'account/email/email_template_base.html' %}
 {% load i18n %}
-{% block message_body %}{% blocktranslate trimmed with site_name=current_site.name %}
-  Welcome to {{ site_name }}!
-  Click the confirmation link below to activate your account.
-{% endblocktranslate %}{% endblock %}
+{% block message_body %}
+  {% blocktranslate trimmed with site_name=current_site.name %}Welcome to {{ site_name }}!{% endblocktranslate %}
+  {% if code %}
+    <br><br>{% translate "Enter this verification code in the browser where you signed up:" %}
+    <br><strong style="font-size: 28px; letter-spacing: 0.12em;">{{ code }}</strong>
+    <br><br>{% translate "This code expires in 15 minutes. If you did not sign up, you can ignore this message." %}
+  {% else %}
+    <br><br>{% translate "Click the confirmation link below to activate your account." %}
+  {% endif %}
+{% endblock %}
+{% block cta %}{% if not code %}{{ block.super }}{% endif %}{% endblock %}
 {% block cta_link %}{{ activate_url }}{% endblock %}
 {% block cta_text %}{% translate "Confirm Email Address" %}{% endblock %}

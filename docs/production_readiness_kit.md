@@ -131,7 +131,7 @@ Then fill real values. Important groups:
 - `CSRF_TRUSTED_ORIGINS`
 - `USE_HTTPS_IN_ABSOLUTE_URLS=True`
 - `HEALTH_CHECK_TOKENS`
-- `ACCOUNT_EMAIL_VERIFICATION=optional` for canaries, consider `mandatory` before broad self-serve signup.
+- `ACCOUNT_EMAIL_VERIFICATION=mandatory` and `ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED=True` for public customer signup. The production environment example keeps the owner-only trial defaults (`optional` and `False`); set both values in the private environment after SES delivery to a real inbox passes. Otherwise new accounts cannot finish signup.
 
 ### Database and Redis
 
@@ -178,7 +178,8 @@ Do not copy a Hub private signing key to a Gateway.
 
 ### Notifications and Billing
 
-- SES: `EMAIL_BACKEND`, `AWS_SES_REGION_NAME`, `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY`, sender emails.
+- SES: `EMAIL_BACKEND=anymail.backends.amazon_ses.EmailBackend`, `AWS_SES_REGION_NAME`, `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY`, and a sender under a verified SES identity. SES sandbox recipients must also be verified; request production access before public signup. A verified sending domain does not create an inbox.
+- Before enabling mandatory signup verification, send a test message to an inbox you control and confirm receipt, then use a disposable real email address to sign up, enter the 15-minute verification code, and prove the app rejects access before verification. Check invalid and expired codes, and sign in again to request a new code. The `.local` trial identity cannot receive mail and must not be used for this delivery test. Keep the console backend only for local development and the owner-only trial.
 - WhatsApp: `WHATSAPP_PROVIDER=meta`, Meta phone number ID, access token, verify token, approved alert template.
 - Stripe: `STRIPE_LIVE_MODE=False` is acceptable for unpaid pilots; live keys and `DJSTRIPE_WEBHOOK_SECRET` are required before paid rollout.
 - Sentry: strongly recommended before technical canaries.
