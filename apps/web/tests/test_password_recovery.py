@@ -24,7 +24,7 @@ class TestPasswordRecovery(TestCase):
 
     def test_reset_email_changes_password_and_link_cannot_be_reused(self):
         login_page = self.client.get(reverse("account_login"))
-        self.assertContains(login_page, reverse("account_reset_password"))
+        self.assertContains(login_page, reverse("account_reset_password"), count=1)
 
         response = self.client.post(reverse("account_reset_password"), {"email": self.user.email})
         self.assertRedirects(response, reverse("account_reset_password_done"))
