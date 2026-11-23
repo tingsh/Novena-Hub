@@ -131,7 +131,7 @@ Then fill real values. Important groups:
 - `CSRF_TRUSTED_ORIGINS`
 - `USE_HTTPS_IN_ABSOLUTE_URLS=True`
 - `HEALTH_CHECK_TOKENS`
-- `ACCOUNT_EMAIL_VERIFICATION=mandatory` and `ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED=True` for public customer signup. Keep the existing owner-only trial on `optional` until SES delivery to a real inbox passes; otherwise new accounts cannot finish signup. The production environment example shows the target customer setting, not a command to switch the live trial early.
+- `ACCOUNT_EMAIL_VERIFICATION=mandatory` and `ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED=True` for public customer signup. The production environment example keeps the owner-only trial defaults (`optional` and `False`); set both values in the private environment after SES delivery to a real inbox passes. Otherwise new accounts cannot finish signup.
 
 ### Database and Redis
 
