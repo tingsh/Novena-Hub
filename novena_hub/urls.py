@@ -37,6 +37,7 @@ from wagtail.documents import urls as wagtaildocs_urls
 from apps.maintenance.webhooks import whatsapp_webhook
 from apps.subscriptions.urls import team_urlpatterns as subscriptions_team_urls
 from apps.teams.urls import team_urlpatterns as single_team_urls
+from apps.users.email_verification import ResendableEmailVerificationCodeView
 from apps.web.sitemaps import StaticViewSitemap
 from apps.web.urls import team_urlpatterns as web_team_urls
 
@@ -84,6 +85,11 @@ urlpatterns = [
     path("jsi18n/", JavaScriptCatalog.as_view(), name="javascript-catalog"),
     path("sitemap.xml", sitemap, {"sitemaps": sitemaps}, name="django.contrib.sitemaps.views.sitemap"),
     path("a/<slug:team_slug>/", include(team_urlpatterns)),
+    path(
+        "accounts/confirm-email/",
+        ResendableEmailVerificationCodeView.as_view(),
+        name="account_email_verification_sent",
+    ),
     path("accounts/", include("allauth.urls")),
     path("_allauth/", include("allauth.headless.urls")),
     path("users/", include("apps.users.urls")),

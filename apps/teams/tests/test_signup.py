@@ -67,6 +67,7 @@ class TestSignupView(TestCase):
     ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED=True,
     EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
     TURNSTILE_SECRET=None,
+    ACCOUNT_RATE_LIMITS={"confirm_email": None},
 )
 class TestSignupEmailVerificationCode(TestCase):
     def test_signup_requires_email_code_before_app_access(self):
@@ -120,3 +121,71 @@ class TestSignupEmailVerificationCode(TestCase):
         email_address.refresh_from_db()
         self.assertTrue(email_address.verified)
         self.assertIn("_auth_user_id", self.client.session)
+
+    def test_resend_is_limited_and_replaces_the_previous_code(self):
+        verification_url = reverse("account_email_verification_sent")
+        with patch(
+            "apps.teams.adapter.AcceptInvitationAdapter.generate_email_verification_code",
+            side_effect=["111111", "222222", "333333"],
+        ):
+            self.client.post(
+                reverse("account_signup"),
+                data={
+                    "email": "resend@example.com",
+                    "password1": "Super Secret Pa$$word!",
+                    "team_name": "Resend Team",
+                    "terms_agreement": True,
+                },
+            )
+            self.assertContains(self.client.get(verification_url), "Resend verification code")
+            initial_count = len(mail.outbox)
+
+            # A second browser does not inherit the pending verification session.
+            other_client = self.client_class()
+            self.assertEqual(other_client.post(verification_url, {"action": "resend"}).status_code, 302)
+            self.assertEqual(len(mail.outbox), initial_count)
+
+            self.client.post(verification_url, {"action": "resend"})
+            self.assertEqual(len(mail.outbox), initial_count)
+
+            for expected_count in (1, 2):
+                session = self.client.session
+                state = session["account_email_verification_code"]
+                state["at"] -= 31
+                session["account_email_verification_code"] = state
+                session.save()
+                response = self.client.post(verification_url, {"action": "resend"})
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(len(mail.outbox), initial_count + expected_count)
+
+            self.assertNotContains(self.client.get(verification_url), "Resend verification code")
+            self.client.post(verification_url, {"action": "resend"})
+            self.assertEqual(len(mail.outbox), initial_count + 2)
+
+            self.client.post(verification_url, {"code": "111111"})
+            self.assertFalse(EmailAddress.objects.get(email="resend@example.com").verified)
+            self.client.post(verification_url, {"code": "333333"})
+            self.assertTrue(EmailAddress.objects.get(email="resend@example.com").verified)
+
+    def test_start_over_clears_pending_code_and_allows_fresh_login(self):
+        verification_url = reverse("account_email_verification_sent")
+        self.client.post(
+            reverse("account_signup"),
+            data={
+                "email": "restart@example.com",
+                "password1": "Super Secret Pa$$word!",
+                "team_name": "Restart Team",
+                "terms_agreement": True,
+            },
+        )
+        self.assertContains(self.client.get(verification_url), "Start over and sign in")
+        response = self.client.post(verification_url, {"action": "restart"})
+        self.assertRedirects(response, reverse("account_login"), fetch_redirect_response=False)
+        self.assertNotIn("account_email_verification_code", self.client.session)
+        self.assertEqual(self.client.get(reverse("account_login")).status_code, 200)
+        response = self.client.post(
+            reverse("account_login"),
+            data={"login": "restart@example.com", "password": "Super Secret Pa$$word!"},
+        )
+        self.assertRedirects(response, verification_url, fetch_redirect_response=False)
+        self.assertIn("account_email_verification_code", self.client.session)

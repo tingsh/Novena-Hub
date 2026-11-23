@@ -28,8 +28,12 @@ def update_user_email(sender, request, email_address, **kwargs):
 
 def _notify_admins_of_signup(user):
     mail_admins(
-        f"Yowsers, someone signed up for {settings.PROJECT_METADATA['NAME']}!",
-        f"Email: {user.email}",
+        f"New account signup for {settings.PROJECT_METADATA['NAME']} (admin notice)",
+        (
+            f"Account email: {user.email}\n\n"
+            "This is an admin notification, not the verification email. "
+            "The verification code is sent separately to the account email address."
+        ),
         fail_silently=True,
     )
 
