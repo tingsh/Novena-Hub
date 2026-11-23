@@ -4,6 +4,12 @@
 
 Do not add passwords, tokens, private keys, the production environment file, or live Dynamic Security JSON to this log or to Git.
 
+## 2026-11-23 release promotion and account smoke
+
+Hub PR #35 merged into `main`, and both Hub `main` and `release/2026-11-15-initial-deployment` now point to `e8f6ceeaef881d0d5a7eff6c215e7d7eac769228`. The Droplet checkout is clean at that commit. The owner rebuilt and restarted web, Celery worker, Celery Beat, and MQTT consumer from it; Compose showed all seven services Up, with PostgreSQL, Redis, and Mosquitto healthy. Public homepage/login and checked CSS/media files returned HTTP 200; the root redirected to `www`. The private token-protected health endpoint returned HTTP 200 with database, Redis, and Celery present. Anonymous WebSocket access returned HTTP 403, which does not prove authenticated device streaming.
+
+The owner used the public signup form to create a disposable `Novena Internal Trial` workspace. The in-app browser reached onboarding, opened authenticated app pages, and showed the new account as Team Owner. The live email backend is still Django's console backend and verification remains optional. The signup message about a confirmation email therefore did not prove inbox delivery; no real verification email was sent. The `.local` trial identity cannot receive mail. Real SES delivery, code verification, authenticated device WebSocket, and Gateway-to-cloud telemetry remain open. The Gateway release remains `1f553af01a8dc87c988751686805f96eb9cdcbb0` and has not been deployed to the CM4 for this cloud replay.
+
 ## 2026-11-23 marketing-page follow-up
 
 The owner reported that `www.novenaplatform.com` showed the navigation and hero styling but the content sections looked like plain text and had no photographs. The in-app browser confirmed that `/static/css/marketing.css` and the static logo loaded, while `/static/css/site-tailwind.css` was absent from the page. The content blocks use Tailwind classes. A read-only Droplet check confirmed that the generated Tailwind CSS exists in `static_root/css`, the tracked source images exist in `static/marketing`, and the Wagtail `media` directory has zero files. `collectstatic` only handles static assets; it does not import Wagtail images or set page image references.

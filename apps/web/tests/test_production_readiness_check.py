@@ -38,7 +38,10 @@ PRODUCTION_SETTINGS = {
     "AWS_SES_REGION_NAME": "ap-southeast-1",
     "AWS_SES_ACCESS_KEY_ID": "ses-key",
     "AWS_SES_SECRET_ACCESS_KEY": "ses-secret",
+    "EMAIL_BACKEND": "anymail.backends.amazon_ses.EmailBackend",
     "DEFAULT_FROM_EMAIL": "Novena <no-reply@alerts.novenaplatform.com>",
+    "ACCOUNT_EMAIL_VERIFICATION": "mandatory",
+    "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED": True,
     "WHATSAPP_PROVIDER": "meta",
     "WHATSAPP_PHONE_NUMBER_ID": "phone-id",
     "WHATSAPP_ACCESS_TOKEN": "token",
@@ -102,6 +105,9 @@ class ProductionReadinessCommandTest(TestCase):
             "HEALTH_CHECK_TOKENS": [],
             "AWS_SES_ACCESS_KEY_ID": "",
             "AWS_SES_SECRET_ACCESS_KEY": "",
+            "EMAIL_BACKEND": "django.core.mail.backends.console.EmailBackend",
+            "ACCOUNT_EMAIL_VERIFICATION": "optional",
+            "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED": False,
             "WHATSAPP_PHONE_NUMBER_ID": "",
             "WHATSAPP_ACCESS_TOKEN": "",
             "WHATSAPP_VERIFY_TOKEN": "",
@@ -121,6 +127,7 @@ class ProductionReadinessCommandTest(TestCase):
         self.assertIn("Allowed hosts", failed_names)
         self.assertIn("Health check token", failed_names)
         self.assertIn("Amazon SES", failed_names)
+        self.assertIn("Signup email verification", failed_names)
         self.assertIn("WhatsApp", failed_names)
 
     @override_settings(**{**PRODUCTION_SETTINGS, "MQTT_ACCEPT_LEGACY_SHARED_INBOUND": True})
@@ -185,6 +192,7 @@ def test_production_env_example_contains_readiness_variables():
         "PUBLIC_MQTT_BROKER_HOST",
         "AWS_SES_ACCESS_KEY_ID",
         "AWS_SES_SECRET_ACCESS_KEY",
+        "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED",
         "WHATSAPP_PROVIDER",
         "WHATSAPP_PHONE_NUMBER_ID",
         "WHATSAPP_ACCESS_TOKEN",

@@ -400,6 +400,7 @@ def build_checks() -> list[CheckResult]:
             "OK"
             if all(
                 [
+                    settings.EMAIL_BACKEND == "anymail.backends.amazon_ses.EmailBackend",
                     _has_value(settings.AWS_SES_REGION_NAME),
                     _has_value(settings.AWS_SES_ACCESS_KEY_ID),
                     _has_value(settings.AWS_SES_SECRET_ACCESS_KEY),
@@ -407,7 +408,22 @@ def build_checks() -> list[CheckResult]:
                 ]
             )
             else "FAIL",
-            "SES region, credentials, and sender are configured.",
+            "SES backend, region, credentials, and sender are configured.",
+        ),
+        CheckResult(
+            "Notifications",
+            "Signup email verification",
+            "OK"
+            if settings.ACCOUNT_EMAIL_VERIFICATION == "mandatory"
+            and getattr(settings, "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED", False)
+            else "FAIL",
+            "Mandatory email verification by code is enabled."
+            if settings.ACCOUNT_EMAIL_VERIFICATION == "mandatory"
+            and getattr(settings, "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED", False)
+            else (
+                "Set ACCOUNT_EMAIL_VERIFICATION=mandatory and "
+                "ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED=True after real email delivery passes."
+            ),
         ),
         CheckResult(
             "Notifications",
