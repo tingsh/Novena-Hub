@@ -4,6 +4,10 @@
 
 Do not add passwords, tokens, private keys, the production environment file, or live Dynamic Security JSON to this log or to Git.
 
+## 2026-11-23 verification resend deployment
+
+Hub [PR #37](https://github.com/tingsh/Novena-Hub/pull/37) merged after focused signup tests and both GitHub workflows passed. Hub `main` and `release/2026-11-15-initial-deployment` were promoted to merge commit `b57213a952d0200fb9ee2f034d975b090cbc549a`; the Droplet was switched to that clean detached commit. The owner built the four application images and restarted `web`, `celery-worker`, `celery-beat`, and `mqtt-consumer` with Compose while the database, Redis, and broker remained running. All four reported Started. The in-app browser still opened the authenticated onboarding page after the restart. This confirms the app serves the existing session after deployment; a fresh unverified account has not yet exercised the live resend action. The only SES-verified test inbox is already verified in the app, and the SES account remains in sandbox. The prior entry's “deployment remains open” statement is superseded by this entry.
+
 ## 2026-11-23 live SES signup and resend follow-up
 
 Hub PR #36 merged to `main`, and `main`, `release/2026-11-15-initial-deployment`, and the Droplet checkout were verified at `4c742e5cb4cf2b847f962254fd641d80db802a29`. The owner created a narrowly scoped SES sending IAM identity in Singapore, received an app-originated test email, and enabled mandatory email verification by code in the private Droplet environment. The owner rotated an exposed SES access key and the remote-control signing seed; no values are recorded here. The four application services were rebuilt and restarted. A real-address signup reached the code page and the verification email reached the owner's SES-verified Gmail inbox. The first code was pasted into chat and allowed to expire; the subsequent fresh code was entered privately in the browser and completed first login.
