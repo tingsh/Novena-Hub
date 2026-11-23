@@ -18,6 +18,18 @@
         {% render_field form.code %}
         <button class="btn btn-primary btn-block" type="submit">{% translate "Verify email" %}</button>
       </form>
+      {% if not resend_limit_reached %}
+        <form class="mt-4 text-center" method="post" action="{% url 'account_email_verification_sent' %}">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="resend">
+          <p class="text-sm text-gray-600 dark:text-gray-300">{% translate "Didn't receive the email? Check your spam folder or request a new code." %}</p>
+          <button class="btn btn-ghost mt-2" type="submit">{% translate "Resend verification code" %}</button>
+        </form>
+      {% else %}
+        <p class="mt-4 text-center text-sm text-gray-600 dark:text-gray-300">
+          {% translate "Resend limit reached. Sign in again to request a new code." %}
+        </p>
+      {% endif %}
       <p class="mt-4 text-center text-sm text-gray-600 dark:text-gray-300">
         {% translate "The code expires in 15 minutes. If it expires, sign in again to request a new code." %}
       </p>
