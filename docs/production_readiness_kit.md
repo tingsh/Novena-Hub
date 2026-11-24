@@ -211,9 +211,11 @@ must restore Gateway connectivity or perform a controlled physical reset;
 never bypass the pending state by editing inventory or disabling provisioning.
 The `devices.0039_gateway_release_edge_reset_at` migration records this receipt.
 After broker revocation, the Gateway must erase the former claim's operational
-MQTT username, password and claim ID from its active and rollback configs. It
-retains the factory bootstrap identity so a new owner can claim it again;
-Hub creates a fresh broker bootstrap client when that claim starts. Verify no
+MQTT username, password and claim ID from its active and rollback configs.
+The released Gateway needs a replacement claim credential from Novena support;
+the original sticker code is invalid after release. Install the replacement
+credential in the physical Gateway config before a new owner claims it. Hub
+creates a fresh broker bootstrap client when that claim starts. Verify no
 old field connectors or historical site snapshots remain before transferring
 physical hardware to another customer.
 
