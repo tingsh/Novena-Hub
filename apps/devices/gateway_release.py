@@ -35,7 +35,16 @@ def _schedule_release(release_id):
 
 
 @transaction.atomic
-def request_gateway_release(gateway, *, requested_by=None) -> GatewayReleaseRequest:
+def request_gateway_release(
+    gateway, *, requested_by=None, support_case_reference="", support_reason=""
+) -> GatewayReleaseRequest:
+    if bool(support_case_reference) != bool(support_reason):
+        raise ValueError("Support release requires both case reference and reason.")
+    if support_case_reference:
+        if not requested_by or not requested_by.is_superuser:
+            raise ValueError("Only a Novena superuser may request a support release.")
+        if not support_case_reference.strip() or not support_reason.strip():
+            raise ValueError("Support case reference and reason cannot be blank.")
     locked = gateway.__class__.objects.select_for_update().get(pk=gateway.pk)
     existing = locked.release_requests.filter(
         status__in=[
@@ -46,6 +55,8 @@ def request_gateway_release(gateway, *, requested_by=None) -> GatewayReleaseRequ
         ]
     ).first()
     if existing:
+        if support_case_reference and existing.support_case_reference != support_case_reference.strip():
+            raise ValueError("This Gateway already has a different pending release.")
         return existing
     if locked.lifecycle_status == "released":
         raise ValueError("This Gateway has already been released.")
@@ -58,7 +69,40 @@ def request_gateway_release(gateway, *, requested_by=None) -> GatewayReleaseRequ
         team=locked.team,
         gateway=locked,
         requested_by=requested_by,
+        support_case_reference=support_case_reference.strip(),
+        support_reason=support_reason.strip(),
     )
+    transaction.on_commit(lambda: _schedule_release(release.pk))
+    return release
+
+
+@transaction.atomic
+def approve_offline_gateway_reset(release_id, *, approved_by, evidence: str) -> GatewayReleaseRequest:
+    """Two-person support exception: local wipe witnessed, broker revocation still mandatory."""
+    release = GatewayReleaseRequest.objects.select_for_update().get(pk=release_id)
+    if not approved_by or not approved_by.is_superuser:
+        raise ValueError("Offline reset requires a Novena superuser approver.")
+    if not release.support_case_reference or not release.support_reason:
+        raise ValueError("Offline reset is only available for a support release.")
+    if release.requested_by_id == approved_by.pk:
+        raise ValueError("A different superuser must approve the offline reset.")
+    if not evidence or len(evidence.strip()) < 20:
+        raise ValueError("Record the physical reset evidence before approving.")
+    if (
+        release.status == GatewayReleaseRequest.Status.COMPLETED
+        or release.gateway.lifecycle_status != "release_pending"
+    ):
+        raise ValueError("This Gateway is not awaiting release.")
+    if release.edge_reset_at:
+        raise ValueError("A Gateway reset receipt or offline approval is already recorded.")
+    release.offline_reset_evidence = evidence.strip()
+    release.offline_reset_approved_by = approved_by
+    release.edge_reset_at = timezone.now()
+    release.status = GatewayReleaseRequest.Status.RETRY
+    release.next_attempt_at = timezone.now()
+    release.lease_expires_at = None
+    release.last_error = ""
+    release.save()
     transaction.on_commit(lambda: _schedule_release(release.pk))
     return release
 
@@ -128,10 +172,21 @@ def _finalize_release(release_id) -> GatewayReleaseRequest:
     inventory = GatewayInventory.objects.select_for_update().filter(gateway=gateway).first()
     if inventory:
         inventory.status = "released"
+        inventory.claim_reissue_required = True
+        inventory.encrypted_reissued_claim_code = ""
         inventory.claimed_by_team = None
         inventory.claimed_at = None
         inventory.gateway = None
-        inventory.save(update_fields=["status", "claimed_by_team", "claimed_at", "gateway"])
+        inventory.save(
+            update_fields=[
+                "status",
+                "claim_reissue_required",
+                "encrypted_reissued_claim_code",
+                "claimed_by_team",
+                "claimed_at",
+                "gateway",
+            ]
+        )
 
     gateway.status = "offline"
     gateway.lifecycle_status = "released"

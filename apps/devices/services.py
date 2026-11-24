@@ -19,9 +19,16 @@ logger = logging.getLogger("novena_hub")
 
 def compute_claim_code(serial_number: str) -> str:
     """
-    Derive a deterministic claim code from a gateway serial number using HMAC-SHA256.
-    The claim code is printed on the gateway sticker and used as the initial MQTT password.
+    Return the current credential: factory sticker for first claim, rotated after release.
     """
+    inventory = GatewayInventory.objects.filter(serial_number__iexact=serial_number.strip()).first()
+    if inventory:
+        if inventory.claim_reissue_required:
+            raise GatewayClaimError("This Gateway needs a new claim credential from Novena support.")
+        if inventory.encrypted_reissued_claim_code:
+            from .activation import decrypt_activation_secret
+
+            return decrypt_activation_secret(inventory.encrypted_reissued_claim_code)
     return (
         hmac.new(
             settings.GATEWAY_CLAIM_SECRET.encode(),
@@ -34,11 +41,38 @@ def compute_claim_code(serial_number: str) -> str:
 
 
 def validate_claim_code(serial_number: str, claim_code: str) -> bool:
-    """
-    Validate a claim code against a serial number. Pure HMAC check — no DB lookup needed.
-    """
-    expected = compute_claim_code(serial_number)
+    """Validate the current factory or reissued claim credential."""
+    try:
+        expected = compute_claim_code(serial_number)
+    except GatewayClaimError:
+        return False
     return hmac.compare_digest(expected, claim_code.strip().upper())
+
+
+@transaction.atomic
+def reissue_gateway_claim_code(inventory, *, issued_by) -> str:
+    """Issue a new physical onboarding credential after verified release."""
+    if not issued_by or not issued_by.is_superuser:
+        raise GatewayClaimError("Only Novena support may reissue a claim credential.")
+    locked = GatewayInventory.objects.select_for_update().get(pk=inventory.pk)
+    if locked.status != "released" or locked.gateway_id or not locked.claim_reissue_required:
+        raise GatewayClaimError("Gateway must be fully released before claim credential reissue.")
+    from .activation import encrypt_activation_secret
+
+    code = secrets.token_hex(24).upper()
+    locked.encrypted_reissued_claim_code = encrypt_activation_secret(code)
+    locked.claim_reissue_required = False
+    locked.claim_reissued_at = timezone.now()
+    locked.claim_reissued_by = issued_by
+    locked.save(
+        update_fields=[
+            "encrypted_reissued_claim_code",
+            "claim_reissue_required",
+            "claim_reissued_at",
+            "claim_reissued_by",
+        ]
+    )
+    return code
 
 
 class GatewayClaimError(ValueError):
@@ -84,10 +118,12 @@ def current_claimed_gateway(serial_number: str):
 def validate_gateway_claim(serial_number: str, claim_code: str):
     """Validate a sticker claim against factory inventory and HMAC claim code."""
     serial_number = normalize_gateway_serial(serial_number)
-    if not validate_claim_code(serial_number, claim_code):
-        raise GatewayClaimError("Invalid claim code. Please check the sticker on the bottom of your gateway.")
-
     inventory = GatewayInventory.objects.filter(serial_number__iexact=serial_number).first()
+    if inventory and inventory.claim_reissue_required:
+        raise GatewayClaimError("This Gateway was released. Contact Novena support for a replacement claim code.")
+    if not validate_claim_code(serial_number, claim_code):
+        raise GatewayClaimError("Invalid claim code. Check your sticker or Novena-issued replacement code.")
+
     existing_gateway = Gateway.objects.exclude(lifecycle_status="released").filter(serial_number=serial_number).first()
     if not inventory and not existing_gateway:
         raise GatewayClaimError("This serial number is not in the Novena factory inventory. Please contact support.")

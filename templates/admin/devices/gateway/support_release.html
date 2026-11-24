@@ -1,0 +1,39 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Support recovery: {{ gateway.serial_number }}</h1>
+<p>Owner: {{ gateway.team }} · Lifecycle: {{ gateway.lifecycle_status }}</p>
+<p>This workflow does not require access to the customer's account. It quarantines the gateway immediately. Ownership is released only after its reset is confirmed and broker credentials are revoked.</p>
+{% if release %}
+  <h2>Pending release</h2>
+  <p>Case: {{ release.support_case_reference }} · Requested by: {{ release.requested_by }} · Status: {{ release.status }}</p>
+  {% if release.edge_reset_at %}
+    <p>Reset recorded at {{ release.edge_reset_at }}. Broker revocation and finalization may still be pending.</p>
+  {% elif release.support_case_reference %}
+    <h2>Approve an offline physical reset</h2>
+    <p>Use this only after a different engineer stopped the service, ran the local reset command on the identified physical gateway, and provided evidence. The approver must be a different Novena superuser.</p>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="approve_offline">
+      <p><label for="evidence">Physical reset evidence and support notes</label></p>
+      <p><textarea id="evidence" name="evidence" rows="5" cols="75" required></textarea></p>
+      <button type="submit" class="button default">Approve offline reset</button>
+    </form>
+  {% endif %}
+{% elif gateway.lifecycle_status == "released" %}
+  <p>This gateway has already been released.</p>
+{% else %}
+  <h2>Request a support release</h2>
+  <p>For a connected gateway, Hub sends the signed reset instruction and waits for its receipt. For an offline gateway, a second engineer must confirm the physical reset before Hub can revoke access and finish the release.</p>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="begin">
+    <p><label for="serial">Type the exact serial</label></p>
+    <p><input id="serial" name="serial" required></p>
+    <p><label for="case_reference">Support case reference</label></p>
+    <p><input id="case_reference" name="case_reference" required></p>
+    <p><label for="reason">Reason and ownership verification</label></p>
+    <p><textarea id="reason" name="reason" rows="5" cols="75" required></textarea></p>
+    <button type="submit" class="button default">Quarantine and request release</button>
+  </form>
+{% endif %}
+{% endblock %}

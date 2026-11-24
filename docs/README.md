@@ -40,6 +40,7 @@ The Gateway repository's `ARCHITECTURE.md` is the current edge-runtime guide. Hi
 - [Factory-energy CM4 replay result (2026-10-08)](factory_energy_cm4_replay_2026-10-08.md) — observed end-to-end behavior, fixes and remaining gates.
 - [Round 2 customer-browser and CM4 audit (21–27 Oct 2026)](round2_post_onboarding_platform_audit_2026-10-21.md) — factory, cold-room, facilities/HVAC, field recovery, bugs and unresolved port-502 risk.
 - [Local MQTT Dynamic Security](local_mqtt_dynamic_security.md) — authenticated LAN setup, sudo installation, revocation tests and rollback.
+- [Gateway support recovery](gateway_support_recovery.md) — customer and engineer release, offline physical reset, broker revocation, and new claim credentials.
 - [Local development machine notes](local_development_machine_notes.md)
 
 ## External integrations
