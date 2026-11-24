@@ -3,7 +3,9 @@ import uuid
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from apps.devices.activation import (
@@ -22,7 +24,12 @@ from apps.devices.gateway_config_delivery import (
     dispatch_gateway_config_outbox,
     queue_gateway_config,
 )
-from apps.devices.gateway_release import acknowledge_gateway_release, dispatch_gateway_release, request_gateway_release
+from apps.devices.gateway_release import (
+    acknowledge_gateway_release,
+    approve_offline_gateway_reset,
+    dispatch_gateway_release,
+    request_gateway_release,
+)
 from apps.devices.models import (
     Device,
     DeviceTemplate,
@@ -80,6 +87,87 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
         policy_patch = patch("apps.telemetry.mqtt_publisher.clear_gateway_retained_policy")
         policy_patch.start()
         self.addCleanup(policy_patch.stop)
+
+    def test_support_admin_rejects_superuser_without_totp(self):
+        user = get_user_model().objects.create_superuser(
+            username="support-no-mfa", email="no-mfa@example.com", password="test-password"
+        )
+        self.client.force_login(user)
+        url = reverse("admin:devices_gateway_support_release", args=[self.gateway.pk])
+        self.assertEqual(self.client.get(url).status_code, 403)
+
+    @patch("apps.users.adapter.user_has_valid_totp_device", return_value=True)
+    def test_support_admin_requests_release_without_customer_login(self, _totp):
+        user = get_user_model().objects.create_superuser(
+            username="support-with-mfa", email="with-mfa@example.com", password="test-password"
+        )
+        self.client.force_login(user)
+        url = reverse("admin:devices_gateway_support_release", args=[self.gateway.pk])
+        response = self.client.post(url, {
+            "action": "begin", "serial": self.gateway.serial_number,
+            "case_reference": "CASE-ADMIN-1",
+            "reason": "Owner account inaccessible; verified physical custody.",
+        })
+        self.assertEqual(response.status_code, 302)
+        release = self.gateway.release_requests.get()
+        self.assertEqual(release.requested_by, user)
+        self.assertEqual(release.support_case_reference, "CASE-ADMIN-1")
+
+    def test_support_release_requires_case_and_distinct_offline_approver(self):
+        users = get_user_model()
+        initiator = users.objects.create_superuser(
+            username="support-a", email="a@example.com", password="test-password"
+        )
+        approver = users.objects.create_superuser(username="support-b", email="b@example.com", password="test-password")
+        regular = users.objects.create_user(username="regular", email="c@example.com", password="test-password")
+        with self.assertRaises(ValueError):
+            request_gateway_release(
+                self.gateway, requested_by=regular,
+                support_case_reference="CASE-1", support_reason="Customer account unavailable for release.",
+            )
+        release = request_gateway_release(
+            self.gateway, requested_by=initiator,
+            support_case_reference="CASE-1", support_reason="Customer account unavailable for release.",
+        )
+        self.gateway.refresh_from_db()
+        self.assertEqual(self.gateway.lifecycle_status, "release_pending")
+        with self.assertRaises(ValueError):
+            approve_offline_gateway_reset(
+                release.pk, approved_by=initiator, evidence="Witnessed physical reset output on CM4."
+            )
+        with self.assertRaises(ValueError):
+            approve_offline_gateway_reset(
+                release.pk, approved_by=regular, evidence="Witnessed physical reset output on CM4."
+            )
+        approve_offline_gateway_reset(
+            release.pk, approved_by=approver,
+            evidence="Witnessed stopped service and successful local reset on physical CM4.",
+        )
+        release.refresh_from_db()
+        self.assertEqual(release.offline_reset_approved_by, approver)
+        self.assertIsNotNone(release.edge_reset_at)
+        self.assertEqual(release.status, "retry")
+
+    @patch("apps.devices.mqtt_provisioning.deprovision_gateway_mqtt", side_effect=RuntimeError("broker unavailable"))
+    def test_offline_approval_does_not_free_inventory_without_broker_revocation(self, _deprovision):
+        users = get_user_model()
+        initiator = users.objects.create_superuser(
+            username="support-c", email="c@example.com", password="test-password"
+        )
+        approver = users.objects.create_superuser(username="support-d", email="d@example.com", password="test-password")
+        release = request_gateway_release(
+            self.gateway, requested_by=initiator,
+            support_case_reference="CASE-2", support_reason="Physical field recovery requested by owner.",
+        )
+        approve_offline_gateway_reset(
+            release.pk, approved_by=approver,
+            evidence="Witnessed local reset on the serial-matched CM4 while service was stopped.",
+        )
+        dispatch_gateway_release(release.pk)
+        self.gateway.refresh_from_db()
+        self.inventory.refresh_from_db()
+        self.assertEqual(self.gateway.lifecycle_status, "release_pending")
+        self.assertEqual(self.inventory.status, "claimed")
 
     @override_settings(
         REMOTE_CONTROL_ACTIVE_SIGNING_KEY_ID="test-release-key",

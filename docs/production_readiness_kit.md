@@ -158,7 +158,7 @@ Then fill real values. Important groups:
 - `PUBLIC_MQTT_BROKER_HOST=mqtt.novenaplatform.com`
 - `PUBLIC_MQTT_BROKER_PORT=8883`
 
-Teacher note: `GATEWAY_CLAIM_SECRET` protects the sticker claim code flow. `GATEWAY_ACTIVATION_ENCRYPTION_KEY` protects the activation credential escrow used when a Gateway is offline during claim and comes online later.
+Teacher note: `GATEWAY_CLAIM_SECRET` protects the initial sticker claim code flow. `GATEWAY_ACTIVATION_ENCRYPTION_KEY` protects activation credentials and reissued claim credentials. After a secure release, the old sticker code is invalid and Novena support must reissue and install a new credential on the physical Gateway. Follow the [support recovery runbook](gateway_support_recovery.md). Apply `devices.0040` and `devices.0041` before enabling the new support actions.
 
 ### Signed Guided Setup and Governed Control
 

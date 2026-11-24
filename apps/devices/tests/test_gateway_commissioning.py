@@ -627,8 +627,25 @@ class GatewayDeleteReleaseViewTest(TestCase):
         release.save(update_fields=["edge_reset_at"])
         dispatch_gateway_release(release.pk)
 
+        from django.contrib.auth import get_user_model
+
+        from apps.devices.services import reissue_gateway_claim_code
+
+        with self.assertRaises(GatewayClaimError):
+            claim_gateway_for_team(
+                self.other_team, self.other_site, "Reclaimed Gateway", self.serial, self.claim_code
+            )
+        support = get_user_model().objects.create_superuser(
+            username="claim-support", email="claim-support@example.com", password="test-password"
+        )
+        next_code = reissue_gateway_claim_code(self.inventory, issued_by=support)
+        self.assertNotEqual(next_code, self.claim_code)
+        with self.assertRaises(GatewayClaimError):
+            claim_gateway_for_team(
+                self.other_team, self.other_site, "Reclaimed Gateway", self.serial, self.claim_code
+            )
         gateway = claim_gateway_for_team(
-            self.other_team, self.other_site, "Reclaimed Gateway", self.serial, self.claim_code
+            self.other_team, self.other_site, "Reclaimed Gateway", self.serial, next_code
         )
         provision_gateway_activation(gateway.activations.get().pk)
 

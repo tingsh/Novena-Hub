@@ -184,6 +184,13 @@ class GatewayInventory(models.Model):
 
     serial_number = models.CharField(max_length=100, unique=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="unclaimed")
+    claim_reissue_required = models.BooleanField(default=False)
+    encrypted_reissued_claim_code = models.TextField(blank=True)
+    claim_reissued_at = models.DateTimeField(null=True, blank=True)
+    claim_reissued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="reissued_gateway_claims",
+    )
     batch = models.CharField(max_length=100, blank=True)
     gateway = models.OneToOneField(
         Gateway, null=True, blank=True, on_delete=models.SET_NULL, related_name="inventory_record"
@@ -263,6 +270,16 @@ class GatewayReleaseRequest(BaseTeamModel):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="gateway_release_requests",
+    )
+    support_case_reference = models.CharField(max_length=100, blank=True)
+    support_reason = models.TextField(blank=True)
+    offline_reset_evidence = models.TextField(blank=True)
+    offline_reset_approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="approved_offline_gateway_resets",
     )
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.QUEUED)
     attempt_count = models.PositiveIntegerField(default=0)

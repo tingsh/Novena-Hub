@@ -1,9 +1,10 @@
 from django import forms
 from django.contrib import admin, messages
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.storage import storages
 from django.db import transaction
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponseRedirect
+from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
@@ -38,11 +39,88 @@ class SiteAdmin(admin.ModelAdmin):
 
 @admin.register(Gateway)
 class GatewayAdmin(admin.ModelAdmin):
-    list_display = ("name", "serial_number", "site", "status", "lifecycle_status", "last_seen", "tls_mode")
+    list_display = (
+        "name", "serial_number", "site", "status", "lifecycle_status",
+        "last_seen", "tls_mode", "support_release_link",
+    )
     list_filter = ("status", "lifecycle_status", "tls_mode", "site__team")
     search_fields = ("name", "serial_number", "mqtt_username")
     readonly_fields = ("access_token", "mqtt_username", "mqtt_password")
     actions = ["recover_claim_codes"]
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        if obj:
+            return (*fields, "team", "site", "serial_number", "status", "lifecycle_status", "config")
+        return fields
+
+    def get_urls(self):
+        return [
+            path(
+                "<int:object_id>/support-release/",
+                self.admin_site.admin_view(self.support_release_view),
+                name="devices_gateway_support_release",
+            ),
+        ] + super().get_urls()
+
+    @admin.display(description="Support")
+    def support_release_link(self, obj):
+        return format_html(
+            '<a href="{}">Release / recovery</a>',
+            reverse("admin:devices_gateway_support_release", args=[obj.pk]),
+        )
+
+    def support_release_view(self, request, object_id):
+        from apps.users.adapter import user_has_valid_totp_device
+
+        from .gateway_release import approve_offline_gateway_reset, request_gateway_release
+
+        if not request.user.is_superuser or not user_has_valid_totp_device(request.user):
+            raise PermissionDenied("Novena superuser access with enrolled TOTP is required.")
+        gateway = self.get_object(request, object_id)
+        if gateway is None:
+            raise Http404
+        release = gateway.release_requests.filter(
+            status__in=["queued", "revoking", "retry", "needs_attention"]
+        ).first()
+        if request.method == "POST":
+            try:
+                if request.POST.get("action") == "begin":
+                    serial = request.POST.get("serial", "").strip().upper()
+                    case = request.POST.get("case_reference", "").strip()
+                    reason = request.POST.get("reason", "").strip()
+                    if serial != gateway.serial_number or not case or len(reason) < 20:
+                        raise ValueError(
+                            "Confirm the exact serial, case reference, and a reason of at least 20 characters."
+                        )
+                    if release:
+                        raise ValueError("This Gateway already has a pending release.")
+                    request_gateway_release(
+                        gateway, requested_by=request.user,
+                        support_case_reference=case, support_reason=reason,
+                    )
+                    self.message_user(request, "Support release requested. Gateway is quarantined.", messages.SUCCESS)
+                elif request.POST.get("action") == "approve_offline":
+                    if not release:
+                        raise ValueError("Request a support release first.")
+                    approve_offline_gateway_reset(
+                        release.pk, approved_by=request.user,
+                        evidence=request.POST.get("evidence", ""),
+                    )
+                    self.message_user(
+                        request, "Offline reset recorded; broker revocation is still required.", messages.SUCCESS
+                    )
+                else:
+                    raise ValueError("Unsupported recovery action.")
+            except ValueError as exc:
+                self.message_user(request, str(exc), messages.ERROR)
+            return HttpResponseRedirect(request.path)
+        return TemplateResponse(request, "admin/devices/gateway/support_release.html", {
+            **self.admin_site.each_context(request),
+            "gateway": gateway,
+            "release": release,
+            "title": f"Support recovery: {gateway.serial_number}",
+        })
     fieldsets = (
         (
             None,
@@ -87,11 +165,19 @@ class GatewayAdmin(admin.ModelAdmin):
     def recover_claim_codes(self, request, queryset):
         from django.contrib import messages
 
+        from apps.users.adapter import user_has_valid_totp_device
+
         from .services import compute_claim_code
 
+        if not request.user.is_superuser or not user_has_valid_totp_device(request.user):
+            raise PermissionDenied("Novena superuser access with enrolled TOTP is required.")
+
         for gw in queryset:
-            code = compute_claim_code(gw.serial_number)
-            messages.info(request, f"Gateway {gw.serial_number} → Claim Code: {code}")
+            try:
+                code = compute_claim_code(gw.serial_number)
+                messages.info(request, f"Gateway {gw.serial_number} → Claim Code: {code}")
+            except ValueError as exc:
+                messages.error(request, f"Gateway {gw.serial_number}: {exc}")
 
 
 @admin.register(GatewayInventory)
@@ -99,19 +185,57 @@ class GatewayInventoryAdmin(admin.ModelAdmin):
     list_display = ("serial_number", "status", "batch", "claimed_by_team", "gateway", "claimed_at")
     list_filter = ("status", "batch")
     search_fields = ("serial_number", "batch", "claimed_by_team__name")
-    readonly_fields = ("manufactured_at", "claimed_at", "gateway", "claimed_by_team")
+    readonly_fields = (
+        "manufactured_at", "claimed_at", "gateway", "claimed_by_team",
+        "claim_reissue_required", "claim_reissued_at", "claim_reissued_by",
+    )
+    exclude = ("encrypted_reissued_claim_code",)
 
-    actions = ["recover_claim_codes"]
+    actions = ["recover_claim_codes", "reissue_claim_codes"]
+
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        if obj:
+            return (*fields, "serial_number", "status")
+        return fields
 
     @admin.action(description="Recover claim codes for selected inventory records")
     def recover_claim_codes(self, request, queryset):
         from django.contrib import messages
 
+        from apps.users.adapter import user_has_valid_totp_device
+
         from .services import compute_claim_code
 
+        if not request.user.is_superuser or not user_has_valid_totp_device(request.user):
+            raise PermissionDenied("Novena superuser access with enrolled TOTP is required.")
+
         for item in queryset:
-            code = compute_claim_code(item.serial_number)
-            messages.info(request, f"Gateway {item.serial_number} -> Claim Code: {code}")
+            try:
+                code = compute_claim_code(item.serial_number)
+                messages.info(request, f"Gateway {item.serial_number} -> Claim Code: {code}")
+            except ValueError as exc:
+                messages.error(request, f"Gateway {item.serial_number}: {exc}")
+
+    @admin.action(description="Reissue claim credentials for fully released Gateways")
+    def reissue_claim_codes(self, request, queryset):
+        from apps.users.adapter import user_has_valid_totp_device
+
+        from .services import reissue_gateway_claim_code
+
+        if not request.user.is_superuser or not user_has_valid_totp_device(request.user):
+            raise PermissionDenied("Novena superuser access with enrolled TOTP is required.")
+        for item in queryset:
+            try:
+                code = reissue_gateway_claim_code(item, issued_by=request.user)
+                messages.info(
+                    request,
+                    f"New claim credential for {item.serial_number}: {code}. "
+                    "Install it on the physical Gateway and provide it to the new owner through a secure channel.",
+                )
+                self.log_change(request, item, "Reissued Gateway claim credential after verified release.")
+            except ValueError as exc:
+                messages.error(request, f"Gateway {item.serial_number}: {exc}")
 
 
 @admin.register(DeviceTemplate)
