@@ -64,9 +64,14 @@ def reissue_gateway_claim_code(inventory, *, issued_by) -> str:
     locked.claim_reissue_required = False
     locked.claim_reissued_at = timezone.now()
     locked.claim_reissued_by = issued_by
-    locked.save(update_fields=[
-        "encrypted_reissued_claim_code", "claim_reissue_required", "claim_reissued_at", "claim_reissued_by",
-    ])
+    locked.save(
+        update_fields=[
+            "encrypted_reissued_claim_code",
+            "claim_reissue_required",
+            "claim_reissued_at",
+            "claim_reissued_by",
+        ]
+    )
     return code
 
 

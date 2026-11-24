@@ -40,8 +40,14 @@ class SiteAdmin(admin.ModelAdmin):
 @admin.register(Gateway)
 class GatewayAdmin(admin.ModelAdmin):
     list_display = (
-        "name", "serial_number", "site", "status", "lifecycle_status",
-        "last_seen", "tls_mode", "support_release_link",
+        "name",
+        "serial_number",
+        "site",
+        "status",
+        "lifecycle_status",
+        "last_seen",
+        "tls_mode",
+        "support_release_link",
     )
     list_filter = ("status", "lifecycle_status", "tls_mode", "site__team")
     search_fields = ("name", "serial_number", "mqtt_username")
@@ -80,9 +86,7 @@ class GatewayAdmin(admin.ModelAdmin):
         gateway = self.get_object(request, object_id)
         if gateway is None:
             raise Http404
-        release = gateway.release_requests.filter(
-            status__in=["queued", "revoking", "retry", "needs_attention"]
-        ).first()
+        release = gateway.release_requests.filter(status__in=["queued", "revoking", "retry", "needs_attention"]).first()
         if request.method == "POST":
             try:
                 if request.POST.get("action") == "begin":
@@ -96,15 +100,18 @@ class GatewayAdmin(admin.ModelAdmin):
                     if release:
                         raise ValueError("This Gateway already has a pending release.")
                     request_gateway_release(
-                        gateway, requested_by=request.user,
-                        support_case_reference=case, support_reason=reason,
+                        gateway,
+                        requested_by=request.user,
+                        support_case_reference=case,
+                        support_reason=reason,
                     )
                     self.message_user(request, "Support release requested. Gateway is quarantined.", messages.SUCCESS)
                 elif request.POST.get("action") == "approve_offline":
                     if not release:
                         raise ValueError("Request a support release first.")
                     approve_offline_gateway_reset(
-                        release.pk, approved_by=request.user,
+                        release.pk,
+                        approved_by=request.user,
                         evidence=request.POST.get("evidence", ""),
                     )
                     self.message_user(
@@ -115,12 +122,17 @@ class GatewayAdmin(admin.ModelAdmin):
             except ValueError as exc:
                 self.message_user(request, str(exc), messages.ERROR)
             return HttpResponseRedirect(request.path)
-        return TemplateResponse(request, "admin/devices/gateway/support_release.html", {
-            **self.admin_site.each_context(request),
-            "gateway": gateway,
-            "release": release,
-            "title": f"Support recovery: {gateway.serial_number}",
-        })
+        return TemplateResponse(
+            request,
+            "admin/devices/gateway/support_release.html",
+            {
+                **self.admin_site.each_context(request),
+                "gateway": gateway,
+                "release": release,
+                "title": f"Support recovery: {gateway.serial_number}",
+            },
+        )
+
     fieldsets = (
         (
             None,
@@ -186,8 +198,13 @@ class GatewayInventoryAdmin(admin.ModelAdmin):
     list_filter = ("status", "batch")
     search_fields = ("serial_number", "batch", "claimed_by_team__name")
     readonly_fields = (
-        "manufactured_at", "claimed_at", "gateway", "claimed_by_team",
-        "claim_reissue_required", "claim_reissued_at", "claim_reissued_by",
+        "manufactured_at",
+        "claimed_at",
+        "gateway",
+        "claimed_by_team",
+        "claim_reissue_required",
+        "claim_reissued_at",
+        "claim_reissued_by",
     )
     exclude = ("encrypted_reissued_claim_code",)
 

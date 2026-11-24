@@ -103,11 +103,15 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
         )
         self.client.force_login(user)
         url = reverse("admin:devices_gateway_support_release", args=[self.gateway.pk])
-        response = self.client.post(url, {
-            "action": "begin", "serial": self.gateway.serial_number,
-            "case_reference": "CASE-ADMIN-1",
-            "reason": "Owner account inaccessible; verified physical custody.",
-        })
+        response = self.client.post(
+            url,
+            {
+                "action": "begin",
+                "serial": self.gateway.serial_number,
+                "case_reference": "CASE-ADMIN-1",
+                "reason": "Owner account inaccessible; verified physical custody.",
+            },
+        )
         self.assertEqual(response.status_code, 302)
         release = self.gateway.release_requests.get()
         self.assertEqual(release.requested_by, user)
@@ -122,12 +126,16 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
         regular = users.objects.create_user(username="regular", email="c@example.com", password="test-password")
         with self.assertRaises(ValueError):
             request_gateway_release(
-                self.gateway, requested_by=regular,
-                support_case_reference="CASE-1", support_reason="Customer account unavailable for release.",
+                self.gateway,
+                requested_by=regular,
+                support_case_reference="CASE-1",
+                support_reason="Customer account unavailable for release.",
             )
         release = request_gateway_release(
-            self.gateway, requested_by=initiator,
-            support_case_reference="CASE-1", support_reason="Customer account unavailable for release.",
+            self.gateway,
+            requested_by=initiator,
+            support_case_reference="CASE-1",
+            support_reason="Customer account unavailable for release.",
         )
         self.gateway.refresh_from_db()
         self.assertEqual(self.gateway.lifecycle_status, "release_pending")
@@ -140,7 +148,8 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
                 release.pk, approved_by=regular, evidence="Witnessed physical reset output on CM4."
             )
         approve_offline_gateway_reset(
-            release.pk, approved_by=approver,
+            release.pk,
+            approved_by=approver,
             evidence="Witnessed stopped service and successful local reset on physical CM4.",
         )
         release.refresh_from_db()
@@ -156,11 +165,14 @@ class GatewayReleaseHardeningTest(ManagedGatewayFixture):
         )
         approver = users.objects.create_superuser(username="support-d", email="d@example.com", password="test-password")
         release = request_gateway_release(
-            self.gateway, requested_by=initiator,
-            support_case_reference="CASE-2", support_reason="Physical field recovery requested by owner.",
+            self.gateway,
+            requested_by=initiator,
+            support_case_reference="CASE-2",
+            support_reason="Physical field recovery requested by owner.",
         )
         approve_offline_gateway_reset(
-            release.pk, approved_by=approver,
+            release.pk,
+            approved_by=approver,
             evidence="Witnessed local reset on the serial-matched CM4 while service was stopped.",
         )
         dispatch_gateway_release(release.pk)

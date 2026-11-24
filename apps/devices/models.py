@@ -188,7 +188,10 @@ class GatewayInventory(models.Model):
     encrypted_reissued_claim_code = models.TextField(blank=True)
     claim_reissued_at = models.DateTimeField(null=True, blank=True)
     claim_reissued_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
         related_name="reissued_gateway_claims",
     )
     batch = models.CharField(max_length=100, blank=True)

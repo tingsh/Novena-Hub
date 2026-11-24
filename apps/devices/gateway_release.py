@@ -177,10 +177,16 @@ def _finalize_release(release_id) -> GatewayReleaseRequest:
         inventory.claimed_by_team = None
         inventory.claimed_at = None
         inventory.gateway = None
-        inventory.save(update_fields=[
-            "status", "claim_reissue_required", "encrypted_reissued_claim_code",
-            "claimed_by_team", "claimed_at", "gateway",
-        ])
+        inventory.save(
+            update_fields=[
+                "status",
+                "claim_reissue_required",
+                "encrypted_reissued_claim_code",
+                "claimed_by_team",
+                "claimed_at",
+                "gateway",
+            ]
+        )
 
     gateway.status = "offline"
     gateway.lifecycle_status = "released"
