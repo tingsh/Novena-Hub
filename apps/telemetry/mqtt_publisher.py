@@ -1,5 +1,8 @@
 import json
 import logging
+import os
+import secrets
+import threading
 import uuid
 
 import paho.mqtt.client as mqtt
@@ -7,9 +10,11 @@ from django.conf import settings
 
 logger = logging.getLogger("novena_hub")
 
-# Singleton MQTT client for publishing (Cloud → Edge)
+# One MQTT publisher per OS process. Celery and Gunicorn run multiple processes.
 _client = None
-_connected = False
+_client_pid = None
+_connected_event = None
+_client_lock = threading.Lock()
 
 
 class MqttPublishOutcomeUnknown(RuntimeError):
@@ -21,40 +26,47 @@ class MqttPublishOutcomeUnknown(RuntimeError):
 
 
 def get_mqtt_client():
-    """Get or create the singleton MQTT publish client."""
-    global _client, _connected
-    if _client is not None:
-        return _client
+    """Return a connected, process-owned publisher or fail before publishing."""
+    global _client, _client_pid, _connected_event
+    with _client_lock:
+        pid = os.getpid()
+        if _client is None or _client_pid != pid:
+            connected = threading.Event()
+            client = mqtt.Client(
+                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+                client_id=f"{settings.MQTT_PUBLISHER_CLIENT_ID}-{pid}-{secrets.token_hex(4)}",
+                protocol=mqtt.MQTTv311,
+            )
 
-    _client = mqtt.Client(
-        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-        client_id=settings.MQTT_PUBLISHER_CLIENT_ID,
-        protocol=mqtt.MQTTv311,
-    )
+            def on_connect(inner_client, userdata, flags, rc, properties=None):
+                if rc == 0:
+                    connected.set()
+                    logger.info("MQTT publisher connected to broker")
+                else:
+                    connected.clear()
+                    logger.error("MQTT publisher connection failed: %s", rc)
 
-    def on_connect(client, userdata, flags, rc, properties=None):
-        global _connected
-        if rc == 0:
-            _connected = True
-            logger.info("MQTT publisher connected to broker")
-        else:
-            logger.error("MQTT publisher connection failed: %s", rc)
+            def on_disconnect(inner_client, userdata, flags, rc, properties=None):
+                connected.clear()
+                logger.warning("MQTT publisher disconnected")
 
-    def on_disconnect(client, userdata, flags, rc, properties=None):
-        global _connected
-        _connected = False
-        logger.warning("MQTT publisher disconnected")
+            client.on_connect = on_connect
+            client.on_disconnect = on_disconnect
+            try:
+                client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, 60)
+                client.loop_start()
+            except Exception:
+                logger.exception("Failed to connect MQTT publisher")
+                raise
+            _client = client
+            _client_pid = pid
+            _connected_event = connected
+        client = _client
+        connected = _connected_event
 
-    _client.on_connect = on_connect
-    _client.on_disconnect = on_disconnect
-
-    try:
-        _client.connect(settings.MQTT_BROKER_HOST, settings.MQTT_BROKER_PORT, 60)
-        _client.loop_start()
-    except Exception as e:
-        logger.error("Failed to connect MQTT publisher: %s", e)
-
-    return _client
+    if not connected.wait(timeout=5) or not client.is_connected():
+        raise RuntimeError("MQTT publisher is not connected to the broker.")
+    return client
 
 
 def _publish_qos1(topic: str, payload: dict):
@@ -135,7 +147,13 @@ def publish_rpc_command(
     )
 
     # Publish
-    client = get_mqtt_client()
+    try:
+        client = get_mqtt_client()
+    except Exception as exc:
+        rpc_record.status = "error"
+        rpc_record.error_message = str(exc)
+        rpc_record.save(update_fields=["status", "error_message", "updated_at"])
+        raise
     result = client.publish(topic, json.dumps(payload), qos=1)
     if result.rc != mqtt.MQTT_ERR_SUCCESS:
         rpc_record.status = "error"
