@@ -5,7 +5,8 @@ Modbus TCP port 502, then polls the template-backed registers after Novena Hub
 pushes connector config.
 
 Default setup:
-  python -m pip install "pymodbus==3.8.0"
+  # Use Python 3.10+ in an isolated environment (Python 3.13 on Laptop 2).
+  python -m pip install "pymodbus==3.9.2"
   python scripts/modbus_simulator.py --host 10.0.0.20 --port 502 --scenario factory --mode normal
 
 Use an elevated/admin shell for port 502 on Windows, macOS, or Linux.
@@ -91,7 +92,7 @@ def make_identity(scenario):
 
 
 def set_float(store, address, value):
-    # Pymodbus 3.8 device contexts translate client address N to data-block
+    # PyModbus 3.9.2 device contexts translate client address N to data-block
     # address N+1. Store replay values at that translated address so the
     # documented register map remains correct on the wire.
     store.setValues(address + 1, float_to_registers(value))

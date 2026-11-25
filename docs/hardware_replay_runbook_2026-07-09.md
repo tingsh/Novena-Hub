@@ -166,16 +166,39 @@ is listed. The older script rejects `--mode` and cycles normal → incident →
 recovery every 90 seconds. Update Laptop 2's Hub checkout from current `main`
 after checking for local changes to get deterministic fixed modes.
 
+Use Python 3.10 or newer in an isolated environment for the simulator. The
+qualified CM4 Gateway release and the Windows Laptop 2 replay now use
+PyModbus 3.9.2. Python 3.9 cannot run this version.
+
 Install the dependency:
 
 ```bash
-python -m pip install "pymodbus==3.8.0"
+python -m pip install "pymodbus==3.9.2"
 python -c "import pymodbus; print(pymodbus.__version__)"
 ```
 
-Expected version: `3.8.0`. Keep the simulator on the same qualified release as
-the Gateway. The simulator contains limited compatibility fallbacks for newer
-Pymodbus releases, but newer releases are not part of this hardware replay.
+Expected version: `3.9.2`. On Windows Laptop 2, Python 3.13 can be installed
+alongside the older system Python and selected for a dedicated virtual
+environment. Keep the existing system Python and packages untouched during a
+live replay.
+
+For the Windows PowerShell replay, copy `modbus_simulator.py` to Downloads and
+run these commands one line at a time. Keep this terminal open while testing:
+
+```powershell
+py -3.13 -m venv "$env:USERPROFILE\novena-modbus-sim-venv"
+Set-Location "$env:USERPROFILE\novena-modbus-sim-venv\Scripts"
+.\python.exe -m pip install "pymodbus==3.9.2"
+.\python.exe "$env:USERPROFILE\Downloads\modbus_simulator.py" --host 0.0.0.0 --port 502 --mode normal
+```
+
+The simulator updates and prints values on a separate thread. Printed values
+alone do not prove its Modbus TCP server is reachable. Check the listener from
+another terminal and confirm the CM4 has resumed polling before treating an
+interruption as recovered. An `asyncio.exceptions.InvalidStateError` in the
+PyModbus 3.8.0 response callback matches a bug addressed in the
+[3.9.0 changelog](https://pymodbus.readthedocs.io/en/v3.9.0/source/changelog.html);
+it does not by itself explain a multi-minute port-502 connection timeout.
 
 Start the factory power-meter simulator in a fixed normal state. Fixed mode keeps
 the alert incident from happening before onboarding is complete:
