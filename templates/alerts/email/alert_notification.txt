@@ -5,7 +5,7 @@ Alert Rule: {{ rule.name }}
 Device: {{ device.name }}
 Site: {{ site.name }}
 
-{% if is_resolved %}CURRENT VALUE{% else %}TRIGGER VALUE{% endif %}: {{ alert.trigger_value }}
+{{ value_label|upper }}: {{ notification_value }}
 Condition: {{ rule.get_condition_display }} {{ rule.threshold }}
 Timestamp: {{ timestamp_display }}
 

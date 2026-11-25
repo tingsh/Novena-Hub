@@ -32,8 +32,8 @@
             <p>{% if is_resolved %}The alert has resolved for your device <strong>{{ device.name }}</strong> at <strong>{{ site.name }}</strong>.{% else %}An alert has been triggered for your device <strong>{{ device.name }}</strong> at <strong>{{ site.name }}</strong>.{% endif %}</p>
             
             <div class="value-card">
-                <div class="value-label">{% if is_resolved %}Current Value{% else %}Trigger Value{% endif %}</div>
-                <div class="value-amount">{{ alert.trigger_value }}</div>
+                <div class="value-label">{{ value_label }}</div>
+                <div class="value-amount">{{ notification_value }}</div>
             </div>
 
             <table class="details">

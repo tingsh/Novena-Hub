@@ -80,7 +80,8 @@ def dispatch_alert_email_task(self, alert_id, is_resolved=False):
         subject = f"[{alert.rule.severity.upper()}] Novena Alert: {alert.rule.name}"
         notification_type = EmailDelivery.NotificationType.ALERT_TRIGGERED
 
-    notification_timestamp = timezone.now() if is_resolved else alert.triggered_at
+    notification_timestamp = (alert.resolved_at or timezone.now()) if is_resolved else alert.triggered_at
+    recovery_reading_available = is_resolved and alert.resolved_value is not None
     context = {
         "alert": alert,
         "rule": alert.rule,
@@ -90,6 +91,8 @@ def dispatch_alert_email_task(self, alert_id, is_resolved=False):
         "timestamp_display": format_site_datetime(notification_timestamp, alert.device.site),
         "dashboard_url": f"{settings.PROJECT_METADATA['URL']}/a/{alert.team.slug}/alerts/",
         "is_resolved": is_resolved,
+        "value_label": "Recovery Value" if recovery_reading_available else "Trigger Value",
+        "notification_value": alert.resolved_value if recovery_reading_available else alert.trigger_value,
     }
 
     html_message = render_to_string("alerts/email/alert_notification.html", context)
