@@ -1444,8 +1444,7 @@ def step_3_discover(request, team_slug):
             candidate["customer_name"] = (
                 request.POST.get(f"name_{raw_draft_index}", "").strip()
                 or candidate.get("customer_name")
-                or candidate.get("signature")
-                or "Equipment"
+                or ""
             )
             candidate["customer_draft_saved"] = True
             candidate["skipped_for_now"] = draft_action == "skip_candidate"
@@ -1603,9 +1602,9 @@ def step_3_discover(request, team_slug):
                     candidate["customer_name"] = (
                         request.POST.get(f"name_{raw_index}", "").strip()
                         or candidate.get("customer_name")
-                        or candidate.get("signature")
-                        or template.name
                     )
+                    if not candidate["customer_name"]:
+                        raise ValueError("Name this equipment before testing live readings.")
                     candidate["customer_draft_saved"] = True
                     candidate["skipped_for_now"] = False
                     item = create_or_update_candidate_item(
@@ -1622,12 +1621,7 @@ def step_3_discover(request, team_slug):
                                 f"item{'s' if limit != 1 else ''}. Upgrade your plan or remove unused equipment first.",
                             )
                             break
-                    device_name = (
-                        request.POST.get(f"name_{raw_index}", "").strip()
-                        or candidate.get("customer_name")
-                        or candidate.get("signature")
-                        or template.name
-                    )
+                    device_name = candidate["customer_name"]
                     device_port = str(candidate.get("interface") or candidate.get("port") or "")
                     previous_template_id = item.device.template_id if item.device else None
                     if item.device:

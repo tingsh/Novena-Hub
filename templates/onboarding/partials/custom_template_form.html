@@ -10,7 +10,7 @@
                     <p class="mt-1 text-sm text-base-content/55">{% if active_candidate %}Use the equipment manual to enter the signals Novena should read. The connection found by your Gateway is filled in below.{% else %}Enter the known field connection and signals from the equipment manual.{% endif %} A live read must pass before deployment.</p>
                 </div>
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <input class="input input-bordered rounded-lg" required name="manual_name" value="{{ active_candidate.signature|default:'' }}" {% if active_candidate %}:value="equipmentName"{% endif %} placeholder="Equipment name">
+                    <input class="input input-bordered rounded-lg" required name="manual_name" value="{{ active_candidate.customer_name|default:'' }}" {% if active_candidate %}:value="equipmentName"{% endif %} placeholder="Equipment name">
                     <select class="select select-bordered rounded-lg" name="manual_protocol" x-model="protocol">
                         <option value="modbus_tcp" {% if active_candidate.connection != 'modbus_rtu' %}selected{% endif %}>Modbus TCP</option>
                         <option value="modbus_rtu" {% if active_candidate.connection == 'modbus_rtu' %}selected{% endif %}>Modbus RTU</option>
