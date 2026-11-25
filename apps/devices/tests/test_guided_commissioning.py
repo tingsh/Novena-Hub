@@ -25,6 +25,7 @@ from apps.devices.gateway_config_delivery import (
     queue_gateway_config,
 )
 from apps.devices.models import (
+    CommandOutbox,
     DeploymentSetupItem,
     DeploymentSetupRun,
     Device,
@@ -265,6 +266,64 @@ class DeploymentSetupWorkflowTest(TestCase):
         self.assertEqual(item.state, "telemetry_confirmed")
         self.assertEqual(completed.state, "completed")
         self.assertTrue(device.dashboards.exists())
+
+    def test_transient_mqtt_publish_failure_waits_for_outbox_retry(self):
+        run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)
+        device = Device.objects.create(
+            team=self.team,
+            site=self.site,
+            gateway=self.gateway,
+            name="Meter",
+            template=self.template,
+            device_type="power_meter",
+            protocol="modbus_tcp",
+        )
+        command = RemoteCommand.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            requested_by=self.user,
+            operation="deployment_validate",
+            risk="diagnostic",
+            status="dispatching",
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        item = DeploymentSetupItem.objects.create(
+            team=self.team,
+            run=run,
+            device=device,
+            selected_template=self.template,
+            state=DeploymentSetupItem.State.VALIDATING,
+            validation_command=command,
+        )
+        outbox = CommandOutbox.objects.create(command=command, status=CommandOutbox.Status.RETRY)
+        RpcCommand.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            request_id=uuid.uuid4(),
+            method="deployment_validate",
+            status="error",
+            error_message="MQTT publish rejected locally (rc=4).",
+            remote_command=command,
+        )
+
+        sync_setup_run(run)
+        item.refresh_from_db()
+        self.assertEqual(item.state, DeploymentSetupItem.State.VALIDATING)
+
+        outbox.status = CommandOutbox.Status.PUBLISHED
+        outbox.save(update_fields=["status", "updated_at"])
+        RpcCommand.objects.create(
+            team=self.team,
+            gateway=self.gateway,
+            request_id=uuid.uuid4(),
+            method="deployment_validate",
+            status="success",
+            result={"status": "success", "signals": [{"key": "voltage", "status": "success"}]},
+            remote_command=command,
+        )
+        sync_setup_run(run)
+        item.refresh_from_db()
+        self.assertEqual(item.state, DeploymentSetupItem.State.AWAITING_CONFIRMATION)
 
     def test_successful_retry_recovers_rolled_back_item_and_finishes_with_telemetry(self):
         run = get_or_create_setup_run(team=self.team, gateway=self.gateway, initiated_by=self.user)

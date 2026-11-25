@@ -158,6 +158,8 @@ Then fill real values. Important groups:
 - `PUBLIC_MQTT_BROKER_HOST=mqtt.novenaplatform.com`
 - `PUBLIC_MQTT_BROKER_PORT=8883`
 
+`MQTT_PUBLISHER_CLIENT_ID` is a base name. Hub appends a process ID and random suffix for each web/Celery publisher, so concurrent processes do not evict one another from Mosquitto. After deploying publisher changes, recreate both `web` and `celery-worker`, then check their logs for repeated publisher disconnect/reconnect messages and run a read-only Gateway command. A broker TCP health check alone does not prove command delivery.
+
 Teacher note: `GATEWAY_CLAIM_SECRET` protects the initial sticker claim code flow. `GATEWAY_ACTIVATION_ENCRYPTION_KEY` protects activation credentials and reissued claim credentials. After a secure release, the old sticker code is invalid and Novena support must reissue and install a new credential on the physical Gateway. Follow the [support recovery runbook](gateway_support_recovery.md). Apply `devices.0040` and `devices.0041` before enabling the new support actions.
 
 ### Signed Guided Setup and Governed Control

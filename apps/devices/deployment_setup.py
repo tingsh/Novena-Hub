@@ -21,6 +21,7 @@ from .datapoint_maps import (
     record_device_datapoint_validation,
 )
 from .models import (
+    CommandOutbox,
     DeploymentSetupEvent,
     DeploymentSetupItem,
     DeploymentSetupRun,
@@ -886,6 +887,20 @@ def sync_setup_run(run: DeploymentSetupRun) -> DeploymentSetupRun:
         if item.state == DeploymentSetupItem.State.VALIDATING and item.validation_command_id:
             rpc = RpcCommand.objects.filter(remote_command=item.validation_command).order_by("-sent_at").first()
             if rpc and rpc.status in {"success", "error", "timeout"}:
+                if (
+                    rpc.status == "error"
+                    and CommandOutbox.objects.filter(
+                        command_id=item.validation_command_id,
+                        status__in={
+                            CommandOutbox.Status.PENDING,
+                            CommandOutbox.Status.CLAIMED,
+                            CommandOutbox.Status.RETRY,
+                        },
+                    ).exists()
+                ):
+                    # A local publish failure is still being retried. Do not turn
+                    # a transient transport error into a customer-facing failure.
+                    continue
                 result = rpc.result or {}
                 requested_connection_only = item.validation_result.get("mode") == "connection"
                 item.validation_result = {
