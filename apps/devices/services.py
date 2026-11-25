@@ -565,6 +565,17 @@ def _site_from_context(team, gateway=None, session=None):
     return team.site_set.order_by("created_at").first()
 
 
+def _device_reported_identity(discovery):
+    identification = discovery.get("identification") or {}
+    if not isinstance(identification, dict):
+        return ""
+    return " ".join(
+        part
+        for field in ("vendor", "model")
+        if (part := str(identification.get(field) or "").strip()) and part.lower() != "unknown"
+    )
+
+
 def _commissioning_candidates(gateway, setup_run=None):
     if not gateway:
         return []
@@ -625,6 +636,8 @@ def _commissioning_candidates(gateway, setup_run=None):
             continue
         draft_saved = bool(draft_item)
         skipped_for_now = bool(draft_data.get("skipped_for_now"))
+        customer_name = str(draft_data.get("customer_name") or "").strip()
+        reported_identity = _device_reported_identity(discovery) or _device_reported_identity(draft_data)
         connection_type = discovery.get("connection") or discovery.get("protocol") or "unknown"
         connection_ready = _candidate_connection_ready(
             connection_type,
@@ -649,6 +662,9 @@ def _commissioning_candidates(gateway, setup_run=None):
                 "is_new": not bool(draft_item),
                 "interface": interface,
                 "signature": draft_data.get("customer_name") or discovery.get("signature") or "Unknown device",
+                "customer_name": customer_name,
+                "reported_identity": reported_identity,
+                "display_name": customer_name or (f"Device at {interface}" if interface else "Discovered equipment"),
                 "connection": connection_type,
                 "host": host,
                 "port": port,
@@ -699,6 +715,7 @@ def _commissioning_candidates(gateway, setup_run=None):
         score = min(100, max(0, int(draft_data.get("matched_template_score") or 0)))
         template_requested = bool(draft_data.get("template_request_reference"))
         skipped_for_now = bool(draft_data.get("skipped_for_now"))
+        customer_name = str(draft_data.get("customer_name") or "").strip()
         candidate_key = draft_item.candidate_key or equipment_candidate_key(draft_data, draft_connection)
         candidates.append(
             {
@@ -710,6 +727,9 @@ def _commissioning_candidates(gateway, setup_run=None):
                 "is_new": False,
                 "interface": interface,
                 "signature": draft_data.get("customer_name") or draft_data.get("signature") or "Equipment",
+                "customer_name": customer_name,
+                "reported_identity": _device_reported_identity(draft_data),
+                "display_name": customer_name or (f"Device at {interface}" if interface else "Discovered equipment"),
                 "connection": connection_type,
                 "host": host,
                 "port": port,

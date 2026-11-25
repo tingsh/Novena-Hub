@@ -957,6 +957,80 @@ class GuidedSetupViewTest(TestCase):
         self.assertNotContains(response, "Validate selected equipment")
         self.assertNotContains(response, "High-confidence matches")
 
+    def test_discovery_keeps_reported_identity_separate_from_customer_name(self):
+        self._enable_guided_setup()
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": f"10.0.0.{index + 20}:502",
+                    "connection": "modbus_tcp",
+                    "signature": f"{vendor} {model}" if vendor else "Unknown Modbus Device",
+                    "identification": {"vendor": vendor, "model": model} if vendor else None,
+                }
+                for index, (vendor, model) in enumerate(
+                    (
+                        ("Siemens", "S7-1200"),
+                        ("Siemens", "S7-1500"),
+                        ("Eastron", "SDM630"),
+                        ("", ""),
+                        ("", ""),
+                    )
+                )
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+
+        response = self.client.get(self.url)
+
+        self.assertContains(response, 'data-equipment-row="candidate"', count=5)
+        self.assertContains(response, "Device-reported identity: Siemens S7-1200", count=2)
+        self.assertContains(response, "Device-reported identity: Eastron SDM630", count=2)
+        self.assertContains(response, "Device at 10.0.0.23:502")
+        self.assertContains(response, 'name="name_0" value="" required')
+        self.assertContains(response, 'name="name_3" value="" required')
+        self.assertContains(response, "Use reported identity as name", count=3)
+
+    def test_live_validation_requires_a_customer_equipment_name(self):
+        self._enable_guided_setup()
+        template = DeviceTemplate.objects.create(
+            name="Simulator template",
+            device_type="power_meter",
+            protocol="modbus_tcp",
+            register_map={"voltage": {"address": 1, "functionCode": 3, "type": "uint16"}},
+            is_verified=True,
+        )
+        self.gateway.discovery_data = {
+            "status": "complete",
+            "devices": [
+                {
+                    "interface": "10.0.0.20:502",
+                    "connection": "modbus_tcp",
+                    "host": "10.0.0.20",
+                    "port": 502,
+                    "signature": "Siemens S7-1200",
+                    "identification": {"vendor": "Siemens", "model": "S7-1200"},
+                }
+            ],
+        }
+        self.gateway.save(update_fields=["discovery_data"])
+
+        response = self.client.post(
+            self.url,
+            {
+                "save_and_validate": "0",
+                "name_0": "",
+                "template_0": str(template.pk),
+                "host_0": "10.0.0.20",
+                "port_0": "502",
+                "slave_id_0": "1",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Name this equipment before testing live readings.")
+        self.assertFalse(Device.objects.filter(gateway=self.gateway).exists())
+
     def test_discovered_equipment_name_can_be_saved_without_a_template(self):
         self._enable_guided_setup()
         self.gateway.discovery_data = {
@@ -999,7 +1073,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertContains(page, "Saved as draft")
         self.assertContains(page, 'name="name_0" value="Main incomer meter"')
         self.assertContains(page, "equipmentName: 'Main incomer meter'")
-        self.assertContains(page, 'x-text="equipmentName"')
+        self.assertContains(page, 'x-text="equipmentName ||')
         self.assertContains(page, 'name="save_candidate_draft" value="0"')
         self.assertContains(page, "Save draft")
 
@@ -1814,7 +1888,7 @@ class GuidedSetupViewTest(TestCase):
         self.assertTrue(DeviceTemplate.objects.filter(pk=template.pk).exists())
         self.assertTrue(run.events.filter(event_type="equipment_setup_restarted", item=item).exists())
         page = self.client.get(self.url)
-        self.assertContains(page, "Unknown Modbus Device")
+        self.assertContains(page, "Device at 10.0.0.20:502")
         self.assertContains(page, 'data-equipment-row="candidate"')
         self.assertNotContains(page, 'data-equipment-row="configured"')
         self.assertFalse(page.context["can_deploy"])
