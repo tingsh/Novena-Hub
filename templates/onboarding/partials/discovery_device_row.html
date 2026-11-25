@@ -46,7 +46,7 @@
              return this.connectionType === 'modbus_rtu';
          },
          readyToValidate() {
-             return this.seenNow && !this.skipped && this.connectionReady()
+            return this.seenNow && !this.skipped && this.equipmentName.trim().length > 0 && this.connectionReady()
                  && Boolean(this.templatePreview)
                  && (this.templatePreview.mapping_strategy === 'site_defined' || this.templatePreview.signals.length > 0)
                  && (!this.templatePreview.team_private || this.teamMatchConfirmed);

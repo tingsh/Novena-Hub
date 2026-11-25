@@ -1442,9 +1442,7 @@ def step_3_discover(request, team_slug):
                     return redirect("web_team:onboarding:step_3_discover", team_slug=team_slug)
 
             candidate["customer_name"] = (
-                request.POST.get(f"name_{raw_draft_index}", "").strip()
-                or candidate.get("customer_name")
-                or ""
+                request.POST.get(f"name_{raw_draft_index}", "").strip() or candidate.get("customer_name") or ""
             )
             candidate["customer_draft_saved"] = True
             candidate["skipped_for_now"] = draft_action == "skip_candidate"
@@ -1599,9 +1597,8 @@ def step_3_discover(request, team_slug):
                         )
                         continue
                     connection, candidate = _candidate_connection_from_post(request.POST, candidate, raw_index)
-                    candidate["customer_name"] = (
-                        request.POST.get(f"name_{raw_index}", "").strip()
-                        or candidate.get("customer_name")
+                    candidate["customer_name"] = request.POST.get(f"name_{raw_index}", "").strip() or candidate.get(
+                        "customer_name"
                     )
                     if not candidate["customer_name"]:
                         raise ValueError("Name this equipment before testing live readings.")
