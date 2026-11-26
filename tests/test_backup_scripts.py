@@ -8,7 +8,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -24,17 +23,17 @@ class BackupScriptTests(unittest.TestCase):
             '#!/bin/sh\ncase " $* " in\n'
             '  *" pg_dump "*) printf "PGDMPtest-archive" ;;\n'
             '  *" pg_restore --list "*) cat >/dev/null ;;\n'
-            '  *) exit 2 ;;\n'
-            'esac\n'
+            "  *) exit 2 ;;\n"
+            "esac\n"
         )
         docker.chmod(0o755)
         rclone = binaries / "rclone"
         rclone.write_text(
-            '#!/bin/sh\n'
+            "#!/bin/sh\n"
             'if [ "$1" = config ]; then\n'
             '  if [ "$3" = novena_r2_crypt ]; then printf "type = crypt\\n"; else printf "type = s3\\n"; fi\n'
-            '  exit 0\n'
-            'fi\n'
+            "  exit 0\n"
+            "fi\n"
             'printf "%s\\n" "$1" >> "$RCLONE_CALLS"\n'
         )
         rclone.chmod(0o755)
