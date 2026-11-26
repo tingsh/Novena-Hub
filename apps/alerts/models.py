@@ -115,6 +115,7 @@ class Alert(BaseTeamModel):
     acknowledged_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
 
     trigger_value = models.FloatField()  # The value that triggered the alert
+    resolved_value = models.FloatField(null=True, blank=True)  # The reading that cleared the alert
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="active")
     notes = models.TextField(blank=True)
 

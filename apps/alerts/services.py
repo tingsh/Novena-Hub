@@ -26,10 +26,10 @@ def check_alerts_for_payload(device, key, value):
     )
 
     for rule in rules:
-        if evaluate_condition(rule, device, key, value):
-            trigger_alert(rule, device, value)
-        else:
+        if not evaluate_condition_value(rule, value):
             resolve_alert(rule, device, value)
+        elif evaluate_condition(rule, device, key, value):
+            trigger_alert(rule, device, value)
 
 
 def evaluate_condition(rule, device, key, value):
@@ -138,7 +138,8 @@ def resolve_alert(rule, device, value):
     for alert in active_alerts:
         alert.status = "resolved"
         alert.resolved_at = timezone.now()
-        alert.save(update_fields=["status", "resolved_at"])
+        alert.resolved_value = value
+        alert.save(update_fields=["status", "resolved_at", "resolved_value"])
         logger.info(f"ALERT RESOLVED: {rule.name} for device {device.name} (Value: {value})")
 
         # Send resolution notifications

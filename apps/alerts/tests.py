@@ -9,7 +9,7 @@ from django.urls import reverse
 from apps.alerts.forms import AlertRuleForm
 from apps.alerts.models import Alert, AlertRule
 from apps.alerts.services import check_alerts_for_payload
-from apps.alerts.tasks import dispatch_alert_whatsapp_task
+from apps.alerts.tasks import dispatch_alert_email_task, dispatch_alert_whatsapp_task
 from apps.devices.models import Device, DeviceTemplate, Site
 from apps.events.models import EmailDelivery
 from apps.teams.models import Membership, Team
@@ -541,12 +541,74 @@ def test_alert_auto_resolution():
     alert.refresh_from_db()
     assert alert.status == "resolved"
     assert alert.resolved_at is not None
+    assert alert.resolved_value == 95.0
 
     # Assert resolved email was sent
     assert len(mail.outbox) == 1
     email = mail.outbox[0]
     assert "[RESOLVED]" in email.subject
     assert "test@test.com" in email.to
+    assert "RECOVERY VALUE: 95.0" in email.body
+    assert "105.0" not in email.body
+    assert "Recovery Value" in email.alternatives[0][0]
+    assert "95.0" in email.alternatives[0][0]
+
+
+@pytest.mark.django_db
+@override_settings(SITE_URL="http://testserver", CELERY_TASK_ALWAYS_EAGER=True)
+def test_legacy_resolved_alert_email_labels_historical_reading():
+    team = Team.objects.create(name="Legacy Team", slug="legacy-team")
+    site = Site.objects.create(team=team, name="Test Site")
+    device = Device.objects.create(team=team, site=site, name="Test Device")
+    user = CustomUser.objects.create_user(username="legacy_user", email="legacy@test.com", password="pwd")
+    team.members.add(user)
+    rule = AlertRule.objects.create(
+        team=team,
+        name="Legacy Alert",
+        device=device,
+        telemetry_key="temp",
+        condition="gt",
+        threshold=100.0,
+        notify_email=True,
+    )
+    rule.recipients.add(user)
+    alert = Alert.objects.create(team=team, rule=rule, device=device, trigger_value=105.0, status="resolved")
+
+    dispatch_alert_email_task(alert.id, is_resolved=True)
+
+    email = mail.outbox[0]
+    assert "TRIGGER VALUE: 105.0" in email.body
+    assert "CURRENT VALUE" not in email.body
+
+
+@pytest.mark.django_db
+def test_sustained_alert_does_not_resolve_on_high_reading_after_history_gap():
+    team = Team.objects.create(name="Gap Team", slug="gap-team")
+    site = Site.objects.create(team=team, name="Test Site")
+    device = Device.objects.create(team=team, site=site, name="Power Meter")
+    rule = AlertRule.objects.create(
+        team=team,
+        name="High power",
+        device=device,
+        telemetry_key="power",
+        condition="gt",
+        threshold=1200.0,
+        duration_seconds=60,
+        notify_email=False,
+    )
+    alert = Alert.objects.create(team=team, rule=rule, device=device, trigger_value=1917.2)
+
+    # The latest high reading is real, but no recent telemetry can prove a new
+    # 60-second run above the threshold after a field-link interruption.
+    check_alerts_for_payload(device, "power", 1700.0)
+    alert.refresh_from_db()
+    assert alert.status == "active"
+    assert alert.resolved_value is None
+
+    check_alerts_for_payload(device, "power", 850.0)
+    alert.refresh_from_db()
+    assert alert.status == "resolved"
+    assert alert.resolved_value == 850.0
 
 
 @pytest.mark.django_db
