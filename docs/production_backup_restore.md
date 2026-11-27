@@ -61,8 +61,9 @@ sudo install -o root -g root -m 0700 deploy/backups/backup_mqtt_dynsec.sh /usr/l
 sudo cp deploy/systemd/novena-mqtt-backup.service.example /etc/systemd/system/novena-mqtt-backup.service
 sudo cp deploy/systemd/novena-mqtt-backup.timer.example /etc/systemd/system/novena-mqtt-backup.timer
 sudo systemctl daemon-reload
-sudo systemctl enable --now novena-postgres-backup.timer novena-mqtt-backup.timer
 ```
+
+Run both services manually and complete the isolated off-server restore drill before enabling the timers. After the drill passes, run `sudo systemctl enable --now novena-postgres-backup.timer novena-mqtt-backup.timer`.
 
 Check timer status:
 
