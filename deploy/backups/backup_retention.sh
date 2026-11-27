@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 ROOT_DIR="${NOVENA_ROOT:-/opt/novena/Novena-Hub}"
 BACKUP_ROOT="${NOVENA_BACKUP_DIR:-$ROOT_DIR/backups/postgres}"
 PRIVATE_MEDIA_BACKUP_ROOT="${NOVENA_PRIVATE_MEDIA_BACKUP_DIR:-$ROOT_DIR/backups/private_media}"
 
-mkdir -p "$BACKUP_ROOT/daily" "$BACKUP_ROOT/weekly" "$BACKUP_ROOT/monthly"
-mkdir -p \
+install -d -m 0700 "$BACKUP_ROOT" "$BACKUP_ROOT/daily" "$BACKUP_ROOT/weekly" "$BACKUP_ROOT/monthly"
+install -d -m 0700 \
+  "$PRIVATE_MEDIA_BACKUP_ROOT" \
   "$PRIVATE_MEDIA_BACKUP_ROOT/daily" \
   "$PRIVATE_MEDIA_BACKUP_ROOT/weekly" \
   "$PRIVATE_MEDIA_BACKUP_ROOT/monthly"

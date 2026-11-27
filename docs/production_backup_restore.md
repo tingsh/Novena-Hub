@@ -2,7 +2,7 @@
 
 > For remote-control deployments, keep command workers stopped after restore and run the governed-control recovery reset in `docs/governed_remote_control_operations.md`. Restored approvals, outbox rows and commands must never execute.
 
-This guide is for the first low-cost production deployment where Novena runs Postgres/TimescaleDB on the same VPS as the app. Reviewed 2026-10-28 after the physical Gateway claim/release replays.
+This guide is for the first low-cost production deployment where Novena runs Postgres/TimescaleDB on the same VPS as the app. For the DigitalOcean trial's encrypted Cloudflare R2 setup, follow `docs/cloudflare_r2_backup_runbook.md`.
 
 ## Mental Model
 
@@ -19,109 +19,51 @@ The important part is the restore. Until we have restored a backup once, we only
 - `deploy/backups/backup_mqtt_dynsec.sh` validates and atomically saves the live Mosquitto Dynamic Security JSON with root-only permissions, local retention, and optional off-server upload.
 - `deploy/backups/restore_postgres.sh` restores one selected backup into a target database.
 - `deploy/backups/backup_retention.sh` applies the same daily, weekly, and monthly retention to both backup sets.
-- The systemd examples run database/media and broker-state backups nightly under separate users.
+- The systemd examples run database/media and broker-state backups nightly as root, using root-owned installed script copies.
 
-**Open pre-customer gate:** the broker-state backup is implemented, but must be installed on the public server, uploaded off-server, and restored on a disposable broker alongside a matching database snapshot before customers are invited. Do not treat a Droplet snapshot alone as a complete application-level restore plan. Broker backups contain sensitive credential material.
+**Open pre-customer gate:** install all three backup jobs on the public server, verify encrypted off-server upload, and restore into disposable database, file and broker environments before customers are invited. Do not treat a Droplet snapshot alone as a complete application-level restore plan. Broker backups contain sensitive credential material.
 
-The database backup reads `DATABASE_URL` from `deploy/env/production.env` by default. `BACKUP_RCLONE_REMOTE` uploads database backups. `PRIVATE_MEDIA_BACKUP_RCLONE_REMOTE` separately uploads confidential report archives; use a private bucket and restricted credentials.
+In direct mode, the database backup reads `DATABASE_URL` from `deploy/env/production.env`. The production systemd unit uses Docker Compose mode, so it does not source that file. `BACKUP_RCLONE_REMOTE`, `PRIVATE_MEDIA_BACKUP_RCLONE_REMOTE`, and `MQTT_DYNSEC_BACKUP_RCLONE_REMOTE` must point to an `rclone crypt` remote for off-server uploads; each upload is checked with `rclone cryptcheck`.
 
 ## First Setup
 
-On the VPS:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y postgresql-client gzip rclone
-cd /opt/novena/Novena-Hub
-chmod +x deploy/backups/*.sh
-```
-
-Create the first backup manually:
-
-```bash
-NOVENA_ROOT=/opt/novena/Novena-Hub ./deploy/backups/backup_postgres.sh
-NOVENA_ROOT=/opt/novena/Novena-Hub ./deploy/backups/backup_private_media.sh
-sudo install -o root -g root -m 0700 deploy/backups/backup_mqtt_dynsec.sh /usr/local/sbin/novena-backup-mqtt-dynsec
-sudo /usr/local/sbin/novena-backup-mqtt-dynsec
-```
-
-If using Cloudflare R2 or Backblaze B2, configure `rclone` and add this to `deploy/env/production.env`:
-
-```env
-BACKUP_RCLONE_REMOTE=novena-r2:novena-production-backups/postgres
-PRIVATE_MEDIA_BACKUP_RCLONE_REMOTE=novena-r2:novena-production-backups/private-media
-```
-
-Configure the broker backup's off-server destination separately in root-owned `/etc/novena/mqtt-backup.env` (mode `0600`):
-
-```env
-MQTT_DYNSEC_BACKUP_RCLONE_REMOTE=novena-r2:novena-production-backups/mqtt-dynsec
-```
-
-Create `/etc/novena` as root with mode `0700`. Store the file with owner `root:root` and mode `0600`; do not source the app-writable production environment file in the root backup job.
-
-The broker backup runs as root because the live file can be owned by the Mosquitto container. Give root a restricted `rclone` configuration and a private, encrypted backup destination. The local copies live in `/var/backups/novena/mqtt-dynsec` (mode `0700`); do not put them in a web-served or app-writable directory. The database/media and broker timers are close in time, but not an atomic snapshot: choose matching timestamps and reconcile later claims/releases during recovery.
+On the DigitalOcean trial Droplet, use the R2 runbook for root-only configuration, crypt remote, three backup destinations, manual first run and timer installation. Its jobs write under `/var/backups/novena` and run as root because Docker access and the broker-owned state require it. Other deployments may use the scripts in direct database mode with `DATABASE_URL`, but must still configure an encrypted off-server remote and prove a restore. The database/media and broker timers are close in time, but not an atomic snapshot: choose matching timestamps and reconcile later claims/releases during recovery.
 
 ## Restore Drill
 
-Do the first restore into a disposable database, not production.
-
-```bash
-createdb novena_restore_test
-RESTORE_DATABASE_URL=postgresql://novena:<password>@localhost:5432/novena_restore_test \
-BACKUP_FILE=/opt/novena/Novena-Hub/backups/postgres/daily/<backup-file>.dump.gz \
-RESTORE_CONFIRM=restore-now \
-./deploy/backups/restore_postgres.sh
-```
-
-Then inspect the restored database:
-
-```bash
-psql postgresql://novena:<password>@localhost:5432/novena_restore_test
-```
-
-Check that important tables exist:
-
-```sql
-\dt
-select count(*) from teams_team;
-select count(*) from devices_gateway;
-select count(*) from telemetry_telemetrydata;
-select count(*) from impact_impactreport;
-```
+Do the first restore into a disposable TimescaleDB container, not production. Follow the R2 runbook for download and Timescale's required pre/post-restore calls. Inspect team, Gateway, telemetry and impact-report rows in that isolated database.
 
 Restore private files into a disposable directory and compare them with restored `impact_impactreport.private_file_name` and `devices_equipmenttemplaterequest` file rows:
 
 ```bash
 mkdir -p /tmp/novena-private-media-restore
-tar -xzf /opt/novena/Novena-Hub/backups/private_media/daily/<backup-file>.tar.gz \
-  -C /tmp/novena-private-media-restore
-find /tmp/novena-private-media-restore -type f -name '*.pdf'
+tar -xzf /root/novena-restore-drill/<backup-file>.tar.gz -C /tmp/novena-private-media-restore
+find /tmp/novena-private-media-restore -type f
 ```
 
 Do not extract an unverified archive over the live directory. For a production recovery, stop web and Celery, restore into a new directory, verify filenames against the restored database, then atomically switch the directory into place. If reports use S3 instead of the local filesystem, enable bucket versioning and private cross-region or cross-account backup rather than this local archive.
 
 For the broker drill, choose a broker backup from the same recovery window as the database backup. Copy it into a root-owned disposable directory, validate its JSON, and start an isolated Mosquitto instance with the production Dynamic Security plugin configuration pointed at that copy. Confirm that a currently claimed test Gateway identity connects, a released Gateway identity is rejected, and the roles/ACLs match the restored database. Never test by replacing the live broker file. Before a real production restore, stop the broker and Hub claim/release workers, preserve the current state, compare all claims/releases since the selected snapshot, and revoke stale credentials before allowing Gateway connections.
 
-Drop the disposable database only after the restore is verified:
-
-```bash
-dropdb novena_restore_test
-```
+Destroy the isolated drill container and plaintext working files only after verification and recording evidence.
 
 ## Nightly Timer
 
 Copy the examples:
 
 ```bash
+sudo install -o root -g root -m 0700 deploy/backups/backup_postgres.sh /usr/local/sbin/novena-backup-postgres
+sudo install -o root -g root -m 0700 deploy/backups/backup_private_media.sh /usr/local/sbin/novena-backup-private-media
+sudo install -o root -g root -m 0700 deploy/backups/backup_retention.sh /usr/local/sbin/novena-backup-retention
 sudo cp deploy/systemd/novena-postgres-backup.service.example /etc/systemd/system/novena-postgres-backup.service
 sudo cp deploy/systemd/novena-postgres-backup.timer.example /etc/systemd/system/novena-postgres-backup.timer
 sudo install -o root -g root -m 0700 deploy/backups/backup_mqtt_dynsec.sh /usr/local/sbin/novena-backup-mqtt-dynsec
 sudo cp deploy/systemd/novena-mqtt-backup.service.example /etc/systemd/system/novena-mqtt-backup.service
 sudo cp deploy/systemd/novena-mqtt-backup.timer.example /etc/systemd/system/novena-mqtt-backup.timer
 sudo systemctl daemon-reload
-sudo systemctl enable --now novena-postgres-backup.timer novena-mqtt-backup.timer
 ```
+
+Run both services manually and complete the isolated off-server restore drill before enabling the timers. After the drill passes, run `sudo systemctl enable --now novena-postgres-backup.timer novena-mqtt-backup.timer`.
 
 Check timer status:
 

@@ -7,6 +7,11 @@ SOURCE_FILE="${MQTT_DYNSEC_SOURCE:-$ROOT_DIR/deploy/mosquitto/data/dynamic-secur
 BACKUP_ROOT="${MQTT_DYNSEC_BACKUP_DIR:-/var/backups/novena/mqtt-dynsec}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
+if [[ "${NOVENA_OFFSITE_REQUIRED:-0}" == 1 && -z "${MQTT_DYNSEC_BACKUP_RCLONE_REMOTE:-}" ]]; then
+  echo "MQTT_DYNSEC_BACKUP_RCLONE_REMOTE is required for this off-server backup job" >&2
+  exit 1
+fi
+
 if [[ ! -f "$SOURCE_FILE" || ! -r "$SOURCE_FILE" ]]; then
   echo "Mosquitto Dynamic Security state is missing or unreadable: $SOURCE_FILE" >&2
   exit 1
@@ -62,7 +67,13 @@ find "$BACKUP_ROOT/weekly" -type f -name '*.json' -mtime +35 -delete
 find "$BACKUP_ROOT/monthly" -type f -name '*.json' -mtime +100 -delete
 
 if [[ -n "${MQTT_DYNSEC_BACKUP_RCLONE_REMOTE:-}" ]]; then
+  remote_name="${MQTT_DYNSEC_BACKUP_RCLONE_REMOTE%%:*}"
+  if [[ "$MQTT_DYNSEC_BACKUP_RCLONE_REMOTE" != *:* ]] || ! rclone config show "$remote_name" | grep -Eq '^type[[:space:]]*=[[:space:]]*crypt$'; then
+    echo "MQTT_DYNSEC_BACKUP_RCLONE_REMOTE must name a configured rclone crypt remote; upload skipped" >&2
+    exit 1
+  fi
   rclone copy "$BACKUP_ROOT" "$MQTT_DYNSEC_BACKUP_RCLONE_REMOTE"
+  rclone cryptcheck "$BACKUP_ROOT" "$MQTT_DYNSEC_BACKUP_RCLONE_REMOTE" --one-way
 fi
 
 echo "Mosquitto Dynamic Security backup complete: $BACKUP_FILE"

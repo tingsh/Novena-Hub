@@ -357,15 +357,14 @@ Warnings include:
 ## Backup And Restore
 
 Read `docs/production_backup_restore.md` before inviting pilots.
+For the DigitalOcean trial, follow `docs/cloudflare_r2_backup_runbook.md` for the private encrypted R2 copy and a disposable restore drill.
 
 Minimum routine:
 
 ```bash
-./deploy/backups/backup_postgres.sh
-./deploy/backups/backup_private_media.sh
-./deploy/backups/backup_retention.sh
-sudo install -o root -g root -m 0700 deploy/backups/backup_mqtt_dynsec.sh /usr/local/sbin/novena-backup-mqtt-dynsec
-sudo /usr/local/sbin/novena-backup-mqtt-dynsec
+sudo systemctl start novena-postgres-backup.service
+sudo systemctl start novena-mqtt-backup.service
+sudo systemctl show novena-postgres-backup.service novena-mqtt-backup.service -p Result
 ```
 
 The Mosquitto Dynamic Security backup is implemented but still needs to be installed and tested on the public server. Its state at `deploy/mosquitto/data/dynamic-security.json` changes as claims and releases occur. Configure restricted off-server upload and prove a disposable broker-state restore alongside matching PostgreSQL and private-media backups before inviting customers; keep environment secrets in a separate restricted vault. Do not describe the backups as a complete disaster-recovery plan until that drill passes.

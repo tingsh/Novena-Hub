@@ -7,5 +7,7 @@ After=network-online.target docker.service
 Type=oneshot
 User=root
 Environment=NOVENA_ROOT=/opt/novena/Novena-Hub
-EnvironmentFile=-/etc/novena/mqtt-backup.env
+Environment=NOVENA_OFFSITE_REQUIRED=1
+Environment=RCLONE_CONFIG=/etc/novena/rclone.conf
+EnvironmentFile=/etc/novena/backup.env
 ExecStart=/usr/local/sbin/novena-backup-mqtt-dynsec
