@@ -369,11 +369,7 @@ sudo systemctl show novena-postgres-backup.service novena-mqtt-backup.service -p
 
 The Mosquitto Dynamic Security backup is implemented but still needs to be installed and tested on the public server. Its state at `deploy/mosquitto/data/dynamic-security.json` changes as claims and releases occur. Configure restricted off-server upload and prove a disposable broker-state restore alongside matching PostgreSQL and private-media backups before inviting customers; keep environment secrets in a separate restricted vault. Do not describe the backups as a complete disaster-recovery plan until that drill passes.
 
-First restore drill:
-
-```bash
-RESTORE_DATABASE_URL=postgresql://novena:<password>@localhost:5432/novena_restore_test BACKUP_FILE=/opt/novena/Novena-Hub/backups/postgres/daily/<backup>.dump.gz RESTORE_CONFIRM=restore-now ./deploy/backups/restore_postgres.sh
-```
+For the first restore drill, create a disposable empty TimescaleDB database and follow `docs/cloudflare_r2_backup_runbook.md`. Set `RESTORE_DATABASE_URL` to that database using a cluster administrator connection; the restore script creates the `novena` role there if it is missing. Set `BACKUP_FILE` to the downloaded dump and `RESTORE_CONFIRM=restore-now`, then run `deploy/backups/restore_postgres.sh`. Never point this drill at the live database.
 
 Also restore private media into a disposable directory and confirm Business Impact reports and equipment-request files match restored database rows.
 

@@ -17,7 +17,7 @@ The important part is the restore. Until we have restored a backup once, we only
 - `deploy/backups/backup_postgres.sh` creates a compressed custom-format `pg_dump`.
 - `deploy/backups/backup_private_media.sh` creates an atomic archive of all confidential files under `private_media/`.
 - `deploy/backups/backup_mqtt_dynsec.sh` validates and atomically saves the live Mosquitto Dynamic Security JSON with root-only permissions, local retention, and optional off-server upload.
-- `deploy/backups/restore_postgres.sh` restores one selected backup into a target database.
+- `deploy/backups/restore_postgres.sh` restores one selected backup into an explicitly named, empty target database. It creates the `novena` role if the target cluster lacks it and runs TimescaleDB's pre/post-restore steps.
 - `deploy/backups/backup_retention.sh` applies the same daily, weekly, and monthly retention to both backup sets.
 - The systemd examples run database/media and broker-state backups nightly as root, using root-owned installed script copies.
 
@@ -31,7 +31,7 @@ On the DigitalOcean trial Droplet, use the R2 runbook for root-only configuratio
 
 ## Restore Drill
 
-Do the first restore into a disposable TimescaleDB container, not production. Follow the R2 runbook for download and Timescale's required pre/post-restore calls. Inspect team, Gateway, telemetry and impact-report rows in that isolated database.
+Do the first restore into a disposable TimescaleDB container, not production. Follow the R2 runbook for download and use the same PostgreSQL and TimescaleDB versions as the source. The test found that TimescaleDB's `bgw_job.owner` data references the `novena` database role even with `pg_restore --no-owner`. The restore script now creates that role before loading the archive, then runs TimescaleDB's required pre/post-restore calls. Connect as a target-cluster administrator with permission to create roles and the extension; set `RESTORE_DATABASE_URL` explicitly and `RESTORE_CONFIRM=restore-now`. The script refuses a target with existing public tables. Inspect team, Gateway, telemetry and impact-report rows in the restored database.
 
 Restore private files into a disposable directory and compare them with restored `impact_impactreport.private_file_name` and `devices_equipmenttemplaterequest` file rows:
 
@@ -89,7 +89,7 @@ Before production restore:
 
 1. Stop `web`, `celery-worker`, `celery-beat`, and `mqtt-consumer`.
 2. Take one final backup of the current broken state.
-3. Restore the selected database backup with `RESTORE_CONFIRM=restore-now`.
+3. Preserve the old database, create an empty target database, and restore the selected backup with an explicit `RESTORE_DATABASE_URL` and `RESTORE_CONFIRM=restore-now`. The restore script refuses a populated target and never falls back to the live app's `DATABASE_URL`. Confirm the target role and application privileges before starting Hub.
 4. Restore the matching private-report archive into a new directory and verify it before switching it live.
 5. Restore the matching Dynamic Security state using a rehearsed broker recovery procedure; validate serial-scoped roles before reconnecting Gateways. Do not simply replay an older broker file over a running broker or reinstate credentials for Gateways released after that snapshot.
 6. Run migrations only if the code version requires them.
