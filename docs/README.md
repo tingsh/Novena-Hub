@@ -31,6 +31,7 @@ The Gateway repository's `ARCHITECTURE.md` is the current edge-runtime guide. Hi
 - [Production deployment plan](production_deployment_plan.md)
 - [Production readiness kit](production_readiness_kit.md)
 - [Backup and restore](production_backup_restore.md)
+- [Cloudflare R2 backup and recovery trial](cloudflare_r2_backup_runbook.md)
 - [Governed remote-control operations](governed_remote_control_operations.md)
 - [Business Impact and ROI operations](business_impact_roi_operations.md)
 - [Automated first-customer journey](automated_first_customer_journey.md)
