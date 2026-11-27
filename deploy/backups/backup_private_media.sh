@@ -45,7 +45,7 @@ if [[ -n "${PRIVATE_MEDIA_BACKUP_RCLONE_REMOTE:-}" ]]; then
   fi
   echo "Uploading private media backup tree to: $PRIVATE_MEDIA_BACKUP_RCLONE_REMOTE"
   rclone copy "$BACKUP_ROOT" "$PRIVATE_MEDIA_BACKUP_RCLONE_REMOTE"
-  rclone cryptcheck "$BACKUP_ROOT" "$PRIVATE_MEDIA_BACKUP_RCLONE_REMOTE"
+  rclone cryptcheck "$BACKUP_ROOT" "$PRIVATE_MEDIA_BACKUP_RCLONE_REMOTE" --one-way
 fi
 
 echo "Private media backup complete: $BACKUP_FILE"

@@ -73,7 +73,7 @@ if [[ -n "${MQTT_DYNSEC_BACKUP_RCLONE_REMOTE:-}" ]]; then
     exit 1
   fi
   rclone copy "$BACKUP_ROOT" "$MQTT_DYNSEC_BACKUP_RCLONE_REMOTE"
-  rclone cryptcheck "$BACKUP_ROOT" "$MQTT_DYNSEC_BACKUP_RCLONE_REMOTE"
+  rclone cryptcheck "$BACKUP_ROOT" "$MQTT_DYNSEC_BACKUP_RCLONE_REMOTE" --one-way
 fi
 
 echo "Mosquitto Dynamic Security backup complete: $BACKUP_FILE"

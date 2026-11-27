@@ -34,7 +34,7 @@ class BackupScriptTests(unittest.TestCase):
             '  if [ "$3" = novena_r2_crypt ]; then printf "type = crypt\\n"; else printf "type = s3\\n"; fi\n'
             "  exit 0\n"
             "fi\n"
-            'printf "%s\\n" "$1" >> "$RCLONE_CALLS"\n'
+            'printf "%s\\n" "$*" >> "$RCLONE_CALLS"\n'
         )
         rclone.chmod(0o755)
         self.env = {
@@ -66,7 +66,10 @@ class BackupScriptTests(unittest.TestCase):
         self.assertEqual(len(archives), 1)
         self.assertEqual(stat.S_IMODE(archives[0].stat().st_mode), 0o600)
         self.assertEqual(stat.S_IMODE(backup_dir.stat().st_mode), 0o700)
-        self.assertEqual((self.path / "rclone-calls").read_text().splitlines(), ["copy", "cryptcheck"])
+        calls = (self.path / "rclone-calls").read_text().splitlines()
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[0].startswith("copy "))
+        self.assertIn("--one-way", calls[1])
 
     def test_private_media_backup_archives_files_without_exposing_them(self):
         media = self.path / "private-media"
@@ -85,7 +88,10 @@ class BackupScriptTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE(archives[0].stat().st_mode), 0o600)
         with tarfile.open(archives[0], "r:gz") as archive:
             self.assertIn("./customer-report.pdf", archive.getnames())
-        self.assertEqual((self.path / "rclone-calls").read_text().splitlines(), ["copy", "cryptcheck"])
+        calls = (self.path / "rclone-calls").read_text().splitlines()
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[0].startswith("copy "))
+        self.assertIn("--one-way", calls[1])
 
     def test_missing_private_media_fails_without_creating_empty_backup(self):
         backup_dir = self.path / "media-backups"

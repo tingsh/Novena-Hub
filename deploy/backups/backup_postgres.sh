@@ -75,7 +75,7 @@ if [[ -n "${BACKUP_RCLONE_REMOTE:-}" ]]; then
   fi
   echo "Uploading backup tree to rclone remote: $BACKUP_RCLONE_REMOTE"
   rclone copy "$BACKUP_ROOT" "$BACKUP_RCLONE_REMOTE"
-  rclone cryptcheck "$BACKUP_ROOT" "$BACKUP_RCLONE_REMOTE"
+  rclone cryptcheck "$BACKUP_ROOT" "$BACKUP_RCLONE_REMOTE" --one-way
 fi
 
 echo "Backup complete: $BACKUP_FILE"
